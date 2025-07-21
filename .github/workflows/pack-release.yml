@@ -50,9 +50,9 @@ jobs:
       run: |
         ls dist
 
-    - name: Zip artifact
+    - name: Zip artifact (entire stock_monitor folder)
       run: |
-        powershell Compress-Archive -Path dist/stock_monitor.exe -DestinationPath stock_monitor_win.zip
+        powershell Compress-Archive -Path dist/stock_monitor/* -DestinationPath stock_monitor_win.zip
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
