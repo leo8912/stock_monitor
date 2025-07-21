@@ -63,8 +63,22 @@ python main.py
 
 ### 打包成exe
 ```bash
+# 方法1：使用构建脚本（推荐）
+python build.py
+
+# 方法2：直接使用PyInstaller
 pyinstaller -w -i icon.ico -n stock_monitor main.py --add-data ".venv/Lib/site-packages/easyquotation/stock_codes.conf;easyquotation" --add-data "stock_basic.json;." --add-data "theme_config.json;."
 ```
+
+### 🚀 自动构建
+本项目配置了GitHub Actions，当`main.py`发生变化时会自动构建并发布：
+
+1. **自动触发**：每次推送`main.py`到main分支时自动构建
+2. **构建产物**：生成`stock_monitor.exe`可执行文件
+3. **自动发布**：创建GitHub Release并上传构建产物
+4. **版本管理**：自动生成版本号（格式：v1.0.YYYYMMDD-commit）
+
+**下载最新版本**：访问 [GitHub Releases](https://github.com/你的用户名/你的仓库名/releases) 页面下载最新构建版本。
 
 ## 📖 使用说明
 
@@ -106,7 +120,13 @@ stock/
 ├── requirements.txt     # 依赖库列表
 ├── stock_basic.json     # 股票基础数据
 ├── theme_config.json    # 主题配置
-└── config.json         # 用户配置（自动生成）
+├── build.py             # 构建脚本
+├── config.json         # 用户配置（自动生成）
+└── .github/
+    └── workflows/       # GitHub Actions工作流
+        ├── build.yml    # 完整构建工作流
+        ├── quick-build.yml # 快速构建工作流
+        └── release.yml  # 自动发布工作流
 ```
 
 ## 🎯 开发历程
