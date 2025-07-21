@@ -5,6 +5,7 @@ on:
     branches: [ main ]
     paths:
       - 'main.py'
+  workflow_dispatch:  # 添加手动触发
 
 permissions:
   contents: write

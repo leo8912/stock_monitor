@@ -71,14 +71,24 @@ pyinstaller -w -i icon.ico -n stock_monitor main.py --add-data ".venv/Lib/site-p
 ```
 
 ### 🚀 自动构建
-本项目配置了GitHub Actions，当`main.py`发生变化时会自动构建并发布：
+本项目配置了GitHub Actions，提供三种构建方式：
 
-1. **自动触发**：每次推送`main.py`到main分支时自动构建
-2. **构建产物**：生成`stock_monitor.exe`可执行文件
-3. **自动发布**：创建GitHub Release并上传构建产物
-4. **版本管理**：自动生成版本号（格式：v1.0.YYYYMMDD-commit）
+#### 自动触发
+- **🚀 Auto Release**：推送`main.py`到main分支时自动创建正式发布
+- **🔨 Build Stock Monitor**：核心文件变化时自动构建测试版本
+- **⚡ Quick Build**：`main.py`变化时快速构建
 
-**下载最新版本**：访问 [GitHub Releases](https://github.com/你的用户名/你的仓库名/releases) 页面下载最新构建版本。
+#### 手动触发
+1. 进入GitHub仓库的Actions页面
+2. 选择需要的工作流
+3. 点击"Run workflow"按钮
+
+#### 构建产物
+- **正式版本**：GitHub Releases页面下载
+- **测试版本**：Actions Artifacts页面下载
+- **版本管理**：自动生成版本号（格式：v1.0.YYYYMMDD-commit）
+
+**详细说明**：查看 [GITHUB_ACTIONS.md](GITHUB_ACTIONS.md) 获取完整使用指南。
 
 ## 📖 使用说明
 

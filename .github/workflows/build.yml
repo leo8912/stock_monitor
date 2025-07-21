@@ -17,6 +17,7 @@ on:
       - 'theme_config.json'
       - 'icon.ico'
       - 'icon.png'
+  workflow_dispatch:  # 添加手动触发
 
 jobs:
   build:
