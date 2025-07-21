@@ -1,0 +1,105 @@
+name: Pack & Auto Release Stock Monitor
+
+on:
+  push:
+    paths:
+      - 'main.py'
+      - 'requirements.txt'
+      - 'stock_basic.json'
+      - 'theme_config.json'
+      - 'icon.ico'
+      - 'icon.png'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller pywin32 easyquotation
+
+    - name: Find easyquotation stock_codes.conf
+      id: find_eq
+      run: |
+        python -c "import easyquotation, os; print(os.path.dirname(easyquotation.__file__))" > eq_path.txt
+        set /p EQPATH=<eq_path.txt
+        echo "EQPATH=$EQPATH" >> $GITHUB_ENV
+
+    - name: Build with PyInstaller
+      run: |
+        pyinstaller -w -i icon.ico -n stock_monitor main.py ^
+          --add-data "%EQPATH%\stock_codes.conf;easyquotation" ^
+          --add-data "stock_basic.json;." ^
+          --add-data "theme_config.json;." ^
+          --add-data "icon.png;." ^
+          --add-data "icon.ico;."
+
+    - name: Zip artifact
+      run: |
+        powershell Compress-Archive -Path dist/stock_monitor.exe -DestinationPath stock_monitor_win.zip
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: stock-monitor-win
+        path: stock_monitor_win.zip
+
+    - name: Get version from commit
+      id: get_version
+      run: |
+        $commit = git rev-parse --short HEAD
+        $date = Get-Date -Format "yyyyMMdd"
+        echo "version=v1.0.$date-$commit" >> $env:GITHUB_OUTPUT
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: stock_monitor_win.zip
+        tag_name: ${{ steps.get_version.outputs.version }}
+        name: Stock Monitor ${{ steps.get_version.outputs.version }}
+        body: |
+          ## 🚀 自动构建版本 ${{ steps.get_version.outputs.version }}
+          
+          ### 📋 构建信息
+          - **构建时间**: ${{ github.event.head_commit.timestamp }}
+          - **提交信息**: ${{ github.event.head_commit.message }}
+          - **提交者**: ${{ github.event.head_commit.author.name }}
+          - **提交哈希**: ${{ github.sha }}
+          
+          ### 📥 下载说明
+          1. 下载 `stock_monitor_win.zip` 文件
+          2. 解压后运行 `stock_monitor.exe`
+          3. 首次运行可能需要允许防火墙访问
+          
+          ### ⚠️ 重要声明
+          - 本软件完全由AI编写，开发者为0基础菜鸟
+          - 仅供学习交流使用，请勿用于商业用途
+          - 股市有风险，投资需谨慎
+          
+          ### 🔧 功能特性
+          - 📊 实时A股行情监控
+          - 🎯 智能自选股管理
+          - 🎨 极简界面设计
+          - ⚙️ 个性化设置
+          - 🖥️ 系统托盘支持
+          
+          ### 📝 更新内容
+          - 基于提交: ${{ github.event.head_commit.message }}
+          
+          ---
+          
+          **💡 提示**: 如果遇到问题，请查看 [README.md](https://github.com/${{ github.repository }}/blob/main/README.md) 获取详细使用说明。
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
