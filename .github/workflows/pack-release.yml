@@ -39,7 +39,7 @@ jobs:
 
     - name: Build with PyInstaller
       run: |
-        pyinstaller -w -i icon.ico -n stock_monitor main.py `
+        pyinstaller -y -w -i icon.ico -n stock_monitor main.py `
           --add-data "$env:EQPATH\stock_codes.conf;easyquotation" `
           --add-data "stock_basic.json;." `
           --add-data "theme_config.json;." `
