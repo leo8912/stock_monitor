@@ -34,16 +34,16 @@ jobs:
       id: find_eq
       run: |
         python -c "import easyquotation, os; print(os.path.dirname(easyquotation.__file__))" > eq_path.txt
-        set /p EQPATH=<eq_path.txt
-        echo "EQPATH=$EQPATH" >> $GITHUB_ENV
+        $EQPATH = Get-Content eq_path.txt | Select-Object -First 1
+        echo "EQPATH=$EQPATH" | Out-File -FilePath $env:GITHUB_ENV -Append
 
     - name: Build with PyInstaller
       run: |
-        pyinstaller -w -i icon.ico -n stock_monitor main.py ^
-          --add-data "%EQPATH%\stock_codes.conf;easyquotation" ^
-          --add-data "stock_basic.json;." ^
-          --add-data "theme_config.json;." ^
-          --add-data "icon.png;." ^
+        pyinstaller -w -i icon.ico -n stock_monitor main.py `
+          --add-data "$env:EQPATH\stock_codes.conf;easyquotation" `
+          --add-data "stock_basic.json;." `
+          --add-data "theme_config.json;." `
+          --add-data "icon.png;." `
           --add-data "icon.ico;."
 
     - name: Zip artifact
@@ -61,7 +61,7 @@ jobs:
       run: |
         $commit = git rev-parse --short HEAD
         $date = Get-Date -Format "yyyyMMdd"
-        echo "version=v1.0.$date-$commit" >> $env:GITHUB_OUTPUT
+        echo "version=v1.0.$date-$commit" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
     - name: Create Release
       uses: softprops/action-gh-release@v1
