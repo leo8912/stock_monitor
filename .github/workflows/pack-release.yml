@@ -11,6 +11,10 @@ on:
       - 'icon.png'
   workflow_dispatch:
 
+permissions:
+  contents: write
+  packages: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -52,13 +56,13 @@ jobs:
 
     - name: Zip artifact (entire stock_monitor folder)
       run: |
-        powershell Compress-Archive -Path dist/stock_monitor/* -DestinationPath stock_monitor_win.zip
+        powershell Compress-Archive -Path dist/stock_monitor/* -DestinationPath stock_monitor.zip
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: stock-monitor-win
-        path: stock_monitor_win.zip
+        name: stock-monitor
+        path: stock_monitor.zip
 
     - name: Get version from commit
       id: get_version
@@ -70,7 +74,7 @@ jobs:
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
-        files: stock_monitor_win.zip
+        files: stock_monitor.zip
         tag_name: ${{ steps.get_version.outputs.version }}
         name: Stock Monitor ${{ steps.get_version.outputs.version }}
         body: |
@@ -83,7 +87,7 @@ jobs:
           - **提交哈希**: ${{ github.sha }}
           
           ### 📥 下载说明
-          1. 下载 `stock_monitor_win.zip` 文件
+          1. 下载 `stock_monitor.zip` 文件
           2. 解压后运行 `stock_monitor.exe`
           3. 首次运行可能需要允许防火墙访问
           
