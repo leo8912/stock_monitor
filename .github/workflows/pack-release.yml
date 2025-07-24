@@ -65,11 +65,9 @@ jobs:
         path: stock_monitor.zip
 
     - name: Write version extract script
+      shell: bash
       run: |
-        Add-Content get_version.py "import re"
-        Add-Content get_version.py "s=open('main.py',encoding='utf-8').read()"
-        Add-Content get_version.py "m=re.search(r'APP_VERSION\\s*=\\s*[\\'\\\"](v[\\d\\.]+)[\\'\\\"]', s)"
-        Add-Content get_version.py "print(f'version={m.group(1)}' if m else 'version=unknown')"
+        echo "aW1wb3J0IHJlCnM9b3BlbignbWFpbi5weScsZW5jb2Rpbmc9J3V0Zi04JykucmVhZCgpCm09cmUuc2VhcmNoKHJB UFBfVkVSU0lPTlxccz1cXHMqW1wnXCJdKHZbXFxkXFwuXStbXCdcIl0pJywgcylpZgptOgogIHByaW50KGYndmVyc2lvbj17bS5ncm91cCgxKX0nIGlmIG0gZWxzZSAndmVyc2lvbj11bmtub3duJykK" | base64 -d > get_version.py
 
     - name: Get version from main.py
       id: get_version
