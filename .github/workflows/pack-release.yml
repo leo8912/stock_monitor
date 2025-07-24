@@ -66,10 +66,10 @@ jobs:
 
     - name: Write version extract script
       run: |
-        echo "import re" > get_version.py
-        echo "s=open('main.py',encoding='utf-8').read()" >> get_version.py
-        echo "m=re.search(r\"APP_VERSION\\s*=\\s*['\\\"](v[\\d\\.]+)['\\\"]\", s)" >> get_version.py
-        echo "print(f'version={m.group(1)}' if m else 'version=unknown')" >> get_version.py
+        Add-Content get_version.py "import re"
+        Add-Content get_version.py "s=open('main.py',encoding='utf-8').read()"
+        Add-Content get_version.py "m=re.search(r'APP_VERSION\\s*=\\s*[\\'\\\"](v[\\d\\.]+)[\\'\\\"]', s)"
+        Add-Content get_version.py "print(f'version={m.group(1)}' if m else 'version=unknown')"
 
     - name: Get version from main.py
       id: get_version
