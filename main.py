@@ -4,7 +4,10 @@
 # - 采用真实行高动态调整，最小显示3行，边界精简。
 # - 体验更流畅，界面更美观。
 
-APP_VERSION = 'v1.0.1'
+# v1.0.2
+# - 测试自动升级功能。
+
+APP_VERSION = 'v1.0.2'
 
 import sys
 import os
