@@ -74,8 +74,10 @@ jobs:
 
     - name: Get version from main.py
       id: get_version
+      shell: bash
       run: |
-        python get_version.py >> $GITHUB_OUTPUT
+        version=$(python get_version.py)
+        echo "version=${version#version=}" >> $GITHUB_OUTPUT
 
     - name: Create Release
       uses: softprops/action-gh-release@v1
