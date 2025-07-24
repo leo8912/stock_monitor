@@ -67,7 +67,10 @@ jobs:
     - name: Write version extract script
       shell: bash
       run: |
-        echo "aW1wb3J0IHJlCnM9b3BlbignbWFpbi5weScsZW5jb2Rpbmc9J3V0Zi04JykucmVhZCgpCm09cmUuc2VhcmNoKHJB UFBfVkVSU0lPTlxccz1cXHMqW1wnXCJdKHZbXFxkXFwuXStbXCdcIl0pJywgcylpZgptOgogIHByaW50KGYndmVyc2lvbj17bS5ncm91cCgxKX0nIGlmIG0gZWxzZSAndmVyc2lvbj11bmtub3duJykK" | base64 -d > get_version.py
+        echo "import re" > get_version.py
+        echo "s=open('main.py',encoding='utf-8').read()" >> get_version.py
+        echo "m=re.search(r\"APP_VERSION\\s*=\\s*['\\\"](v[\\d\\.]+)['\\\"]\", s)" >> get_version.py
+        echo "print(f'version={m.group(1)}' if m else 'version=unknown')" >> get_version.py
 
     - name: Get version from main.py
       id: get_version
