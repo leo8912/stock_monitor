@@ -13,7 +13,14 @@
 # v1.0.4
 # - 测试changelog自动提取功能。
 
-APP_VERSION = 'v1.0.4'
+# v1.0.5
+# - 增加涨停/跌停封单手显示功能，自动识别并高亮。
+# - 表格宽度可自适应封单手显示，内容不会被遮挡。
+# - 封单手只显示数字，不显示“手”单位，显示更简洁。
+# - ST股票支持拼音、首字母、去前缀模糊搜索，输入“st”或拼音片段可精准匹配。
+# - 本轮优化涵盖：主界面自适应、极简美观、自动升级、release日志自动提取、ST与封单功能增强。
+
+APP_VERSION = 'v1.0.5'
 
 import sys
 import os
@@ -25,6 +32,8 @@ import time
 from PyQt5.QtCore import pyqtSignal, pyqtSlot, Qt
 import datetime
 from win32com.client import Dispatch
+# 在文件开头导入pypinyin
+from pypinyin import lazy_pinyin, Style
 
 def resource_path(relative_path):
     """获取资源文件路径，兼容PyInstaller打包和源码运行"""
@@ -100,7 +109,7 @@ class SettingsDialog(QtWidgets.QDialog):
         self.setMinimumSize(900, 650)
         self.resize(1000, 700)
         self.main_window = main_window
-        self.stock_data = self.load_stock_data()
+        self.stock_data = self.enrich_pinyin(self.load_stock_data())
         self.selected_stocks = []
         self.refresh_interval = 5
         self.init_ui()
@@ -114,6 +123,19 @@ class SettingsDialog(QtWidgets.QDialog):
                 return json.load(f)
         except Exception:
             return []
+
+    def enrich_pinyin(self, stock_list):
+        for s in stock_list:
+            name = s['name']
+            # 去除*ST、ST等前缀
+            base = name.replace('*', '').replace('ST', '').replace(' ', '')
+            # 全拼
+            full_pinyin = ''.join(lazy_pinyin(base))
+            # 首字母
+            abbr = ''.join(lazy_pinyin(base, style=Style.FIRST_LETTER))
+            s['pinyin'] = full_pinyin.lower()
+            s['abbr'] = abbr.lower()
+        return stock_list
 
     def init_ui(self):
         self.setStyleSheet('''
@@ -495,13 +517,17 @@ class SettingsDialog(QtWidgets.QDialog):
             return
         def is_index(stock):
             return stock['code'].startswith(('sh000', 'sz399', 'sz159', 'sh510')) or '指数' in stock['name'] or '板块' in stock['name']
-        # 支持拼音、代码、名称模糊匹配
+        # 支持拼音、首字母、代码、名称模糊匹配，ST股票去前缀
         results = []
         for s in self.stock_data:
             code_match = text in s['code'].lower()
-            name_match = text in s['name']
-            pinyin_match = text in s.get('pinyin','').lower()
-            if code_match or name_match or pinyin_match:
+            name_match = text in s['name'].lower()
+            pinyin_match = text in s.get('pinyin','')
+            abbr_match = text in s.get('abbr','')
+            # 对于ST类，去掉*ST/ST前缀后再匹配
+            base = s['name'].replace('*', '').replace('ST', '').replace(' ', '').lower()
+            base_match = text in base
+            if code_match or name_match or pinyin_match or abbr_match or base_match:
                 results.append(s)
         results.sort(key=lambda s: (not is_index(s), s['code']))
         for s in results[:30]:
@@ -517,8 +543,8 @@ class SettingsDialog(QtWidgets.QDialog):
             item.setText(f"{emoji}  {display}")
             # 匹配内容高亮（背景+加粗）
             if text:
-                for part in [s['code'], s['name'], s.get('pinyin','')]:
-                    idx = part.lower().find(text)
+                for part in [s['code'].lower(), s['name'].lower(), s.get('pinyin',''), s.get('abbr',''), base]:
+                    idx = part.find(text)
                     if idx != -1:
                         item.setBackground(QtGui.QColor('#eaf3fc'))
                         item.setForeground(QtGui.QColor('#357abd'))
@@ -777,7 +803,7 @@ start "" "{exe_dir}\\stock_monitor.exe"
 class StockTable(QtWidgets.QTableWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setColumnCount(3)
+        self.setColumnCount(4)  # 增加一列：封单手
         h_header = self.horizontalHeader()
         v_header = self.verticalHeader()
         if h_header is not None:
@@ -785,6 +811,7 @@ class StockTable(QtWidgets.QTableWidget):
             h_header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeToContents)
             h_header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
             h_header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeToContents)
+            h_header.setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeToContents)
         if v_header is not None:
             v_header.setVisible(False)
         self.setShowGrid(False)
@@ -838,28 +865,42 @@ class StockTable(QtWidgets.QTableWidget):
     def update_data(self, stocks):
         self.setRowCount(len(stocks))
         for row, stock in enumerate(stocks):
-            name, price, change, color = stock
-            show_name = name
+            name, price, change, color, seal_vol, seal_type = stock
             # ======= 表格渲染 =======
-            item_name = QtWidgets.QTableWidgetItem(show_name)
+            item_name = QtWidgets.QTableWidgetItem(name)
             item_price = QtWidgets.QTableWidgetItem(price)
             if not change.endswith('%'):
                 change = change + '%'
             item_change = QtWidgets.QTableWidgetItem(change)
-            item_name.setForeground(QtGui.QColor(color))
-            item_price.setForeground(QtGui.QColor(color))
-            item_change.setForeground(QtGui.QColor(color))
+            item_seal = QtWidgets.QTableWidgetItem(seal_vol)
+            # 涨停/跌停高亮
+            if seal_type == 'up':
+                for item in [item_name, item_price, item_change, item_seal]:
+                    item.setBackground(QtGui.QColor('#ffecec'))
+                    item.setForeground(QtGui.QColor('#e74c3f'))
+            elif seal_type == 'down':
+                for item in [item_name, item_price, item_change, item_seal]:
+                    item.setBackground(QtGui.QColor('#e8f5e9'))
+                    item.setForeground(QtGui.QColor('#27ae60'))
+            else:
+                item_name.setForeground(QtGui.QColor(color))
+                item_price.setForeground(QtGui.QColor(color))
+                item_change.setForeground(QtGui.QColor(color))
+                item_seal.setForeground(QtGui.QColor('#888'))
             item_name.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)  # type: ignore
             item_price.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)  # type: ignore
             item_change.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)  # type: ignore
+            item_seal.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)  # type: ignore
             self.setItem(row, 0, item_name)
             self.setItem(row, 1, item_price)
             self.setItem(row, 2, item_change)
+            self.setItem(row, 3, item_seal)
         h_header = self.horizontalHeader()
         if h_header is not None:
             h_header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeToContents)
             h_header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
             h_header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeToContents)
+            h_header.setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeToContents)
         self.updateGeometry()
         QtWidgets.QApplication.processEvents()  # 强制刷新事件队列
 
@@ -1099,12 +1140,27 @@ class MainWindow(QtWidgets.QWidget):
                 price = f"{info.get('now', 0):.2f}"
                 close = info.get('close', 0)
                 now = info.get('now', 0)
+                high = info.get('high', 0)
+                low = info.get('low', 0)
+                bid1 = info.get('bid1', 0)
+                bid1_vol = info.get('bid1_volume', 0)
+                ask1 = info.get('ask1', 0)
+                ask1_vol = info.get('ask1_volume', 0)
                 percent = ((now - close) / close * 100) if close else 0
                 color = '#e74c3f' if percent > 0 else '#27ae60' if percent < 0 else '#e6eaf3'
                 change_str = f"{percent:+.2f}%"
-                stocks.append((name, price, change_str, color))
+                # 检测涨停/跌停封单
+                seal_vol = ''
+                seal_type = ''
+                if is_equal(now, high) and is_equal(now, bid1) and bid1_vol > 0 and is_equal(ask1, 0):
+                    seal_vol = f"{int(bid1_vol/100):,}"
+                    seal_type = 'up'
+                elif is_equal(now, low) and is_equal(now, ask1) and ask1_vol > 0 and is_equal(bid1, 0):
+                    seal_vol = f"{int(ask1_vol/100):,}"
+                    seal_type = 'down'
+                stocks.append((name, price, change_str, color, seal_vol, seal_type))
             else:
-                stocks.append((code, '--', '--', '#e6eaf3'))
+                stocks.append((code, '--', '--', '#e6eaf3', '', ''))
         return stocks
 
     def refresh_now(self, stocks_list=None):
@@ -1187,8 +1243,20 @@ class MainWindow(QtWidgets.QWidget):
         min_rows = 3
         layout_margin = 24  # QVBoxLayout上下边距
         table_height = max(self.table.rowCount(), min_rows) * row_height
+        # 增加表头高度（4列时略增）
         new_height = table_height + layout_margin
         self.setFixedHeight(new_height)
+        # ====== 新增：宽度自适应封单手显示 ======
+        has_seal = False
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 3)
+            if item and item.text().strip():
+                has_seal = True
+                break
+        if has_seal:
+            self.setFixedWidth(400)
+        else:
+            self.setFixedWidth(320)
 
 class StockListWidget(QtWidgets.QListWidget):
     def __init__(self, parent=None, sync_callback=None):

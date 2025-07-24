@@ -1,16 +1,16 @@
 {
   "window_pos": [
-    1462,
-    245
+    1418,
+    484
   ],
   "user_stocks": [
     "sh600418",
     "sh600460",
     "sh000001",
     "sh600171",
-    "sh601669",
     "sh603986",
-    "sh601127"
+    "sh601127",
+    "sh601669"
   ],
   "refresh_interval": 5,
   "settings_dialog_pos": [
