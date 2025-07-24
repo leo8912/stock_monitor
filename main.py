@@ -1,3 +1,11 @@
+# 更新日志
+# v1.0.1
+# - 修复主窗口高度自适应逻辑，股票数量再多都能完整显示，不会被裁剪。
+# - 采用真实行高动态调整，最小显示3行，边界精简。
+# - 体验更流畅，界面更美观。
+
+APP_VERSION = 'v1.0.1'
+
 import sys
 import os
 import json
@@ -8,8 +16,6 @@ import time
 from PyQt5.QtCore import pyqtSignal, pyqtSlot, Qt
 import datetime
 from win32com.client import Dispatch
-
-APP_VERSION = 'v1.0.0'
 
 def resource_path(relative_path):
     """获取资源文件路径，兼容PyInstaller打包和源码运行"""
@@ -710,32 +716,6 @@ class StockTable(QtWidgets.QTableWidget):
             h_header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeToContents)
         
         self.updateGeometry()
-        # 精确计算窗口尺寸，减少留白
-        row_height = 36  # 减小行高，更紧凑
-        header_height = 0  # 无表头，减少高度
-        total_height = row_height * self.rowCount() + header_height
-        
-        # 计算总宽度：列宽 + 少量边距
-        total_width = 0
-        for i in range(self.columnCount()):
-            total_width += self.columnWidth(i)
-        
-        parent = self.parent()
-        if parent is not None and isinstance(parent, QtWidgets.QWidget) and hasattr(parent, 'resize') and callable(parent.resize):
-            # 精确设置窗口尺寸，减少留白
-            # 考虑主窗口layout的边距：上下各12px，左右各12px
-            layout_margin = 24  # 上下边距合计
-            content_margin = 16  # 内容边距
-            safety_margin = 20   # 减少安全边距，让界面更精确
-            new_width = total_width + content_margin
-            new_height = total_height + layout_margin + content_margin + safety_margin
-            parent.resize(new_width, new_height)
-        
-        self.setMinimumHeight(total_height)
-        vp = self.viewport()
-        if vp is not None and hasattr(vp, 'update') and callable(vp.update):
-            vp.update()
-        self.repaint()
         QtWidgets.QApplication.processEvents()  # 强制刷新事件队列
 
     def get_name_by_code(self, code):
@@ -996,6 +976,7 @@ class MainWindow(QtWidgets.QWidget):
                 self.table.viewport().update()
                 self.table.repaint()
                 QtWidgets.QApplication.processEvents()
+                self.adjust_window_height()  # 每次刷新后自适应高度
             except Exception as e:
                 print('行情刷新异常:', e)
 
@@ -1050,6 +1031,20 @@ class MainWindow(QtWidgets.QWidget):
                 return json.load(f)
         except Exception:
             return {}
+
+    def adjust_window_height(self):
+        # 用真实行高自适应主窗口高度，最小3行
+        QtWidgets.QApplication.processEvents()
+        vh = self.table.verticalHeader()
+        if self.table.rowCount() > 0:
+            row_height = vh.sectionSize(0)
+        else:
+            row_height = 36  # 默认
+        min_rows = 3
+        layout_margin = 24  # QVBoxLayout上下边距
+        table_height = max(self.table.rowCount(), min_rows) * row_height
+        new_height = table_height + layout_margin
+        self.setFixedHeight(new_height)
 
 class StockListWidget(QtWidgets.QListWidget):
     def __init__(self, parent=None, sync_callback=None):

@@ -64,50 +64,56 @@ jobs:
         name: stock-monitor
         path: stock_monitor.zip
 
-    - name: Get version from commit
+    - name: Get version from main.py
       id: get_version
       run: |
-        $commit = git rev-parse --short HEAD
-        $date = Get-Date -Format "yyyyMMdd"
-        echo "version=v1.0.$date-$commit" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        $version = (Select-String -Path main.py -Pattern "APP_VERSION = '([\d\.]+)'" | ForEach-Object { $_.Matches[0].Groups[1].Value })
+        echo "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
         files: stock_monitor.zip
-        tag_name: ${{ steps.get_version.outputs.version }}
-        name: Stock Monitor ${{ steps.get_version.outputs.version }}
+        tag_name: stock_monitor_v${{ steps.get_version.outputs.version }}
+        name: stock_monitor_v${{ steps.get_version.outputs.version }}
         body: |
-          ## 🚀 自动构建版本 ${{ steps.get_version.outputs.version }}
-          
-          ### 📋 构建信息
-          - **构建时间**: ${{ github.event.head_commit.timestamp }}
-          - **提交信息**: ${{ github.event.head_commit.message }}
-          - **提交者**: ${{ github.event.head_commit.author.name }}
-          - **提交哈希**: ${{ github.sha }}
-          
-          ### 📥 下载说明
-          1. 下载 `stock_monitor.zip` 文件
-          2. 解压后运行 `stock_monitor.exe`
-          3. 首次运行可能需要允许防火墙访问
-          
-          ### ⚠️ 重要声明
-          - 本软件完全由AI编写，开发者为0基础菜鸟
-          - 仅供学习交流使用，请勿用于商业用途
-          - 股市有风险，投资需谨慎
-          
-          ### 🔧 功能特性
-          - 📊 实时A股行情监控
-          - 🎯 智能自选股管理
-          - 🎨 极简界面设计
-          - ⚙️ 个性化设置
-          - 🖥️ 系统托盘支持
-          
-          ### 📝 更新内容
-          - 基于提交: ${{ github.event.head_commit.message }}
-          
-          ---
-          
-          **💡 提示**: 如果遇到问题，请查看 [README.md](https://github.com/${{ github.repository }}/blob/main/README.md) 获取详细使用说明。
+          # 🤖 stock_monitor_v${{ steps.get_version.outputs.version }} 发布说明
+
+          > **本软件完全由AI自动开发，开发者零基础，所有功能均由AI智能生成。**
+
+          ## 📝 更新内容
+          - 修复主窗口高度自适应逻辑，股票数量再多都能完整显示，不会被裁剪。
+          - 采用真实行高动态调整，最小显示3行，边界精简。
+          - 体验更流畅，界面更美观。
+
+          ## 🚀 软件简介
+          - 由AI驱动开发，零基础也能拥有专业级A股行情监控工具。
+          - 极简风格，界面清爽，支持自选股、实时刷新、系统托盘、开机自启等。
+
+          ## 📥 使用方法
+          1. 下载下方 `stock_monitor.zip` 文件
+          2. 解压到任意目录
+          3. 双击 `stock_monitor.exe` 运行
+          4. 如遇防火墙提示请选择“允许”
+
+          ## ⚠️ 注意事项
+          - 仅支持 Windows 10/11
+          - 需联网获取实时行情
+          - 若杀毒软件误报，请添加信任
+          - 数据来源：新浪财经
+
+          ## 💡 常见问题
+          - **Q: 这是人写的吗？**
+            - A: 不是！本软件完全由AI自动生成，开发者零基础。
+          - **Q: 杀毒报毒怎么办？**
+            - A: 纯净Python打包，若误报请添加信任或白名单。
+          - **Q: 如何反馈bug或建议？**
+            - A: 请在 [GitHub Issues](https://github.com/leo8912/stock_monitor/issues) 提交。
+
+          ## 📧 联系方式
+          - [GitHub主页](https://github.com/leo8912/stock_monitor)
+
+          ## 🛡️ 免责声明
+          本软件完全由AI编写，仅供学习交流使用，不构成投资建议。股市有风险，投资需谨慎。
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
