@@ -64,10 +64,17 @@ jobs:
         name: stock-monitor
         path: stock_monitor.zip
 
+    - name: Write version extract script
+      run: |
+        echo "import re" > get_version.py
+        echo "s=open('main.py',encoding='utf-8').read()" >> get_version.py
+        echo "m=re.search(r\"APP_VERSION\\s*=\\s*['\\\"](v[\\d\\.]+)['\\\"]\", s)" >> get_version.py
+        echo "print(f'version={m.group(1)}' if m else 'version=unknown')" >> get_version.py
+
     - name: Get version from main.py
       id: get_version
       run: |
-        python -c "import re; s=open('main.py',encoding='utf-8').read(); m=re.search(r\"APP_VERSION\\s*=\\s*['\\\"](v[\\d\\.]+)['\\\"]\", s); print(f'version={m.group(1)}' if m else 'version=unknown')" >> $GITHUB_OUTPUT
+        python get_version.py >> $GITHUB_OUTPUT
 
     - name: Create Release
       uses: softprops/action-gh-release@v1
