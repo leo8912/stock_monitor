@@ -49,7 +49,8 @@ jobs:
           --add-data "theme_config.json;." `
           --add-data "icon.png;." `
           --add-data "icon.ico;." `
-          --hidden-import=pypinyin
+          --hidden-import=pypinyin `
+          --hidden-import=pypinyin.style
 
     - name: List dist directory
       run: |
