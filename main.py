@@ -7,7 +7,10 @@
 # v1.0.2
 # - 测试自动升级功能。
 
-APP_VERSION = 'v1.0.2'
+# v1.0.3
+# - 移除因数据源限制无法准确显示的封单手功能，主界面恢复为极简三列。
+
+APP_VERSION = 'v1.0.3'
 
 import sys
 import os
@@ -75,6 +78,12 @@ def get_stock_emoji(code, name):
         return '💻'
     else:
         return '⭐️'
+
+def is_equal(a, b, tol=0.01):
+    try:
+        return abs(float(a) - float(b)) < tol
+    except Exception:
+        return False
 
 class SettingsDialog(QtWidgets.QDialog):
     config_changed = pyqtSignal(list, int)  # stocks, refresh_interval
@@ -678,10 +687,14 @@ class SettingsDialog(QtWidgets.QDialog):
                 border: 1px solid #bbb;
                 border-radius: 8px;
                 background: #333;
-                height: 28px;
+                height: 32px;
+                text-align: center;
+                color: #fff;
+                font-size: 22px;
+                font-weight: bold;
             }
             QProgressBar::chunk {
-                background: #4a90e2;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4a90e2, stop:1 #00c6fb);
                 border-radius: 8px;
             }
         """)
@@ -775,8 +788,8 @@ class StockTable(QtWidgets.QTableWidget):
         self.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         self.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
         self.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)  # type: ignore
-        self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)  # type: ignore
-        self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)  # type: ignore
+        self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)  # type: ignore
+        self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)  # type: ignore
         self.setStyleSheet('''
             QTableWidget {
                 background: transparent;
@@ -827,7 +840,6 @@ class StockTable(QtWidgets.QTableWidget):
             # ======= 表格渲染 =======
             item_name = QtWidgets.QTableWidgetItem(show_name)
             item_price = QtWidgets.QTableWidgetItem(price)
-            # 健壮处理涨跌幅百分号
             if not change.endswith('%'):
                 change = change + '%'
             item_change = QtWidgets.QTableWidgetItem(change)
@@ -840,15 +852,11 @@ class StockTable(QtWidgets.QTableWidget):
             self.setItem(row, 0, item_name)
             self.setItem(row, 1, item_price)
             self.setItem(row, 2, item_change)
-        
-        # 优化列宽，让内容更紧凑
         h_header = self.horizontalHeader()
         if h_header is not None:
-            # 根据内容调整列宽：名称列宽一些，价格和涨跌幅列紧凑一些
             h_header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeToContents)
             h_header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
             h_header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeToContents)
-        
         self.updateGeometry()
         QtWidgets.QApplication.processEvents()  # 强制刷新事件队列
 
@@ -1093,7 +1101,6 @@ class MainWindow(QtWidgets.QWidget):
                 change_str = f"{percent:+.2f}%"
                 stocks.append((name, price, change_str, color))
             else:
-                # 占位，防止顺序错乱
                 stocks.append((code, '--', '--', '#e6eaf3'))
         return stocks
 
