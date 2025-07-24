@@ -10,7 +10,10 @@
 # v1.0.3
 # - 移除因数据源限制无法准确显示的封单手功能，主界面恢复为极简三列。
 
-APP_VERSION = 'v1.0.3'
+# v1.0.4
+# - 测试changelog自动提取功能。
+
+APP_VERSION = 'v1.0.4'
 
 import sys
 import os
