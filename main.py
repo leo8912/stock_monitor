@@ -20,7 +20,10 @@
 # - ST股票支持拼音、首字母、去前缀模糊搜索，输入“st”或拼音片段可精准匹配。
 # - 本轮优化涵盖：主界面自适应、极简美观、自动升级、release日志自动提取、ST与封单功能增强。
 
-APP_VERSION = 'v1.0.5'
+# v1.0.6
+# - 修复pypinyin依赖未打包问题，完善requirements.txt，确保所有环境正常运行。
+
+APP_VERSION = 'v1.0.6'
 
 import sys
 import os
