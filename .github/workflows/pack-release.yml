@@ -48,7 +48,8 @@ jobs:
           --add-data "stock_basic.json;." `
           --add-data "theme_config.json;." `
           --add-data "icon.png;." `
-          --add-data "icon.ico;."
+          --add-data "icon.ico;." `
+          --hidden-import=pypinyin
 
     - name: List dist directory
       run: |
