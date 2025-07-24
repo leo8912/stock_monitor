@@ -67,17 +67,17 @@ jobs:
     - name: Get version from main.py
       id: get_version
       run: |
-        $version = (Select-String -Path main.py -Pattern "APP_VERSION = '([\d\.]+)'" | ForEach-Object { $_.Matches[0].Groups[1].Value })
+        $version = (Select-String -Path main.py -Pattern "APP_VERSION\s*=\s*['\"](v[\d\.]+)['\"]" | ForEach-Object { $_.Matches[0].Groups[1].Value })
         echo "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
         files: stock_monitor.zip
-        tag_name: stock_monitor_v${{ steps.get_version.outputs.version }}
-        name: stock_monitor_v${{ steps.get_version.outputs.version }}
+        tag_name: stock_monitor_${{ steps.get_version.outputs.version }}
+        name: stock_monitor_${{ steps.get_version.outputs.version }}
         body: |
-          # 🤖 stock_monitor_v${{ steps.get_version.outputs.version }} 发布说明
+          # 🤖 stock_monitor_${{ steps.get_version.outputs.version }} 发布说明
 
           > **本软件完全由AI自动开发，开发者零基础，所有功能均由AI智能生成。**
 

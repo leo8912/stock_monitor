@@ -621,7 +621,138 @@ class SettingsDialog(QtWidgets.QDialog):
                     pass
 
     def check_update(self):
-        QtWidgets.QMessageBox.information(self, "检查更新", "检查更新功能待完善，敬请期待！")
+        import requests, re, os, sys, zipfile, tempfile, subprocess
+        from packaging import version
+        from PyQt5.QtWidgets import QMessageBox, QProgressDialog, QApplication
+        from PyQt5 import QtGui
+        GITHUB_API = "https://api.github.com/repos/leo8912/stock_monitor/releases/latest"
+        try:
+            resp = requests.get(GITHUB_API, timeout=8)
+        except Exception:
+            QMessageBox.warning(self, "检查更新", "网络异常，无法连接到GitHub。")
+            return
+        if resp.status_code != 200:
+            QMessageBox.warning(self, "检查更新", "网络异常，无法获取版本信息。")
+            return
+        data = resp.json()
+        tag = data.get('tag_name', '')
+        m = re.search(r'v(\d+\.\d+\.\d+)', tag)
+        latest_ver = m.group(0) if m else None
+        asset_url = None
+        for asset in data.get('assets', []):
+            if asset['name'] == 'stock_monitor.zip':
+                asset_url = asset['browser_download_url']
+                break
+        from main import APP_VERSION
+        if not latest_ver or not asset_url:
+            QMessageBox.warning(self, "检查更新", "未检测到新版本信息。")
+            return
+        if version.parse(latest_ver) <= version.parse(APP_VERSION):
+            QMessageBox.information(self, "检查更新", f"当前已是最新版本：{APP_VERSION}")
+            return
+        reply = QMessageBox.question(
+            self, "发现新版本",
+            f"检测到新版本 {latest_ver}，是否自动下载并升级？",
+            QMessageBox.Yes | QMessageBox.No)
+        if reply != QMessageBox.Yes:
+            return
+        # 美化进度对话框
+        progress = QProgressDialog("正在下载新版本...", None, 0, 100, self)
+        progress.setWindowTitle("自动升级进度")
+        progress.setMinimumWidth(420)
+        progress.setStyleSheet("""
+            QProgressDialog {
+                background: #23272e;
+                color: #fff;
+                font-size: 18px;
+                border-radius: 10px;
+            }
+            QLabel {
+                color: #fff;
+                font-size: 18px;
+            }
+            QProgressBar {
+                border: 1px solid #bbb;
+                border-radius: 8px;
+                background: #333;
+                height: 28px;
+            }
+            QProgressBar::chunk {
+                background: #4a90e2;
+                border-radius: 8px;
+            }
+        """)
+        progress.setAutoClose(False)
+        progress.setAutoReset(False)
+        progress.setValue(0)
+        QApplication.processEvents()
+        # 下载
+        tmpdir = tempfile.gettempdir()
+        zip_path = os.path.join(tmpdir, "stock_monitor_upgrade.zip")
+        extract_dir = os.path.join(tmpdir, "stock_monitor_upgrade")
+        try:
+            progress.setLabelText("正在下载新版本...")
+            QApplication.processEvents()
+            with requests.get(asset_url, stream=True) as r:
+                r.raise_for_status()
+                total = int(r.headers.get('content-length', 0))
+                downloaded = 0
+                with open(zip_path, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+                            downloaded += len(chunk)
+                            if total:
+                                percent = int(downloaded * 100 / total)
+                                progress.setValue(min(percent, 99))
+                                QApplication.processEvents()
+            progress.setValue(100)
+            progress.setLabelText("下载完成，正在解压...")
+            QApplication.processEvents()
+        except Exception as e:
+            progress.close()
+            QMessageBox.warning(self, "升级失败", f"下载新版本失败：{e}")
+            return
+        # 解压
+        try:
+            import shutil
+            progress.setLabelText("正在解压新版本...")
+            QApplication.processEvents()
+            if os.path.exists(extract_dir):
+                shutil.rmtree(extract_dir)
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(extract_dir)
+            progress.setLabelText("解压完成，正在升级...")
+            QApplication.processEvents()
+        except Exception as e:
+            progress.close()
+            QMessageBox.warning(self, "升级失败", f"解压新版本失败：{e}")
+            return
+        # 写升级批处理
+        try:
+            progress.setLabelText("正在写入升级脚本...")
+            QApplication.processEvents()
+            bat_path = os.path.join(tmpdir, "stock_monitor_upgrade.bat")
+            exe_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+            with open(bat_path, 'w', encoding='gbk') as f:
+                f.write(f"""@echo off
+timeout /t 1 >nul
+xcopy /y /e /q "{extract_dir}\\*" "{exe_dir}\\"
+rd /s /q "{extract_dir}"
+del "{zip_path}"
+start "" "{exe_dir}\\stock_monitor.exe"
+""")
+            progress.setLabelText("升级完成，正在重启...")
+            progress.setValue(100)
+            QApplication.processEvents()
+        except Exception as e:
+            progress.close()
+            QMessageBox.warning(self, "升级失败", f"写入升级脚本失败：{e}")
+            return
+        progress.close()
+        QMessageBox.information(self, "升级提示", "即将自动升级并重启，请稍候。")
+        subprocess.Popen(['cmd', '/c', bat_path])
+        QApplication.quit()
 
 # 主界面同步显示“名称 代码”
 class StockTable(QtWidgets.QTableWidget):
