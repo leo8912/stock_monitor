@@ -94,7 +94,7 @@ jobs:
                 log_fmt = log.replace('# ', '').strip().replace('\n', '\n- ')
                 all_logs.append(f"### v{ver} 更新内容\n- {log_fmt}")
             with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as f:
-                f.write(f'changelog<<EOF\n{"\n\n".join(all_logs)}\nEOF\n')
+                f.write('changelog<<EOF\n' + "\n\n".join(all_logs) + '\nEOF\n')
         else:
             with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as f:
                 f.write('changelog=无更新日志\n')
