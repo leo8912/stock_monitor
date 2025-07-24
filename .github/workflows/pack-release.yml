@@ -67,8 +67,7 @@ jobs:
     - name: Get version from main.py
       id: get_version
       run: |
-        $version = (Select-String -Path main.py -Pattern "APP_VERSION\s*=\s*['\"](v[\d\.]+)['\"]" | ForEach-Object { $_.Matches[0].Groups[1].Value })
-        echo "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        python -c "import re; s=open('main.py',encoding='utf-8').read(); m=re.search(r\"APP_VERSION\\s*=\\s*['\\\"](v[\\d\\.]+)['\\\"]\", s); print(f'version={m.group(1)}' if m else 'version=unknown')" >> $GITHUB_OUTPUT
 
     - name: Create Release
       uses: softprops/action-gh-release@v1
