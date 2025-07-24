@@ -83,8 +83,7 @@ jobs:
       id: changelog
       shell: python
       run: |
-        import sys
-        import re
+        import sys, re, os
         sys.stdout = open(sys.stdout.fileno(), mode='w', encoding='utf-8', buffering=1)
         with open('main.py', encoding='utf-8') as f:
             s = f.read()
@@ -94,11 +93,11 @@ jobs:
             for ver, log in logs:
                 log_fmt = log.replace('# ', '').strip().replace('\n', '\n- ')
                 all_logs.append(f"### v{ver} 更新内容\n- {log_fmt}")
-            print("changelog=" + "\n\n".join(all_logs))
+            with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as f:
+                f.write(f'changelog<<EOF\n{"\n\n".join(all_logs)}\nEOF\n')
         else:
-            print("changelog=无更新日志")
-      env:
-        GITHUB_OUTPUT: $GITHUB_OUTPUT
+            with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as f:
+                f.write('changelog=无更新日志\n')
 
     - name: Create Release
       uses: softprops/action-gh-release@v1
