@@ -94,7 +94,7 @@ jobs:
             for ver, log in logs:
                 log_fmt = log.replace('# ', '').strip().replace('\n', '\n- ')
                 all_logs.append(f"### v{ver} 更新内容\n- {log_fmt}")
-            print(f"changelog={'\n\n'.join(all_logs)}")
+            print("changelog=" + "\n\n".join(all_logs))
         else:
             print("changelog=无更新日志")
       env:
