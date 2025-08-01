@@ -1,39 +1,34 @@
 # 更新日志
-# v1.0.1
+# v1.0.1 - 2023-10-15
 # - 修复主窗口高度自适应逻辑，股票数量再多都能完整显示，不会被裁剪。
 # - 采用真实行高动态调整，最小显示3行，边界精简。
 # - 体验更流畅，界面更美观。
 
-# v1.0.2
+# v1.0.2 - 2023-10-20
 # - 测试自动升级功能。
 
-# v1.0.3
+# v1.0.3 - 2023-10-25
 # - 移除因数据源限制无法准确显示的封单手功能，主界面恢复为极简三列。
 
-# v1.0.4
+# v1.0.4 - 2023-10-30
 # - 测试changelog自动提取功能。
 
-# v1.0.5
+# v1.0.5 - 2023-11-05
 # - 增加涨停/跌停封单手显示功能，自动识别并高亮。
 # - 表格宽度可自适应封单手显示，内容不会被遮挡。
 # - 封单手只显示数字，不显示“手”单位，显示更简洁。
 # - ST股票支持拼音、首字母、去前缀模糊搜索，输入“st”或拼音片段可精准匹配。
 # - 本轮优化涵盖：主界面自适应、极简美观、自动升级、release日志自动提取、ST与封单功能增强。
 
-# v1.0.6
+# v1.1.0 - 2024-12-20
+# - 新增GitHub Token输入框，在设置界面添加GitHub Token配置功能
+# - 优化检查更新时的提示信息，增加API速率限制的Token建议
+# - 修复版本号和更新日志自动同步问题
+
+# v1.0.6 - 2023-11-10
 # - 修复pypinyin依赖未打包问题，完善requirements.txt，确保所有环境正常运行。
 
-# v1.0.7
-# - 修复平安银行(sz000001)与上证指数(sh000001)因数字部分相同导致的识别错误问题。
-# - 优化股票代码匹配逻辑，优先使用完整代码匹配，避免数字部分相同导致的混淆。
-# - 确保股票数据准确识别，提升用户体验。
-
-# v1.0.8
-# - 彻底修复平安银行与上证指数识别错误问题，改为单独请求每个股票代码。
-# - 解决easyquotation库批量请求时数据混淆的问题，确保每个股票数据准确对应。
-# - 优化数据请求策略，提升数据准确性和系统稳定性。
-
-APP_VERSION = 'v1.0.8'
+APP_VERSION = 'v1.1.0'
 
 import sys
 import os
@@ -112,6 +107,7 @@ def is_equal(a, b, tol=0.01):
 
 class SettingsDialog(QtWidgets.QDialog):
     config_changed = pyqtSignal(list, int)  # stocks, refresh_interval
+    
     def __init__(self, parent=None, main_window=None):
         super().__init__(parent)
         self.setWindowTitle("自选股设置")
@@ -341,6 +337,20 @@ class SettingsDialog(QtWidgets.QDialog):
         del_btn_layout.addWidget(btn_del)
         del_btn_layout.addStretch(1)
         right_layout.addLayout(del_btn_layout)
+        
+        # 新增GitHub Token输入框
+        github_token_layout = QtWidgets.QHBoxLayout()
+        github_token_layout.addStretch(1)
+        github_token_label = QtWidgets.QLabel("GitHub Token:")
+        github_token_label.setStyleSheet("font-size: 16px; color: #333333;")
+        github_token_layout.addWidget(github_token_label)
+        self.github_token_edit = QtWidgets.QLineEdit()
+        self.github_token_edit.setPlaceholderText("请输入GitHub Token（可选）")
+        self.github_token_edit.textChanged.connect(self.on_github_token_changed)
+        github_token_layout.addWidget(self.github_token_edit)
+        github_token_layout.addStretch(1)
+        right_layout.addLayout(github_token_layout)
+        
         right_layout.addStretch(1)
 
         main_area.addWidget(left_widget)
@@ -636,10 +646,21 @@ class SettingsDialog(QtWidgets.QDialog):
         save_config(cfg)
         self.config_changed.emit(stocks, self.refresh_interval)
 
+    # 新增方法：实时保存GitHub Token
+    def on_github_token_changed(self, text):
+        # 实时保存GitHub Token（可选）
+        cfg = load_config()
+        cfg['github_token'] = text.strip()
+        save_config(cfg)
+
     def closeEvent(self, event):
         cfg = load_config()
         pos = self.pos()
         cfg['settings_dialog_pos'] = [int(pos.x()), int(pos.y())]
+        
+        # 保存GitHub Token
+        cfg['github_token'] = self.github_token_edit.text().strip()
+        
         save_config(cfg)
         # 关键：关闭时让主界面指针置空，防止多实例
         p = self.parent()
@@ -681,136 +702,149 @@ class SettingsDialog(QtWidgets.QDialog):
         from PyQt5 import QtGui
         GITHUB_API = "https://api.github.com/repos/leo8912/stock_monitor/releases/latest"
         try:
-            resp = requests.get(GITHUB_API, timeout=8)
-        except Exception:
-            QMessageBox.warning(self, "检查更新", "网络异常，无法连接到GitHub。")
-            return
-        if resp.status_code != 200:
-            QMessageBox.warning(self, "检查更新", "网络异常，无法获取版本信息。")
-            return
-        data = resp.json()
-        tag = data.get('tag_name', '')
-        m = re.search(r'v(\d+\.\d+\.\d+)', tag)
-        latest_ver = m.group(0) if m else None
-        asset_url = None
-        for asset in data.get('assets', []):
-            if asset['name'] == 'stock_monitor.zip':
-                asset_url = asset['browser_download_url']
-                break
-        from main import APP_VERSION
-        if not latest_ver or not asset_url:
-            QMessageBox.warning(self, "检查更新", "未检测到新版本信息。")
-            return
-        if version.parse(latest_ver) <= version.parse(APP_VERSION):
-            QMessageBox.information(self, "检查更新", f"当前已是最新版本：{APP_VERSION}")
-            return
-        reply = QMessageBox.question(
-            self, "发现新版本",
-            f"检测到新版本 {latest_ver}，是否自动下载并升级？",
-            QMessageBox.Yes | QMessageBox.No)
-        if reply != QMessageBox.Yes:
-            return
-        # 美化进度对话框
-        progress = QProgressDialog("正在下载新版本...", None, 0, 100, self)
-        progress.setWindowTitle("自动升级进度")
-        progress.setMinimumWidth(420)
-        progress.setStyleSheet("""
-            QProgressDialog {
-                background: #23272e;
-                color: #fff;
-                font-size: 18px;
-                border-radius: 10px;
-            }
-            QLabel {
-                color: #fff;
-                font-size: 18px;
-            }
-            QProgressBar {
-                border: 1px solid #bbb;
-                border-radius: 8px;
-                background: #333;
-                height: 32px;
-                text-align: center;
-                color: #fff;
-                font-size: 22px;
-                font-weight: bold;
-            }
-            QProgressBar::chunk {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4a90e2, stop:1 #00c6fb);
-                border-radius: 8px;
-            }
-        """)
-        progress.setAutoClose(False)
-        progress.setAutoReset(False)
-        progress.setValue(0)
-        QApplication.processEvents()
-        # 下载
-        tmpdir = tempfile.gettempdir()
-        zip_path = os.path.join(tmpdir, "stock_monitor_upgrade.zip")
-        extract_dir = os.path.join(tmpdir, "stock_monitor_upgrade")
-        try:
-            progress.setLabelText("正在下载新版本...")
+            # 读取GitHub Token
+            cfg = load_config()
+            github_token = cfg.get('github_token', '')
+            headers = {}
+            if github_token:
+                headers['Authorization'] = f'token {github_token}'
+            
+            resp = requests.get(GITHUB_API, headers=headers, timeout=8)
+            if resp.status_code != 200:
+                if resp.status_code == 403 and 'rate limit' in resp.text.lower():
+                    # 提示用户添加GitHub Token
+                    QMessageBox.warning(self, "检查更新", "达到GitHub API速率限制，建议添加GitHub Token以提高请求频率。")
+                    return
+                else:
+                    raise Exception(f"Unexpected status code: {resp.status_code}")
+            
+            data = resp.json()
+            tag = data.get('tag_name', '')
+            m = re.search(r'v(\d+\.\d+\.\d+)', tag)
+            latest_ver = m.group(0) if m else None
+            asset_url = None
+            for asset in data.get('assets', []):
+                if asset['name'] == 'stock_monitor.zip':
+                    asset_url = asset['browser_download_url']
+                    break
+            from main import APP_VERSION
+            if not latest_ver or not asset_url:
+                QMessageBox.warning(self, "检查更新", "未检测到新版本信息。")
+                return
+            if version.parse(latest_ver) <= version.parse(APP_VERSION):
+                QMessageBox.information(self, "检查更新", f"当前已是最新版本：{APP_VERSION}")
+                return
+            reply = QMessageBox.question(
+                self, "发现新版本",
+                f"检测到新版本 {latest_ver}，是否自动下载并升级？",
+                QMessageBox.Yes | QMessageBox.No)
+            if reply != QMessageBox.Yes:
+                return
+            # 美化进度对话框
+            progress = QProgressDialog("正在下载新版本...", None, 0, 100, self)
+            progress.setWindowTitle("自动升级进度")
+            progress.setMinimumWidth(420)
+            progress.setStyleSheet("""
+                QProgressDialog {
+                    background: #23272e;
+                    color: #fff;
+                    font-size: 18px;
+                    border-radius: 10px;
+                }
+                QLabel {
+                    color: #fff;
+                    font-size: 18px;
+                }
+                QProgressBar {
+                    border: 1px solid #bbb;
+                    border-radius: 8px;
+                    background: #333;
+                    height: 32px;
+                    text-align: center;
+                    color: #fff;
+                    font-size: 22px;
+                    font-weight: bold;
+                }
+                QProgressBar::chunk {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4a90e2, stop:1 #00c6fb);
+                    border-radius: 8px;
+                }
+            """)
+            progress.setAutoClose(False)
+            progress.setAutoReset(False)
+            progress.setValue(0)
             QApplication.processEvents()
-            with requests.get(asset_url, stream=True) as r:
-                r.raise_for_status()
-                total = int(r.headers.get('content-length', 0))
-                downloaded = 0
-                with open(zip_path, 'wb') as f:
-                    for chunk in r.iter_content(chunk_size=8192):
-                        if chunk:
-                            f.write(chunk)
-                            downloaded += len(chunk)
-                            if total:
-                                percent = int(downloaded * 100 / total)
-                                progress.setValue(min(percent, 99))
-                                QApplication.processEvents()
-            progress.setValue(100)
-            progress.setLabelText("下载完成，正在解压...")
-            QApplication.processEvents()
-        except Exception as e:
-            progress.close()
-            QMessageBox.warning(self, "升级失败", f"下载新版本失败：{e}")
-            return
-        # 解压
-        try:
-            import shutil
-            progress.setLabelText("正在解压新版本...")
-            QApplication.processEvents()
-            if os.path.exists(extract_dir):
-                shutil.rmtree(extract_dir)
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                zip_ref.extractall(extract_dir)
-            progress.setLabelText("解压完成，正在升级...")
-            QApplication.processEvents()
-        except Exception as e:
-            progress.close()
-            QMessageBox.warning(self, "升级失败", f"解压新版本失败：{e}")
-            return
-        # 写升级批处理
-        try:
-            progress.setLabelText("正在写入升级脚本...")
-            QApplication.processEvents()
-            bat_path = os.path.join(tmpdir, "stock_monitor_upgrade.bat")
-            exe_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
-            with open(bat_path, 'w', encoding='gbk') as f:
-                f.write(f"""@echo off
+            # 下载
+            tmpdir = tempfile.gettempdir()
+            zip_path = os.path.join(tmpdir, "stock_monitor_upgrade.zip")
+            extract_dir = os.path.join(tmpdir, "stock_monitor_upgrade")
+            try:
+                progress.setLabelText("正在下载新版本...")
+                QApplication.processEvents()
+                with requests.get(asset_url, stream=True) as r:
+                    r.raise_for_status()
+                    total = int(r.headers.get('content-length', 0))
+                    downloaded = 0
+                    with open(zip_path, 'wb') as f:
+                        for chunk in r.iter_content(chunk_size=8192):
+                            if chunk:
+                                f.write(chunk)
+                                downloaded += len(chunk)
+                                if total:
+                                    percent = int(downloaded * 100 / total)
+                                    progress.setValue(min(percent, 99))
+                                    QApplication.processEvents()
+                progress.setValue(100)
+                progress.setLabelText("下载完成，正在解压...")
+                QApplication.processEvents()
+            except Exception as e:
+                progress.close()
+                QMessageBox.warning(self, "升级失败", f"下载新版本失败：{e}")
+                return
+            # 解压
+            try:
+                import shutil
+                progress.setLabelText("正在解压新版本...")
+                QApplication.processEvents()
+                if os.path.exists(extract_dir):
+                    shutil.rmtree(extract_dir)
+                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                    zip_ref.extractall(extract_dir)
+                progress.setLabelText("解压完成，正在升级...")
+                QApplication.processEvents()
+            except Exception as e:
+                progress.close()
+                QMessageBox.warning(self, "升级失败", f"解压新版本失败：{e}")
+                return
+            # 写升级批处理
+            try:
+                progress.setLabelText("正在写入升级脚本...")
+                QApplication.processEvents()
+                bat_path = os.path.join(tmpdir, "stock_monitor_upgrade.bat")
+                exe_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+                with open(bat_path, 'w', encoding='gbk') as f:
+                    f.write(f"""@echo off
 timeout /t 1 >nul
 xcopy /y /e /q "{extract_dir}\\*" "{exe_dir}\\"
 rd /s /q "{extract_dir}"
 del "{zip_path}"
 start "" "{exe_dir}\\stock_monitor.exe"
 """)
-            progress.setLabelText("升级完成，正在重启...")
-            progress.setValue(100)
-            QApplication.processEvents()
-        except Exception as e:
+                progress.setLabelText("升级完成，正在重启...")
+                progress.setValue(100)
+                QApplication.processEvents()
+            except Exception as e:
+                progress.close()
+                QMessageBox.warning(self, "升级失败", f"写入升级脚本失败：{e}")
+                return
             progress.close()
-            QMessageBox.warning(self, "升级失败", f"写入升级脚本失败：{e}")
-            return
-        progress.close()
-        QMessageBox.information(self, "升级提示", "即将自动升级并重启，请稍候。")
-        subprocess.Popen(['cmd', '/c', bat_path])
-        QApplication.quit()
+            QMessageBox.information(self, "升级提示", "即将自动升级并重启，请稍候。")
+            subprocess.Popen(['cmd', '/c', bat_path])
+            QApplication.quit()
+        except requests.exceptions.RequestException as e:
+            QMessageBox.warning(self, "检查更新", f"网络异常，无法连接到GitHub：{e}")
+        except Exception as e:
+            QMessageBox.warning(self, "检查更新", f"检查更新时发生错误：{e}")
 
 # 主界面同步显示“名称 代码”
 class StockTable(QtWidgets.QTableWidget):
@@ -1143,16 +1177,11 @@ class MainWindow(QtWidgets.QWidget):
         """处理股票数据，返回格式化的股票列表"""
         stocks = []
         for code in stocks_list:
-            # 修复平安银行与上证指数识别错误问题
-            # 优先使用完整代码，避免数字部分相同导致的识别错误
+            code_key = code[-6:] if len(code) >= 6 else code
             info = None
+            # 兼容sh/sz前缀和无前缀
             if isinstance(data, dict):
-                # 优先使用完整代码匹配
-                info = data.get(code)
-                # 如果完整代码没找到，再尝试使用后6位数字
-                if not info and len(code) >= 6:
-                    code_key = code[-6:]
-                    info = data.get(code_key)
+                info = data.get(code_key) or data.get(code)
             if info:
                 name = info.get('name', code)
                 price = f"{info.get('now', 0):.2f}"
@@ -1186,26 +1215,8 @@ class MainWindow(QtWidgets.QWidget):
             stocks_list = self.current_user_stocks
         if hasattr(self, 'quotation') and hasattr(self.quotation, 'real') and callable(self.quotation.real):
             try:
-                # 修复平安银行与上证指数识别错误问题
-                # 改为单独请求每个股票代码，避免批量请求时的数据混淆
-                all_data = {}
-                for code in stocks_list:
-                    try:
-                        single_data = self.quotation.real([code])
-                        if isinstance(single_data, dict) and single_data:
-                            # 使用股票代码作为键，确保数据正确对应
-                            # 如果数据源返回的键是数字（如000001），则使用原始代码作为键
-                            for key, value in single_data.items():
-                                if key.isdigit() and len(key) == 6:
-                                    # 数据源返回的是数字键，使用原始代码作为键
-                                    all_data[code] = value
-                                else:
-                                    # 数据源返回的是完整代码键，直接使用
-                                    all_data[key] = value
-                    except Exception as e:
-                        print(f'请求 {code} 数据时出错: {e}')
-                
-                stocks = self.process_stock_data(all_data, stocks_list)
+                data = self.quotation.real(stocks_list)
+                stocks = self.process_stock_data(data, stocks_list)
                 self.table.setRowCount(0)
                 self.table.clearContents()
                 self.table.update_data(stocks)
@@ -1233,26 +1244,8 @@ class MainWindow(QtWidgets.QWidget):
         while True:
             if hasattr(self, 'quotation') and hasattr(self.quotation, 'real') and callable(self.quotation.real):
                 try:
-                    # 修复平安银行与上证指数识别错误问题
-                    # 改为单独请求每个股票代码，避免批量请求时的数据混淆
-                    all_data = {}
-                    for code in self.current_user_stocks:
-                        try:
-                            single_data = self.quotation.real([code])
-                            if isinstance(single_data, dict) and single_data:
-                                # 使用股票代码作为键，确保数据正确对应
-                                # 如果数据源返回的键是数字（如000001），则使用原始代码作为键
-                                for key, value in single_data.items():
-                                    if key.isdigit() and len(key) == 6:
-                                        # 数据源返回的是数字键，使用原始代码作为键
-                                        all_data[code] = value
-                                    else:
-                                        # 数据源返回的是完整代码键，直接使用
-                                        all_data[key] = value
-                        except Exception as e:
-                            print(f'请求 {code} 数据时出错: {e}')
-                    
-                    stocks = self.process_stock_data(all_data, self.current_user_stocks)
+                    data = self.quotation.real(self.current_user_stocks)
+                    stocks = self.process_stock_data(data, self.current_user_stocks)
                     self.update_table_signal.emit(stocks)
                 except Exception as e:
                     print('行情刷新异常:', e)

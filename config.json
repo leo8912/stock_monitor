@@ -1,20 +1,14 @@
 {
   "window_pos": [
-    1418,
-    484
+    1122,
+    193
   ],
   "user_stocks": [
-    "sh600418",
     "sh600460",
-    "sh000001",
-    "sh600171",
     "sh603986",
-    "sh601127",
-    "sh601669"
+    "sh600030",
+    "sh000001"
   ],
   "refresh_interval": 5,
-  "settings_dialog_pos": [
-    1039,
-    106
-  ]
+  "github_token": ""
 }
