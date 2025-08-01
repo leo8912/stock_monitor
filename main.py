@@ -23,7 +23,17 @@
 # v1.0.6
 # - 修复pypinyin依赖未打包问题，完善requirements.txt，确保所有环境正常运行。
 
-APP_VERSION = 'v1.0.6'
+# v1.0.7
+# - 修复平安银行(sz000001)与上证指数(sh000001)因数字部分相同导致的识别错误问题。
+# - 优化股票代码匹配逻辑，优先使用完整代码匹配，避免数字部分相同导致的混淆。
+# - 确保股票数据准确识别，提升用户体验。
+
+# v1.0.8
+# - 彻底修复平安银行与上证指数识别错误问题，改为单独请求每个股票代码。
+# - 解决easyquotation库批量请求时数据混淆的问题，确保每个股票数据准确对应。
+# - 优化数据请求策略，提升数据准确性和系统稳定性。
+
+APP_VERSION = 'v1.0.8'
 
 import sys
 import os
@@ -1133,11 +1143,16 @@ class MainWindow(QtWidgets.QWidget):
         """处理股票数据，返回格式化的股票列表"""
         stocks = []
         for code in stocks_list:
-            code_key = code[-6:] if len(code) >= 6 else code
+            # 修复平安银行与上证指数识别错误问题
+            # 优先使用完整代码，避免数字部分相同导致的识别错误
             info = None
-            # 兼容sh/sz前缀和无前缀
             if isinstance(data, dict):
-                info = data.get(code_key) or data.get(code)
+                # 优先使用完整代码匹配
+                info = data.get(code)
+                # 如果完整代码没找到，再尝试使用后6位数字
+                if not info and len(code) >= 6:
+                    code_key = code[-6:]
+                    info = data.get(code_key)
             if info:
                 name = info.get('name', code)
                 price = f"{info.get('now', 0):.2f}"
@@ -1171,8 +1186,26 @@ class MainWindow(QtWidgets.QWidget):
             stocks_list = self.current_user_stocks
         if hasattr(self, 'quotation') and hasattr(self.quotation, 'real') and callable(self.quotation.real):
             try:
-                data = self.quotation.real(stocks_list)
-                stocks = self.process_stock_data(data, stocks_list)
+                # 修复平安银行与上证指数识别错误问题
+                # 改为单独请求每个股票代码，避免批量请求时的数据混淆
+                all_data = {}
+                for code in stocks_list:
+                    try:
+                        single_data = self.quotation.real([code])
+                        if isinstance(single_data, dict) and single_data:
+                            # 使用股票代码作为键，确保数据正确对应
+                            # 如果数据源返回的键是数字（如000001），则使用原始代码作为键
+                            for key, value in single_data.items():
+                                if key.isdigit() and len(key) == 6:
+                                    # 数据源返回的是数字键，使用原始代码作为键
+                                    all_data[code] = value
+                                else:
+                                    # 数据源返回的是完整代码键，直接使用
+                                    all_data[key] = value
+                    except Exception as e:
+                        print(f'请求 {code} 数据时出错: {e}')
+                
+                stocks = self.process_stock_data(all_data, stocks_list)
                 self.table.setRowCount(0)
                 self.table.clearContents()
                 self.table.update_data(stocks)
@@ -1200,8 +1233,26 @@ class MainWindow(QtWidgets.QWidget):
         while True:
             if hasattr(self, 'quotation') and hasattr(self.quotation, 'real') and callable(self.quotation.real):
                 try:
-                    data = self.quotation.real(self.current_user_stocks)
-                    stocks = self.process_stock_data(data, self.current_user_stocks)
+                    # 修复平安银行与上证指数识别错误问题
+                    # 改为单独请求每个股票代码，避免批量请求时的数据混淆
+                    all_data = {}
+                    for code in self.current_user_stocks:
+                        try:
+                            single_data = self.quotation.real([code])
+                            if isinstance(single_data, dict) and single_data:
+                                # 使用股票代码作为键，确保数据正确对应
+                                # 如果数据源返回的键是数字（如000001），则使用原始代码作为键
+                                for key, value in single_data.items():
+                                    if key.isdigit() and len(key) == 6:
+                                        # 数据源返回的是数字键，使用原始代码作为键
+                                        all_data[code] = value
+                                    else:
+                                        # 数据源返回的是完整代码键，直接使用
+                                        all_data[key] = value
+                        except Exception as e:
+                            print(f'请求 {code} 数据时出错: {e}')
+                    
+                    stocks = self.process_stock_data(all_data, self.current_user_stocks)
                     self.update_table_signal.emit(stocks)
                 except Exception as e:
                     print('行情刷新异常:', e)
