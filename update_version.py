@@ -15,10 +15,6 @@ def update_version_files(new_version):
         # 更新版本号
         content = re.sub(r"APP_VERSION = 'v\d+\.\d+\.\d+'", 
                          f"APP_VERSION = '{new_version}'", content)
-        # 添加新的更新日志条目（不在原有条目上修改）
-        new_log_entry = f"# {new_version} - {today}\n# - 修复指数和个股代码相同导致的数据混淆问题，改用逐一获取方式确保数据准确性\n\n"
-        # 在更新日志标题后添加新条目
-        content = re.sub(r'(# 更新日志\n)', f'\\1{new_log_entry}', content)
         f.seek(0)
         f.write(content)
         f.truncate()

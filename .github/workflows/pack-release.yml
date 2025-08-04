@@ -81,26 +81,12 @@ jobs:
         version=$(python get_version.py)
         echo "version=${version#version=}" >> $GITHUB_OUTPUT
 
-    - name: Extract changelog from main.py
-      id: changelog
-      shell: python
+    - name: Extract changelog from CHANGELOG.md
+      id: extract_changelog
       run: |
-        import sys, re, os
-        sys.stdout = open(sys.stdout.fileno(), mode='w', encoding='utf-8', buffering=1)
-        with open('main.py', encoding='utf-8') as f:
-            s = f.read()
-        logs = re.findall(r"# v([\d\.]+)\n((?:# .+\n)+)", s)
-        if logs:
-            all_logs = []
-            for ver, log in logs:
-                log_fmt = log.replace('# ', '').strip().replace('\n', '\n- ')
-                all_logs.append(f"### v{ver} 更新内容\n- {log_fmt}")
-            all_logs = all_logs[::-1]  # 新版本在前
-            with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as f:
-                f.write('changelog<<EOF\n' + "\n\n".join(all_logs) + '\nEOF\n')
-        else:
-            with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as f:
-                f.write('changelog=无更新日志\n')
+        # Extract the latest changelog entry
+        changelog=$(cat CHANGELOG.md | grep -E '## v[0-9]+\.[0-9]+\.[0-9]+' -A 100 | awk '/^--$/ {exit} 1')
+        echo "changelog=$changelog" >> $GITHUB_OUTPUT
 
     - name: Create Release
       uses: softprops/action-gh-release@v1
@@ -113,6 +99,6 @@ jobs:
 
           > **本软件完全由AI自动开发，开发者零基础，所有功能均由AI智能生成。**
 
-          ${{ steps.changelog.outputs.changelog }}
+          ${{ steps.extract_changelog.outputs.changelog }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
