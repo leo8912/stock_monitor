@@ -85,7 +85,10 @@ jobs:
       id: extract_changelog
       run: |
         # Extract the latest changelog entry using PowerShell
-        $changelog = Get-Content -Path CHANGELOG.md -Raw | Select-String -Pattern '## v\d+\.\d+\.\d+' -Context 0,100 | ForEach-Object { $_.ToString() }
+        $changelog = Get-Content -Path CHANGELOG.md -Raw | 
+                     Select-String -Pattern '## v\d+\.\d+\.\d+.*?(?=## v\d+\.\d+\.\d+|$)' -AllMatches | 
+                     ForEach-Object { $_.Matches[0].Value } | 
+                     Select-Object -First 1
         echo "changelog=$changelog" >> $GITHUB_OUTPUT
 
     - name: Create Release
