@@ -84,8 +84,8 @@ jobs:
     - name: Extract changelog from CHANGELOG.md
       id: extract_changelog
       run: |
-        # Extract the latest changelog entry
-        changelog=$(cat CHANGELOG.md | grep -E '## v[0-9]+\.[0-9]+\.[0-9]+' -A 100 | awk '/^--$/ {exit} 1')
+        # Extract the latest changelog entry using PowerShell
+        $changelog = Get-Content -Path CHANGELOG.md -Raw | Select-String -Pattern '## v\d+\.\d+\.\d+' -Context 0,100 | ForEach-Object { $_.ToString() }
         echo "changelog=$changelog" >> $GITHUB_OUTPUT
 
     - name: Create Release
