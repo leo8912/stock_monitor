@@ -8,11 +8,13 @@
 
 ## 最新版本
 
-**v1.1.2**
+**v1.1.3**
 
 ### 更新日志
-- 调整版本更新机制，更新日志不再写入main.py文件
-- 修改GitHub Actions工作流，从CHANGELOG.md提取更新日志用于Release发布
+- 修复Release说明中更新日志未显示问题，优化GitHub Actions工作流中的CHANGELOG.md提取逻辑
+- v1.1.2 及以前：
+  - 调整版本更新机制，更新日志不再写入main.py文件
+  - 修改GitHub Actions工作流，从CHANGELOG.md提取更新日志用于Release发布
 - v1.1.1 及以前：
   - 修复指数和个股代码相同导致的数据混淆问题，改用逐一获取方式确保数据准确性
 - v1.1.0 及以前：
