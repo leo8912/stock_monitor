@@ -15,8 +15,9 @@
 ## v1.1.2 (2025-08-04)
 
 ### 🛠 更新内容
-- 调整版本更新机制，更新日志不再写入main.py文件
-- 修改GitHub Actions工作流，从CHANGELOG.md提取更新日志用于Release发布
+- **调整版本更新机制**: 更新日志不再写入main.py文件，改为集中记录在CHANGELOG.md和README.md中
+- **优化GitHub Actions工作流**: 从CHANGELOG.md提取更新日志用于Release发布，确保发布信息准确同步
+- **改进发布流程**: 确保每次发布时，版本号和更新日志自动同步更新，提升发布效率和准确性
 
 ---
 

@@ -89,6 +89,9 @@ jobs:
                      Select-String -Pattern '## v\d+\.\d+\.\d+.*?(?=## v\d+\.\d+\.\d+|$)' -AllMatches | 
                      ForEach-Object { $_.Matches[0].Value } | 
                      Select-Object -First 1
+        # Debug output to verify extracted content
+        echo "Extracted Changelog:"
+        echo $changelog
         echo "changelog=$changelog" >> $GITHUB_OUTPUT
 
     - name: Create Release
