@@ -15,10 +15,10 @@ def update_version_files(new_version):
         # 更新版本号
         content = re.sub(r"APP_VERSION = 'v\d+\.\d+\.\d+'", 
                          f"APP_VERSION = '{new_version}'", content)
-        # 更新更新日志中的版本记录
-        content = re.sub(r'# v\d+\.\d+\.\d+ - \d{4}-\d{2}-\d{2}
-# -', 
-                         f'# {new_version} - {today}\n# -', content)
+        # 添加新的更新日志条目（不在原有条目上修改）
+        new_log_entry = f"# {new_version} - {today}\n# - 修复指数和个股代码相同导致的数据混淆问题，改用逐一获取方式确保数据准确性\n\n"
+        # 在更新日志标题后添加新条目
+        content = re.sub(r'(# 更新日志\n)', f'\\1{new_log_entry}', content)
         f.seek(0)
         f.write(content)
         f.truncate()
@@ -43,21 +43,25 @@ def update_version_files(new_version):
         version_header = f'## {new_version} ({today})'
         if version_header not in content:
             # 创建新版本日志
-            changelog_entry = f"""
-## {new_version} ({today})
+            changelog_entry = f"""## {new_version} ({today})
 
-### 🛠 更新内容
-- 版本自动升级
+### 🐛 修复
+- **修复指数和个股数据混淆问题**: 解决了当指数和个股具有相同数字代码部分时（如sh000001和sz000001）导致的数据错误显示问题
+- **优化数据获取策略**: 将批量获取方式改为逐一获取每只股票的数据，确保数据准确性和完整性
+
+### 🔧 技术改进
+- 重构数据获取逻辑，避免因API返回数据结构中的键冲突导致的数据覆盖问题
+- 保持向后兼容性，确保现有功能不受影响
 
 ---
 """
-            # 插入到顶部
-            content = changelog_entry + content
+            # 插入到顶部（在# 更新日志之后）
+            content = re.sub(r'(# 更新日志\n\n)', f'\\1{changelog_entry}', content)
             f.seek(0)
             f.write(content)
             f.truncate()
 
 if __name__ == '__main__':
     # 从环境变量获取新版本号
-    new_version = os.getenv('NEW_VERSION', 'v1.0.7')
+    new_version = os.getenv('NEW_VERSION', 'v1.1.1')
     update_version_files(new_version)

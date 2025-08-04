@@ -16,19 +16,22 @@
 # v1.0.5 - 2023-11-05
 # - 增加涨停/跌停封单手显示功能，自动识别并高亮。
 # - 表格宽度可自适应封单手显示，内容不会被遮挡。
-# - 封单手只显示数字，不显示“手”单位，显示更简洁。
-# - ST股票支持拼音、首字母、去前缀模糊搜索，输入“st”或拼音片段可精准匹配。
+# - 封单手只显示数字，不显示"手"单位，显示更简洁。
+# - ST股票支持拼音、首字母、去前缀模糊搜索，输入"st"或拼音片段可精准匹配。
 # - 本轮优化涵盖：主界面自适应、极简美观、自动升级、release日志自动提取、ST与封单功能增强。
+
+# v1.0.6 - 2023-11-10
+# - 修复pypinyin依赖未打包问题，完善requirements.txt，确保所有环境正常运行。
 
 # v1.1.0 - 2024-12-20
 # - 新增GitHub Token输入框，在设置界面添加GitHub Token配置功能
 # - 优化检查更新时的提示信息，增加API速率限制的Token建议
 # - 修复版本号和更新日志自动同步问题
 
-# v1.0.6 - 2023-11-10
-# - 修复pypinyin依赖未打包问题，完善requirements.txt，确保所有环境正常运行。
+# v1.1.1 - 2025-08-04
+# - 修复指数和个股代码相同导致的数据混淆问题，改用逐一获取方式确保数据准确性
 
-APP_VERSION = 'v1.1.0'
+APP_VERSION = 'v1.1.1'
 
 import sys
 import os
@@ -1215,8 +1218,17 @@ class MainWindow(QtWidgets.QWidget):
             stocks_list = self.current_user_stocks
         if hasattr(self, 'quotation') and hasattr(self.quotation, 'real') and callable(self.quotation.real):
             try:
-                data = self.quotation.real(stocks_list)
-                stocks = self.process_stock_data(data, stocks_list)
+                # 逐个请求，避免混淆
+                data_dict = {}
+                for code in stocks_list:
+                    single = self.quotation.real([code])
+                    # single返回如 {'000001': {...}}，需用完整code做映射
+                    if isinstance(single, dict):
+                        # 取第一个value
+                        for v in single.values():
+                            data_dict[code] = v
+                            break
+                stocks = self.process_stock_data(data_dict, stocks_list)
                 self.table.setRowCount(0)
                 self.table.clearContents()
                 self.table.update_data(stocks)
@@ -1244,8 +1256,14 @@ class MainWindow(QtWidgets.QWidget):
         while True:
             if hasattr(self, 'quotation') and hasattr(self.quotation, 'real') and callable(self.quotation.real):
                 try:
-                    data = self.quotation.real(self.current_user_stocks)
-                    stocks = self.process_stock_data(data, self.current_user_stocks)
+                    data_dict = {}
+                    for code in self.current_user_stocks:
+                        single = self.quotation.real([code])
+                        if isinstance(single, dict):
+                            for v in single.values():
+                                data_dict[code] = v
+                                break
+                    stocks = self.process_stock_data(data_dict, self.current_user_stocks)
                     self.update_table_signal.emit(stocks)
                 except Exception as e:
                     print('行情刷新异常:', e)
