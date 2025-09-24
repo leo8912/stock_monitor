@@ -8,7 +8,7 @@
 
 ## 最新版本
 
-**v1.1.3**
+**v1.1.4**
 
 ### 更新日志
 - 修复Release说明中更新日志未显示问题，优化GitHub Actions工作流中的CHANGELOG.md提取逻辑

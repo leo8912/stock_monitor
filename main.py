@@ -1,6 +1,4 @@
-
-
-APP_VERSION = 'v1.1.3'
+APP_VERSION = 'v1.1.4'
 
 import sys
 import os
@@ -26,15 +24,79 @@ ICON_FILE = resource_path('icon.png')
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')
 
 def load_config():
-    if not os.path.exists(CONFIG_PATH):
-        with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-            json.dump({}, f)
-        return {}
+    """加载配置文件，包含完整的错误处理和默认值"""
     try:
+        if not os.path.exists(CONFIG_PATH):
+            # 创建默认配置文件
+            default_config = {
+                "user_stocks": ["sh600460", "sh603986", "sh600030", "sh000001"],
+                "refresh_interval": 5,
+                "github_token": "",
+                "window_pos": None,
+                "settings_dialog_pos": None
+            }
+            with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+                json.dump(default_config, f, ensure_ascii=False, indent=2)
+            return default_config
+        
         with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except Exception:
-        return {}
+            config = json.load(f)
+            
+        # 确保必要的键存在
+        if 'user_stocks' not in config:
+            config['user_stocks'] = ["sh600460", "sh603986", "sh600030", "sh000001"]
+        if 'refresh_interval' not in config:
+            config['refresh_interval'] = 5
+        if 'github_token' not in config:
+            config['github_token'] = ""
+        if 'window_pos' not in config:
+            config['window_pos'] = None
+        if 'settings_dialog_pos' not in config:
+            config['settings_dialog_pos'] = None
+            
+        return config
+    except json.JSONDecodeError as e:
+        # 如果JSON解析失败，备份原文件并创建新配置
+        print(f"配置文件损坏，JSON解析错误: {e}，正在创建新的配置文件...")
+        if os.path.exists(CONFIG_PATH):
+            # 备份原文件
+            backup_path = CONFIG_PATH + ".bak"
+            import shutil
+            shutil.copy2(CONFIG_PATH, backup_path)
+            print(f"原配置文件已备份为: {backup_path}")
+            
+        # 创建默认配置文件
+        default_config = {
+            "user_stocks": ["sh600460", "sh603986", "sh600030", "sh000001"],
+            "refresh_interval": 5,
+            "github_token": "",
+            "window_pos": None,
+            "settings_dialog_pos": None
+        }
+        try:
+            with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+                json.dump(default_config, f, ensure_ascii=False, indent=2)
+        except Exception as save_error:
+            print(f"创建默认配置文件失败: {save_error}")
+        return default_config
+    except PermissionError as e:
+        print(f"配置文件权限错误: {e}，请检查文件权限")
+        return {
+            "user_stocks": ["sh600460", "sh603986", "sh600030", "sh000001"],
+            "refresh_interval": 5,
+            "github_token": "",
+            "window_pos": None,
+            "settings_dialog_pos": None
+        }
+    except Exception as e:
+        print(f"加载配置文件时发生未知错误: {e}")
+        return {
+            "user_stocks": ["sh600460", "sh603986", "sh600030", "sh000001"],
+            "refresh_interval": 5,
+            "github_token": "",
+            "window_pos": None,
+            "settings_dialog_pos": None
+        }
 
 def save_config(cfg):
     try:
@@ -982,8 +1044,11 @@ class MainWindow(QtWidgets.QWidget):
         self.current_user_stocks = self.load_user_stocks()
         
         # 启动刷新线程和信号连接
-        self._start_refresh_thread()
         self.update_table_signal.connect(self.table.update_data)
+        
+        # 立即刷新一次，确保在窗口显示前加载数据
+        self.refresh_now(self.current_user_stocks)
+        self._start_refresh_thread()
         
         # 显示窗口并加载位置
         self.load_position()
@@ -991,9 +1056,6 @@ class MainWindow(QtWidgets.QWidget):
         self.raise_()
         self.activateWindow()
         self.install_event_filters(self)
-        
-        # 立即刷新一次
-        self.refresh_now(self.current_user_stocks)
 
     def install_event_filters(self, widget):
         if isinstance(widget, QtWidgets.QWidget):
@@ -1149,37 +1211,59 @@ class MainWindow(QtWidgets.QWidget):
         """处理股票数据，返回格式化的股票列表"""
         stocks = []
         for code in stocks_list:
-            code_key = code[-6:] if len(code) >= 6 else code
             info = None
-            # 兼容sh/sz前缀和无前缀
+            # 优先使用完整代码作为键进行精确匹配，防止 sh000001 和 000001 混淆
             if isinstance(data, dict):
-                info = data.get(code_key) or data.get(code)
+                info = data.get(code)  # 精确匹配完整代码
+            
             if info:
                 name = info.get('name', code)
-                price = f"{info.get('now', 0):.2f}"
-                close = info.get('close', 0)
-                now = info.get('now', 0)
-                high = info.get('high', 0)
-                low = info.get('low', 0)
-                bid1 = info.get('bid1', 0)
-                bid1_vol = info.get('bid1_volume', 0)
-                ask1 = info.get('ask1', 0)
-                ask1_vol = info.get('ask1_volume', 0)
-                percent = ((now - close) / close * 100) if close else 0
-                color = '#e74c3f' if percent > 0 else '#27ae60' if percent < 0 else '#e6eaf3'
-                change_str = f"{percent:+.2f}%"
+                try:
+                    price = f"{float(info.get('now', 0)):.2f}"
+                except (ValueError, TypeError):
+                    price = "--"
+                    
+                try:
+                    close = float(info.get('close', 0))
+                    now = float(info.get('now', 0))
+                    high = float(info.get('high', 0))
+                    low = float(info.get('low', 0))
+                    bid1 = float(info.get('bid1', 0))
+                    bid1_vol = float(info.get('bid1_volume', 0))
+                    ask1 = float(info.get('ask1', 0))
+                    ask1_vol = float(info.get('ask1_volume', 0))
+                    
+                    percent = ((now - close) / close * 100) if close else 0
+                    color = '#e74c3f' if percent > 0 else '#27ae60' if percent < 0 else '#e6eaf3'
+                    change_str = f"{percent:+.2f}%"
+                except (ValueError, TypeError, ZeroDivisionError):
+                    color = '#e6eaf3'
+                    change_str = "--"
+                
                 # 检测涨停/跌停封单
                 seal_vol = ''
                 seal_type = ''
-                if is_equal(now, high) and is_equal(now, bid1) and bid1_vol > 0 and is_equal(ask1, 0):
-                    seal_vol = f"{int(bid1_vol/100):,}"
-                    seal_type = 'up'
-                elif is_equal(now, low) and is_equal(now, ask1) and ask1_vol > 0 and is_equal(bid1, 0):
-                    seal_vol = f"{int(ask1_vol/100):,}"
-                    seal_type = 'down'
+                try:
+                    if (is_equal(now, high) and is_equal(now, bid1) and 
+                        bid1_vol > 0 and is_equal(ask1, 0)):
+                        seal_vol = f"{int(bid1_vol/100):,}"
+                        seal_type = 'up'
+                    elif (is_equal(now, low) and is_equal(now, ask1) and 
+                          ask1_vol > 0 and is_equal(bid1, 0)):
+                        seal_vol = f"{int(ask1_vol/100):,}"
+                        seal_type = 'down'
+                except (ValueError, TypeError):
+                    pass  # 忽略封单计算中的错误
+                    
                 stocks.append((name, price, change_str, color, seal_vol, seal_type))
             else:
-                stocks.append((code, '--', '--', '#e6eaf3', '', ''))
+                # 如果没有获取到数据，显示默认值
+                name = code
+                # 尝试从本地数据获取股票名称
+                local_name = self.table.get_name_by_code(code)
+                if local_name:
+                    name = local_name
+                stocks.append((name, "--", "--", "#e6eaf3", "", ""))
         return stocks
 
     def refresh_now(self, stocks_list=None):
@@ -1187,26 +1271,49 @@ class MainWindow(QtWidgets.QWidget):
             stocks_list = self.current_user_stocks
         if hasattr(self, 'quotation') and hasattr(self.quotation, 'real') and callable(self.quotation.real):
             try:
-                # 逐个请求，避免混淆
+                # 逐个请求，避免混淆，并确保键值精确匹配
                 data_dict = {}
+                failed_stocks = []
                 for code in stocks_list:
-                    single = self.quotation.real([code])
-                    # single返回如 {'000001': {...}}，需用完整code做映射
-                    if isinstance(single, dict):
-                        # 取第一个value
-                        for v in single.values():
-                            data_dict[code] = v
-                            break
+                    try:
+                        single = self.quotation.real([code])
+                        if isinstance(single, dict):
+                            # 精确使用原始 code 作为 key 获取数据，避免映射错误
+                            data_dict[code] = single.get(code) or next(iter(single.values()), None)
+                        else:
+                            failed_stocks.append(code)
+                    except Exception as e:
+                        print(f'获取股票 {code} 数据失败: {e}')
+                        failed_stocks.append(code)
+                
                 stocks = self.process_stock_data(data_dict, stocks_list)
-                self.table.setRowCount(0)
-                self.table.clearContents()
-                self.table.update_data(stocks)
+                
+                # 如果所有股票都失败了，显示错误信息
+                if len(failed_stocks) == len(stocks_list) and len(stocks_list) > 0:
+                    error_stocks = [("数据加载失败", "--", "--", "#e6eaf3", "", "")] * len(stocks_list)
+                    self.table.setRowCount(0)
+                    self.table.clearContents()
+                    self.table.update_data(error_stocks)
+                else:
+                    self.table.setRowCount(0)
+                    self.table.clearContents()
+                    self.table.update_data(stocks)
+                
                 self.table.viewport().update()
                 self.table.repaint()
                 QtWidgets.QApplication.processEvents()
                 self.adjust_window_height()  # 每次刷新后自适应高度
             except Exception as e:
                 print('行情刷新异常:', e)
+                # 显示错误信息
+                error_stocks = [("数据加载异常", "--", "--", "#e6eaf3", "", "")] * max(3, len(stocks_list) if stocks_list else 3)
+                self.table.setRowCount(0)
+                self.table.clearContents()
+                self.table.update_data(error_stocks)
+                self.table.viewport().update()
+                self.table.repaint()
+                QtWidgets.QApplication.processEvents()
+                self.adjust_window_height()
 
     def paintEvent(self, event):
         painter = QtGui.QPainter(self)
@@ -1222,41 +1329,148 @@ class MainWindow(QtWidgets.QWidget):
         self._refresh_thread.start()
 
     def _refresh_loop(self):
+        consecutive_failures = 0
+        max_consecutive_failures = 3  # 最大连续失败次数
+        
         while True:
             if hasattr(self, 'quotation') and hasattr(self.quotation, 'real') and callable(self.quotation.real):
                 try:
                     data_dict = {}
-                    for code in self.current_user_stocks:
-                        single = self.quotation.real([code])
-                        if isinstance(single, dict):
-                            for v in single.values():
-                                data_dict[code] = v
-                                break
+                    failed_count = 0
+                    
+                    # 逐个请求所有股票数据，避免数据混淆
+                    if self.current_user_stocks:
+                        for code in self.current_user_stocks:
+                            try:
+                                single = self.quotation.real([code])
+                                # 精确使用完整代码作为键，避免数据混淆
+                                if isinstance(single, dict):
+                                    data_dict[code] = single.get(code) or next(iter(single.values()), None)
+                                else:
+                                    failed_count += 1
+                            except Exception as e:
+                                print(f'获取股票 {code} 数据失败: {e}')
+                                failed_count += 1
+                    
                     stocks = self.process_stock_data(data_dict, self.current_user_stocks)
-                    self.update_table_signal.emit(stocks)
+                    
+                    # 如果所有股票都失败了，且股票列表不为空，显示错误信息
+                    if failed_count == len(self.current_user_stocks) and len(self.current_user_stocks) > 0:
+                        error_stocks = [("数据加载失败", "--", "--", "#e6eaf3", "", "")] * len(self.current_user_stocks)
+                        self.update_table_signal.emit(error_stocks)
+                    else:
+                        self.update_table_signal.emit(stocks)
+                        
+                    consecutive_failures = 0  # 重置失败计数
                 except Exception as e:
                     print('行情刷新异常:', e)
+                    consecutive_failures += 1
+                    
+                    # 如果连续失败多次，发送错误信息到UI
+                    if consecutive_failures >= max_consecutive_failures:
+                        error_stocks = [("网络连接异常", "--", "--", "#e6eaf3", "", "")] * max(3, len(self.current_user_stocks))
+                        self.update_table_signal.emit(error_stocks)
+                        consecutive_failures = 0  # 重置失败计数
             
             # 根据开市状态决定刷新间隔
             sleep_time = self.refresh_interval if is_market_open() else 30
             time.sleep(sleep_time)
 
     def load_user_stocks(self):
-        cfg = load_config()
-        stocks = cfg.get('user_stocks', ['sh600460', 'sh603986', 'sh600030', 'sh000001'])
-        # 只保留股票代码部分，顺序不变
-        processed_stocks = []
-        for stock in stocks:
-            if isinstance(stock, str) and ' ' in stock:
-                parts = stock.split()
-                if len(parts) >= 2:
-                    code = parts[-1]
-                    processed_stocks.append(code)
-                else:
-                    processed_stocks.append(stock)
+        """加载用户自选股列表，包含完整的错误处理和格式规范化"""
+        try:
+            cfg = load_config()
+            stocks = cfg.get('user_stocks', None)
+            
+            # 确保stocks是一个非空列表
+            if not isinstance(stocks, list) or len(stocks) == 0:
+                print("配置文件中未找到有效的用户股票列表，使用默认值")
+                stocks = ['sh600460', 'sh603986', 'sh600030', 'sh000001']
+            
+            processed_stocks = []
+            default_stocks = ['sh600460', 'sh603986', 'sh600030', 'sh000001']
+            
+            for stock in stocks:
+                try:
+                    # 处理字符串类型的股票标识
+                    if isinstance(stock, str):
+                        # 如果包含空格，提取最后一个部分作为代码
+                        if ' ' in stock:
+                            parts = [p.strip() for p in stock.split() if p.strip()]
+                            if len(parts) >= 2:
+                                code = parts[-1]
+                            else:
+                                code = parts[0] if parts else ''
+                        else:
+                            code = stock.strip()
+                        
+                        # 格式化股票代码
+                        formatted_code = self._format_stock_code(code)
+                        if formatted_code:
+                            processed_stocks.append(formatted_code)
+                    
+                    # 非字符串类型直接跳过
+                except Exception as e:
+                    print(f"处理股票 {stock} 时发生错误: {e}")
+                    continue
+            
+            # 去除重复项，保持原有顺序
+            seen = set()
+            unique_stocks = []
+            for stock in processed_stocks:
+                if stock not in seen:
+                    seen.add(stock)
+                    unique_stocks.append(stock)
+            processed_stocks = unique_stocks
+            
+            # 确保至少有3个股票
+            if len(processed_stocks) < 3:
+                print(f"用户股票数量不足3个，添加默认股票")
+                for default_stock in default_stocks:
+                    if default_stock not in processed_stocks:
+                        processed_stocks.append(default_stock)
+                    if len(processed_stocks) >= 3:
+                        break
+            
+            return processed_stocks
+            
+        except Exception as e:
+            print(f"加载用户股票列表时发生严重错误: {e}")
+            # 返回安全的默认值
+            return ['sh600460', 'sh603986', 'sh600030', 'sh000001']
+
+    def _format_stock_code(self, code):
+        """格式化股票代码，确保正确的前缀"""
+        if not isinstance(code, str) or not code:
+            return None
+            
+        code = code.strip().lower()
+        
+        # 移除可能存在的额外字符
+        code = ''.join(c for c in code if c.isalnum())
+        
+        if not code:
+            return None
+            
+        # 检查是否已经有正确前缀
+        if code.startswith('sh') or code.startswith('sz'):
+            # 验证代码长度和数字部分
+            if len(code) == 8 and code[2:].isdigit():
+                return code
             else:
-                processed_stocks.append(stock)
-        return processed_stocks
+                return None
+                
+        # 6位纯数字代码
+        elif len(code) == 6 and code.isdigit():
+            if code.startswith('6') or code.startswith('5'):
+                return 'sh' + code
+            elif code.startswith('0') or code.startswith('3') or code.startswith('2'):
+                return 'sz' + code
+            else:
+                return None
+        
+        # 其他情况返回None
+        return None
 
     def load_theme_config(self):
         import json
