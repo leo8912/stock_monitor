@@ -90,6 +90,55 @@ class TestConfig(unittest.TestCase):
             with open(test_config_path, 'r', encoding='utf-8') as f:
                 saved_config = json.load(f)
             self.assertEqual(test_config, saved_config)
+            
+    def test_load_config_json_decode_error(self):
+        """测试JSON解码错误处理"""
+        from stock_monitor.config.manager import CONFIG_PATH
+        
+        # 设置测试路径
+        test_config_path = os.path.join(self.test_dir, 'config.json')
+        
+        # 使用patch来修改CONFIG_PATH
+        with patch('stock_monitor.config.manager.CONFIG_PATH', test_config_path):
+            # 创建一个无效的JSON文件
+            with open(test_config_path, 'w', encoding='utf-8') as f:
+                f.write('invalid json content')
+                
+            # 加载配置应该处理JSON解码错误并创建默认配置
+            config = load_config()
+            
+            # 检查是否返回了默认配置
+            self.assertIn('user_stocks', config)
+            self.assertIn('refresh_interval', config)
+            
+            # 检查备份文件是否已创建
+            backup_path = test_config_path + ".bak"
+            self.assertTrue(os.path.exists(backup_path))
+            
+    def test_load_config_permission_error(self):
+        """测试权限错误处理"""
+        from unittest.mock import mock_open, patch
+        from stock_monitor.config.manager import CONFIG_PATH
+        
+        # 设置测试路径
+        test_config_path = os.path.join(self.test_dir, 'config.json')
+        
+        # 创建一个空文件
+        with open(test_config_path, 'w') as f:
+            pass
+            
+        # 使用patch模拟权限错误
+        with patch('stock_monitor.config.manager.CONFIG_PATH', test_config_path):
+            with patch('builtins.open', mock_open()) as mock_file:
+                mock_file.side_effect = PermissionError("Permission denied")
+                
+                # 加载配置应该处理权限错误
+                config = load_config()
+                
+                # 检查是否返回了默认配置
+                self.assertIn('user_stocks', config)
+                self.assertIn('refresh_interval', config)
+                self.assertEqual(config['refresh_interval'], 5)
 
 if __name__ == '__main__':
     unittest.main()
