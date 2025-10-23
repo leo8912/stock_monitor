@@ -34,7 +34,7 @@ jobs:
     - name: Verify required files exist
       run: |
         echo "Checking required files:"
-        ls -la stock_monitor/resources/
+        Get-ChildItem stock_monitor/resources/
         echo "Icon file exists:"
         Test-Path stock_monitor/resources/icon.ico
         echo "Stock data file exists:"
