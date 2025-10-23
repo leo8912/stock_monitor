@@ -773,26 +773,22 @@ class SettingsDialog(QtWidgets.QDialog):
         from packaging import version
         from PyQt5.QtWidgets import QMessageBox, QProgressDialog, QApplication
         from PyQt5 import QtGui
+        from .network.manager import NetworkManager  # 使用新的网络管理器
         GITHUB_API = "https://api.github.com/repos/leo8912/stock_monitor/releases/latest"
         try:
             # 读取GitHub Token
             cfg = load_config()
             github_token = cfg.get('github_token', '')
-            headers = {}
-            if github_token:
-                headers['Authorization'] = f'token {github_token}'
             
-            resp = requests.get(GITHUB_API, headers=headers, timeout=8)
-            if resp.status_code != 200:
-                if resp.status_code == 403 and 'rate limit' in resp.text.lower():
-                    # 提示用户添加GitHub Token
-                    app_logger.warning("达到GitHub API速率限制")
-                    QMessageBox.warning(self, "检查更新", "达到GitHub API速率限制，建议添加GitHub Token以提高请求频率。")
-                    return
-                else:
-                    raise Exception(f"Unexpected status code: {resp.status_code}")
+            # 使用新的网络管理器
+            network_manager = NetworkManager()
+            data = network_manager.github_api_request(GITHUB_API, github_token)
             
-            data = resp.json()
+            if not data:
+                app_logger.warning("无法获取GitHub发布信息")
+                QMessageBox.warning(self, "检查更新", "无法获取GitHub发布信息。")
+                return
+                
             tag = data.get('tag_name', '')
             m = re.search(r'v(\d+\.\d+\.\d+)', tag)
             latest_ver = m.group(0) if m else None
@@ -857,19 +853,22 @@ class SettingsDialog(QtWidgets.QDialog):
             try:
                 progress.setLabelText("正在下载新版本...")
                 QApplication.processEvents()
-                with requests.get(asset_url, stream=True) as r:
-                    r.raise_for_status()
-                    total = int(r.headers.get('content-length', 0))
-                    downloaded = 0
-                    with open(zip_path, 'wb') as f:
-                        for chunk in r.iter_content(chunk_size=8192):
-                            if chunk:
-                                f.write(chunk)
-                                downloaded += len(chunk)
-                                if total:
-                                    percent = int(downloaded * 100 / total)
-                                    progress.setValue(min(percent, 99))
-                                    QApplication.processEvents()
+                # 使用新的网络管理器下载文件
+                response = network_manager.get(asset_url, stream=True)
+                if not response:
+                    raise Exception("下载失败")
+                    
+                total = int(response.headers.get('content-length', 0))
+                downloaded = 0
+                with open(zip_path, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+                            downloaded += len(chunk)
+                            if total:
+                                percent = int(downloaded * 100 / total)
+                                progress.setValue(min(percent, 99))
+                                QApplication.processEvents()
                 progress.setValue(100)
                 progress.setLabelText("下载完成，正在解压...")
                 QApplication.processEvents()
