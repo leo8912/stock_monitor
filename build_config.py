@@ -8,24 +8,22 @@ PROJECT_ROOT = Path(__file__).parent.absolute()
 BUILD_OPTIONS = {
     'windowed': True,           # 无控制台窗口
     'onefile': True,            # 打包成单个文件
-    'icon': 'icon.ico',         # 图标文件
+    'icon': 'stock_monitor/resources/icon.ico',  # 图标文件
     'name': 'stock_monitor',    # 可执行文件名
 }
 
 # 需要添加的数据文件
 DATA_FILES = [
-    'stock_basic.json',
-    'icon.png',
-    'icon.ico'
+    'stock_monitor/resources/stock_basic.json',
+    'stock_monitor/resources/icon.ico'
 ]
 
 # 必需的文件列表（用于构建前检查）
 REQUIRED_FILES = [
-    'main.py',
+    'stock_monitor/main.py',
     'requirements.txt',
-    'icon.ico',
-    'icon.png',
-    'stock_basic.json'
+    'stock_monitor/resources/icon.ico',
+    'stock_monitor/resources/stock_basic.json'
 ]
 
 def get_build_command():
@@ -44,9 +42,9 @@ def get_build_command():
     
     # 添加数据文件
     for data_file in DATA_FILES:
-        cmd.extend(['--add-data', f'{data_file};.'])
+        cmd.extend(['--add-data', f'{data_file};stock_monitor/resources'])
     
     # 添加主程序
-    cmd.append('main.py')
+    cmd.append('stock_monitor/main.py')
     
     return cmd

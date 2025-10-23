@@ -1,15 +1,28 @@
 import sys
-import os
 from PyQt5 import QtWidgets, QtGui, QtCore
-from PyQt5.QtCore import pyqtSignal, pyqtSlot, Qt
+from PyQt5.QtCore import pyqtSignal, pyqtSlot
 
+# -*- coding: utf-8 -*-
+"""
+UI组件模块
+包含股票表格等UI组件的实现
+"""
+
+import sys
+from PyQt5 import QtWidgets, QtGui, QtCore
+from PyQt5.QtCore import pyqtSignal, pyqtSlot
+
+# 导入日志记录器
 from ..utils.logger import app_logger
 
 def resource_path(relative_path):
     """获取资源文件路径，兼容PyInstaller打包和源码运行"""
-    if hasattr(sys, '_MEIPASS'):
-        return os.path.join(getattr(sys, '_MEIPASS'), relative_path)
-    return os.path.join(os.path.abspath("."), relative_path)
+    try:
+        # PyInstaller创建的临时文件夹
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = "."
+    return QtCore.QDir(base_path).absoluteFilePath(relative_path)
 
 def get_stock_emoji(code, name):
     """根据股票代码和名称返回对应的emoji"""

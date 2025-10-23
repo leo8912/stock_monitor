@@ -23,7 +23,7 @@ def resource_path(relative_path):
     return os.path.join(os.path.abspath("."), relative_path)
 
 CONFIG_FILE = 'config.json'
-ICON_FILE = resource_path('icon.png')
+ICON_FILE = resource_path('icon.ico')  # 统一使用ICO格式图标
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')
 
 def load_config():
