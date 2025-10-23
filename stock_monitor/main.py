@@ -1,4 +1,4 @@
-APP_VERSION = 'v1.1.5'
+APP_VERSION = 'v1.1.6'
 
 import sys
 import os
@@ -15,12 +15,18 @@ from win32com.client import Dispatch
 from pypinyin import lazy_pinyin, Style
 
 from .utils.logger import app_logger
+from .data.updater import update_stock_database
+from .ui.market_status import MarketStatusBar
 
 def resource_path(relative_path):
     """获取资源文件路径，兼容PyInstaller打包和源码运行"""
     if hasattr(sys, '_MEIPASS'):
         return os.path.join(sys._MEIPASS, relative_path)
-    return os.path.join(os.path.abspath("."), relative_path)
+    # 修改资源路径，使其指向resources目录
+    # 基于当前文件(main.py)的目录定位resources文件夹
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    resources_dir = os.path.join(current_dir, 'resources')
+    return os.path.join(resources_dir, relative_path)
 
 CONFIG_FILE = 'config.json'
 ICON_FILE = resource_path('icon.ico')  # 统一使用ICO格式图标
@@ -797,7 +803,8 @@ class SettingsDialog(QtWidgets.QDialog):
                 if asset['name'] == 'stock_monitor.zip':
                     asset_url = asset['browser_download_url']
                     break
-            from main import APP_VERSION
+            # 修复导入方式，使用全局变量
+            global APP_VERSION
             if not latest_ver or not asset_url:
                 app_logger.warning("未检测到新版本信息")
                 QMessageBox.warning(self, "检查更新", "未检测到新版本信息。")
@@ -1005,7 +1012,8 @@ class StockTable(QtWidgets.QTableWidget):
             if seal_type == 'up':
                 for item in [item_name, item_price, item_change, item_seal]:
                     item.setBackground(QtGui.QColor('#ffecec'))
-                    item.setForeground(QtGui.QColor('#e74c3f'))
+                    # 使用与个股红盘一致的颜色，超过5%的用深红色
+                    item.setForeground(QtGui.QColor(color))
             elif seal_type == 'down':
                 for item in [item_name, item_price, item_change, item_seal]:
                     item.setBackground(QtGui.QColor('#e8f5e9'))
@@ -1060,11 +1068,15 @@ class MainWindow(QtWidgets.QWidget):
         self.resize(320, 160)
         self.drag_position = None
         
+        # 初始化股市状态条
+        self.market_status_bar = MarketStatusBar(self)
+        
         # 初始化UI
         self.table = StockTable(self)
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(6, 2, 6, 2)  # 进一步减小边距: 左6, 上2, 右6, 下2
         layout.setSpacing(0)
+        layout.addWidget(self.market_status_bar)  # 添加状态条
         layout.addWidget(self.table)
         self.setLayout(layout)
         
@@ -1096,6 +1108,10 @@ class MainWindow(QtWidgets.QWidget):
         # 立即刷新一次，确保在窗口显示前加载数据
         self.refresh_now(self.current_user_stocks)
         self._start_refresh_thread()
+        self._start_database_update_thread()
+        
+        # 启动时立即更新一次数据库
+        self._update_database_on_startup()
         
         # 显示窗口并加载位置
         self.load_position()
@@ -1257,6 +1273,10 @@ class MainWindow(QtWidgets.QWidget):
     def process_stock_data(self, data, stocks_list):
         """处理股票数据，返回格式化的股票列表"""
         stocks = []
+        up_count = 0    # 上涨股票数
+        down_count = 0  # 下跌股票数
+        flat_count = 0  # 平盘股票数
+        
         for code in stocks_list:
             info = None
             # 优先使用完整代码作为键进行精确匹配，防止 sh000001 和 000001 混淆
@@ -1281,11 +1301,29 @@ class MainWindow(QtWidgets.QWidget):
                     ask1_vol = float(info.get('ask1_volume', 0))
                     
                     percent = ((now - close) / close * 100) if close else 0
-                    color = '#e74c3f' if percent > 0 else '#27ae60' if percent < 0 else '#e6eaf3'
+                    # 修改颜色逻辑：超过5%的涨幅使用亮红色
+                    if percent >= 5:
+                        color = '#FF4500'  # 亮红色（更亮的红色）
+                    elif percent > 0:
+                        color = '#e74c3f'  # 红色
+                    elif percent < 0:
+                        color = '#27ae60'  # 绿色
+                    else:
+                        color = '#e6eaf3'  # 平盘
+                    
                     change_str = f"{percent:+.2f}%"
+                    
+                    # 统计涨跌数量
+                    if percent > 0:
+                        up_count += 1
+                    elif percent < 0:
+                        down_count += 1
+                    else:
+                        flat_count += 1
                 except (ValueError, TypeError, ZeroDivisionError):
                     color = '#e6eaf3'
                     change_str = "--"
+                    flat_count += 1  # 无法计算的股票视为平盘
                 
                 # 检测涨停/跌停封单
                 seal_vol = ''
@@ -1293,11 +1331,13 @@ class MainWindow(QtWidgets.QWidget):
                 try:
                     if (is_equal(str(now), str(high)) and is_equal(str(now), str(bid1)) and 
                         bid1_vol > 0 and is_equal(str(ask1), "0")):
-                        seal_vol = f"{int(bid1_vol/100):,}"
+                        # 将封单数转换为以"k"为单位，封单数/100000来算（万手转k）
+                        seal_vol = f"{int(bid1_vol/100000)}k" if bid1_vol >= 100000 else f"{int(bid1_vol)}"
                         seal_type = 'up'
                     elif (is_equal(str(now), str(low)) and is_equal(str(now), str(ask1)) and 
                           ask1_vol > 0 and is_equal(str(bid1), "0")):
-                        seal_vol = f"{int(ask1_vol/100):,}"
+                        # 将封单数转换为以"k"为单位，封单数/100000来算（万手转k）
+                        seal_vol = f"{int(ask1_vol/100000)}k" if ask1_vol >= 100000 else f"{int(ask1_vol)}"
                         seal_type = 'down'
                 except (ValueError, TypeError):
                     pass  # 忽略封单计算中的错误
@@ -1311,6 +1351,13 @@ class MainWindow(QtWidgets.QWidget):
                 if local_name:
                     name = local_name
                 stocks.append((name, "--", "--", "#e6eaf3", "", ""))
+                flat_count += 1  # 无数据的股票视为平盘
+        
+        # 更新股市状态条
+        total_count = len(stocks_list)
+        if total_count > 0:
+            self.market_status_bar.update_status(up_count, down_count, flat_count, total_count)
+        
         return stocks
 
     def refresh_now(self, stocks_list=None):
@@ -1434,6 +1481,57 @@ class MainWindow(QtWidgets.QWidget):
             sleep_time = self.refresh_interval if is_market_open() else 30
             app_logger.debug(f"下次刷新间隔: {sleep_time}秒")
             time.sleep(sleep_time)
+
+    def _update_database_on_startup(self):
+        """在启动时更新数据库"""
+        def update_database():
+            try:
+                app_logger.info("应用启动时更新股票数据库...")
+                success = update_stock_database()
+                if success:
+                    app_logger.info("启动时股票数据库更新完成")
+                else:
+                    app_logger.warning("启动时股票数据库更新失败")
+            except Exception as e:
+                app_logger.error(f"启动时数据库更新出错: {e}")
+        
+        # 在后台线程中执行数据库更新，避免阻塞UI
+        update_thread = threading.Thread(target=update_database, daemon=True)
+        update_thread.start()
+
+    def _start_database_update_thread(self):
+        """启动数据库更新线程"""
+        self._database_update_thread = threading.Thread(target=self._database_update_loop, daemon=True)
+        self._database_update_thread.start()
+
+    def _database_update_loop(self):
+        """数据库更新循环 - 每天更新一次股票数据库"""
+        # 等待应用启动完成
+        time.sleep(10)
+        
+        while True:
+            try:
+                # 检查是否是凌晨时段（2:00-4:00之间）
+                now = datetime.datetime.now()
+                if now.hour >= 2 and now.hour < 4:
+                    app_logger.info("开始更新股票数据库...")
+                    success = update_stock_database()
+                    if success:
+                        app_logger.info("股票数据库更新完成")
+                    else:
+                        app_logger.warning("股票数据库更新失败")
+                    
+                    # 等待到明天同一时间
+                    tomorrow = now + datetime.timedelta(days=1)
+                    tomorrow_update = tomorrow.replace(hour=3, minute=0, second=0, microsecond=0)
+                    sleep_seconds = (tomorrow_update - now).total_seconds()
+                    time.sleep(sleep_seconds)
+                else:
+                    # 如果不是更新时间，等待1小时再检查
+                    time.sleep(3600)
+            except Exception as e:
+                app_logger.error(f"数据库更新循环出错: {e}")
+                time.sleep(3600)  # 出错后等待1小时再重试
 
     def load_user_stocks(self):
         """加载用户自选股列表，包含完整的错误处理和格式规范化"""

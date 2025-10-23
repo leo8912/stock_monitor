@@ -127,7 +127,8 @@ class StockTable(QtWidgets.QTableWidget):
                 if seal_type == 'up':
                     for item in [item_name, item_price, item_change, item_seal]:
                         item.setBackground(QtGui.QColor('#ffecec'))
-                        item.setForeground(QtGui.QColor('#e74c3f'))
+                        # 使用与个股红盘一致的颜色，超过5%的用深红色
+                        item.setForeground(QtGui.QColor(color))
                 elif seal_type == 'down':
                     for item in [item_name, item_price, item_change, item_seal]:
                         item.setBackground(QtGui.QColor('#e8f5e9'))

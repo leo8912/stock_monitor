@@ -67,7 +67,15 @@ def process_stock_data(data: Dict[str, Any], stocks_list: List[str]) -> List[Tup
                 ask1_vol = float(info.get('ask1_volume', 0))
                 
                 percent = ((now - close) / close * 100) if close else 0
-                color = '#e74c3f' if percent > 0 else '#27ae60' if percent < 0 else '#e6eaf3'
+                # 修改颜色逻辑：超过5%的涨幅使用亮红色
+                if percent >= 5:
+                    color = '#FF4500'  # 亮红色（更亮的红色）
+                elif percent > 0:
+                    color = '#e74c3f'  # 红色
+                elif percent < 0:
+                    color = '#27ae60'  # 绿色
+                else:
+                    color = '#e6eaf3'  # 平盘
                 change_str = f"{percent:+.2f}%"
             except (ValueError, TypeError, ZeroDivisionError) as e:
                 app_logger.warning(f"股票 {code} 数据计算错误: {e}")
@@ -88,11 +96,13 @@ def process_stock_data(data: Dict[str, Any], stocks_list: List[str]) -> List[Tup
             try:
                 if (is_equal(str(now), str(high)) and is_equal(str(now), str(bid1)) and 
                     bid1_vol > 0 and is_equal(str(ask1), "0.0")):
-                    seal_vol = f"{int(bid1_vol/100):,}"
+                    # 将封单数转换为以"k"为单位，封单数/100000来算（万手转k）
+                    seal_vol = f"{int(bid1_vol/100000)}k" if bid1_vol >= 100000 else f"{int(bid1_vol)}"
                     seal_type = 'up'
                 elif (is_equal(str(now), str(low)) and is_equal(str(now), str(ask1)) and 
                       ask1_vol > 0 and is_equal(str(bid1), "0.0")):
-                    seal_vol = f"{int(ask1_vol/100):,}"
+                    # 将封单数转换为以"k"为单位，封单数/100000来算（万手转k）
+                    seal_vol = f"{int(ask1_vol/100000)}k" if ask1_vol >= 100000 else f"{int(ask1_vol)}"
                     seal_type = 'down'
             except (ValueError, TypeError) as e:
                 app_logger.debug(f"股票 {code} 封单计算错误: {e}")
