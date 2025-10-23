@@ -21,15 +21,24 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
-        python-version: '3.9'
+        python-version: '3.11'
 
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pyinstaller
+
+    - name: Verify required files exist
+      run: |
+        echo "Checking required files:"
+        ls -la stock_monitor/resources/
+        echo "Icon file exists:"
+        Test-Path stock_monitor/resources/icon.ico
+        echo "Stock data file exists:"
+        Test-Path stock_monitor/resources/stock_basic.json
 
     - name: Find easyquotation stock_codes.conf
       id: find_eq
@@ -42,9 +51,8 @@ jobs:
       run: |
         pyinstaller -y -w -i stock_monitor/resources/icon.ico -n stock_monitor stock_monitor/main.py `
           --add-data "$env:EQPATH\stock_codes.conf;easyquotation" `
-          --add-data "stock_monitor/resources/stock_basic.json;stock_monitor/resources" `
-          --add-data "stock_monitor/resources/icon.png;stock_monitor/resources" `
-          --add-data "stock_monitor/resources/icon.ico;stock_monitor/resources" `
+          --add-data "stock_monitor/resources/stock_basic.json;." `
+          --add-data "stock_monitor/resources/icon.ico;." `
           --hidden-import=pypinyin `
           --hidden-import=pypinyin.style
 
