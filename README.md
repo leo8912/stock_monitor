@@ -2,16 +2,19 @@
 
 本软件由0基础小白完全用AI编写，适合新手自用。
 
-
 ![alt text](image.png)
-
 
 ## 最新版本
 
-**v1.1.4**
+**v1.1.5**
 
 ### 更新日志
-- 修复Release说明中更新日志未显示问题，优化GitHub Actions工作流中的CHANGELOG.md提取逻辑
+- 优化GitHub Actions工作流，改进CHANGELOG.md提取逻辑，确保发布时能正确显示更新日志
+- v1.1.4 及以前：
+  - 修复上证指数与平安银行数据显示相同问题，优化股票数据键值映射逻辑
+  - 改进数据获取和处理逻辑，增强键值匹配准确性
+- v1.1.3 及以前：
+  - 修复Release说明中更新日志未显示问题，优化GitHub Actions工作流中的CHANGELOG.md提取逻辑
 - v1.1.2 及以前：
   - 调整版本更新机制，更新日志不再写入main.py文件
   - 修改GitHub Actions工作流，从CHANGELOG.md提取更新日志用于Release发布
@@ -44,6 +47,10 @@
 2. Windows 可用打包版，下载 release 页的 `stock_monitor.zip` 解压即用
 3. 设置界面可管理自选股、刷新频率、开机启动等
 
+## 开发文档
+
+有关开发信息，请参阅 [开发文档](docs/README.md)。
+
 ## 依赖环境
 - Python 3.7+
 - PyQt5
@@ -55,7 +62,7 @@
 ## 自动编译与发布
 - 采用 GitHub Actions 自动打包，主分支 main.py 变动即触发
 - 打包产物为 `stock_monitor.zip`，含所有依赖，解压即用
-- Release 日志自动提取 main.py 顶部所有版本说明，最新在前
+- Release 日志自动从 CHANGELOG.md 提取，最新在前
 
 ---
 

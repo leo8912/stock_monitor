@@ -3,12 +3,9 @@ name: Pack & Auto Release Stock Monitor
 on:
   push:
     paths:
-      - 'main.py'
+      - 'stock_monitor/**'
       - 'requirements.txt'
-      - 'stock_basic.json'
-      - 'theme_config.json'
-      - 'icon.ico'
-      - 'icon.png'
+      - '.github/workflows/pack-release.yml'
   workflow_dispatch:
 
 permissions:
@@ -32,7 +29,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pyinstaller pywin32 easyquotation
+        pip install pyinstaller
 
     - name: Find easyquotation stock_codes.conf
       id: find_eq
@@ -43,12 +40,11 @@ jobs:
 
     - name: Build with PyInstaller
       run: |
-        pyinstaller -y -w -i icon.ico -n stock_monitor main.py `
+        pyinstaller -y -w -i stock_monitor/resources/icon.ico -n stock_monitor stock_monitor/main.py `
           --add-data "$env:EQPATH\stock_codes.conf;easyquotation" `
-          --add-data "stock_basic.json;." `
-          --add-data "theme_config.json;." `
-          --add-data "icon.png;." `
-          --add-data "icon.ico;." `
+          --add-data "stock_monitor/resources/stock_basic.json;stock_monitor/resources" `
+          --add-data "stock_monitor/resources/icon.png;stock_monitor/resources" `
+          --add-data "stock_monitor/resources/icon.ico;stock_monitor/resources" `
           --hidden-import=pypinyin `
           --hidden-import=pypinyin.style
 
@@ -70,7 +66,7 @@ jobs:
       shell: bash
       run: |
         echo "import re" > get_version.py
-        echo "s=open('main.py',encoding='utf-8').read()" >> get_version.py
+        echo "s=open('stock_monitor/main.py',encoding='utf-8').read()" >> get_version.py
         echo "m=re.search(r\"APP_VERSION\\s*=\\s*['\\\"](v[\\d\\.]+)['\\\"]\", s)" >> get_version.py
         echo "print(f'version={m.group(1)}' if m else 'version=unknown')" >> get_version.py
 
@@ -85,10 +81,18 @@ jobs:
       id: extract_changelog
       run: |
         # Extract the latest changelog entry using PowerShell
-        $changelog = Get-Content -Path CHANGELOG.md -Raw | 
-                     Select-String -Pattern '## v\d+\.\d+\.\d+.*?(?=## v\d+\.\d+\.\d+|$)' -AllMatches | 
-                     ForEach-Object { $_.Matches[0].Value } | 
-                     Select-Object -First 1
+        $content = Get-Content -Path CHANGELOG.md -Raw
+        # Match the first version entry (most recent)
+        $pattern = "(## v\d+\.\d+\.\d+.*?)(?=## v\d+\.\d+\.\d+|\Z)"
+        $match = [regex]::Match($content, $pattern, [System.Text.RegularExpressions.RegexOptions]::Singleline)
+        if ($match.Success) {
+            $changelog = $match.Groups[1].Value.Trim()
+            # Remove trailing dashes if present
+            $changelog = $changelog -replace '-{3,}\s*$', ''
+            $changelog = $changelog.Trim()
+        } else {
+            $changelog = "暂无更新日志"
+        }
         # Debug output to verify extracted content
         echo "Extracted Changelog:"
         echo $changelog
@@ -107,4 +111,4 @@ jobs:
 
           ${{ steps.extract_changelog.outputs.changelog }}
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

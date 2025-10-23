@@ -7,6 +7,7 @@ import os
 import sys
 import subprocess
 from pathlib import Path
+from build_config import REQUIRED_FILES
 
 def test_dependencies():
     """测试依赖是否安装"""
@@ -39,16 +40,7 @@ def test_files():
     """测试必要文件是否存在"""
     print("\n测试必要文件...")
     
-    required_files = [
-        'main.py',
-        'requirements.txt', 
-        'icon.ico',
-        'icon.png',
-        'stock_basic.json',
-        'theme_config.json'
-    ]
-    
-    for file in required_files:
+    for file in REQUIRED_FILES:
         if os.path.exists(file):
             print(f"✓ {file} 存在")
         else:

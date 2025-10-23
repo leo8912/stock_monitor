@@ -8,6 +8,7 @@ import sys
 import shutil
 import subprocess
 from pathlib import Path
+from build_config import BUILD_OPTIONS, DATA_FILES, REQUIRED_FILES, get_build_command
 
 def install_easyquotation():
     """安装easyquotation并处理依赖"""
@@ -40,19 +41,10 @@ def build_executable():
     eq_path = install_easyquotation()
     
     # 构建命令
-    cmd = [
-        'pyinstaller',
-        '--windowed',  # 无控制台窗口
-        '--onefile',   # 打包成单个文件
-        '--icon=icon.ico',
-        '--name=stock_monitor',
-        f'--add-data={eq_path}/stock_codes.conf;easyquotation',
-        '--add-data=stock_basic.json;.',
-        '--add-data=theme_config.json;.',
-        '--add-data=icon.png;.',
-        '--add-data=icon.ico;.',
-        'main.py'
-    ]
+    cmd = get_build_command()
+    
+    # 添加easyquotation的stock_codes.conf
+    cmd.insert(-1, f'--add-data={eq_path}/stock_codes.conf;easyquotation')
     
     print(f"执行命令: {' '.join(cmd)}")
     
@@ -61,7 +53,7 @@ def build_executable():
         print("✓ 构建成功！")
         
         # 检查输出文件
-        exe_path = Path('dist/stock_monitor.exe')
+        exe_path = Path('dist') / f"{BUILD_OPTIONS['name']}.exe"
         if exe_path.exists():
             size_mb = exe_path.stat().st_size / (1024 * 1024)
             print(f"✓ 可执行文件大小: {size_mb:.1f} MB")
@@ -81,8 +73,7 @@ def main():
     print()
     
     # 检查必要文件
-    required_files = ['main.py', 'requirements.txt', 'icon.ico', 'icon.png']
-    for file in required_files:
+    for file in REQUIRED_FILES:
         if not os.path.exists(file):
             print(f"✗ 缺少必要文件: {file}")
             sys.exit(1)
@@ -92,11 +83,11 @@ def main():
     
     # 构建可执行文件
     if build_executable():
-        print("\n🎉 构建完成！")
-        print("可执行文件位置: dist/stock_monitor.exe")
+        print(f"\n🎉 构建完成！")
+        print(f"可执行文件位置: dist/{BUILD_OPTIONS['name']}.exe")
         sys.exit(0)
     else:
-        print("\n❌ 构建失败！")
+        print(f"\n❌ 构建失败！")
         sys.exit(1)
 
 if __name__ == '__main__':

@@ -1,4 +1,4 @@
-APP_VERSION = 'v1.1.4'
+APP_VERSION = 'v1.1.5'
 
 import sys
 import os
@@ -6,12 +6,15 @@ import json
 import threading
 import easyquotation
 from PyQt5 import QtWidgets, QtGui, QtCore
+from PyQt5.QtCore import pyqtSignal, pyqtSlot
 import time
-from PyQt5.QtCore import pyqtSignal, pyqtSlot, Qt
 import datetime
+import requests
 from win32com.client import Dispatch
 # 在文件开头导入pypinyin
 from pypinyin import lazy_pinyin, Style
+
+from .utils.logger import app_logger
 
 def resource_path(relative_path):
     """获取资源文件路径，兼容PyInstaller打包和源码运行"""
@@ -147,7 +150,7 @@ class SettingsDialog(QtWidgets.QDialog):
         self.setWindowTitle("自选股设置")
         self.setWindowIcon(QtGui.QIcon(resource_path('icon.ico')))
         # 去掉右上角问号
-        self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowContextHelpButtonHint)
+        self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowContextHelpButtonHint if hasattr(QtCore.Qt, 'WindowContextHelpButtonHint') else self.windowFlags())
         self.setModal(True)
         self.setMinimumSize(900, 650)
         self.resize(1000, 700)
@@ -164,8 +167,41 @@ class SettingsDialog(QtWidgets.QDialog):
         try:
             with open(resource_path("stock_basic.json"), "r", encoding="utf-8") as f:
                 return json.load(f)
-        except Exception:
-            return []
+        except Exception as e:
+            # 如果无法加载本地股票数据，则从网络获取部分股票数据
+            app_logger.warning(f"无法加载本地股票数据: {e}，将使用网络数据")
+            try:
+                import easyquotation
+                quotation = easyquotation.use('sina')
+                
+                # 获取一些热门股票作为默认数据
+                stock_codes = ['sh600460', 'sh603986', 'sh600030', 'sh000001', 'sz000001', 'sz000002', 'sh600036']
+                stock_data = []
+                
+                # 移除前缀以获取数据
+                pure_codes = [code[2:] if code.startswith(('sh', 'sz')) else code for code in stock_codes]
+                data = quotation.stocks(pure_codes)
+                
+                if data:
+                    for i, code in enumerate(stock_codes):
+                        pure_code = pure_codes[i]
+                        if pure_code in data and data[pure_code] and 'name' in data[pure_code] and data[pure_code]['name']:
+                            stock_data.append({
+                                'code': code,
+                                'name': data[pure_code]['name']
+                            })
+                        else:
+                            # 如果获取不到名称，就使用代码作为名称
+                            stock_data.append({
+                                'code': code,
+                                'name': code
+                            })
+                
+                return stock_data
+            except Exception as e2:
+                app_logger.error(f"无法从网络获取股票数据: {e2}")
+                # 返回空列表作为最后的备选方案
+                return []
 
     def enrich_pinyin(self, stock_list):
         for s in stock_list:
@@ -298,7 +334,7 @@ class SettingsDialog(QtWidgets.QDialog):
         right_layout.setContentsMargins(24, 24, 24, 24)
         # 标题
         stock_list_title = QtWidgets.QLabel("自选股列表：")
-        stock_list_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        stock_list_title.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         right_layout.addWidget(stock_list_title)
         right_layout.addSpacing(10)
         # 列表（极简样式）
@@ -334,7 +370,7 @@ class SettingsDialog(QtWidgets.QDialog):
             for i in range(self.stock_list.count()):
                 item = self.stock_list.item(i)
                 if item:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.stock_list.itemChanged.connect(lambda _: center_items())
         model = self.stock_list.model()
         if model:
@@ -400,7 +436,7 @@ class SettingsDialog(QtWidgets.QDialog):
         # 刷新频率
         freq_label = QtWidgets.QLabel("刷新频率：")
         freq_label.setStyleSheet("font-size: 18px; color: #333333;")
-        bottom_area.addWidget(freq_label, alignment=Qt.AlignmentFlag.AlignVCenter)
+        bottom_area.addWidget(freq_label, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
         
         self.freq_combo = QtWidgets.QComboBox()
         self.freq_combo.setMinimumWidth(120)
@@ -439,7 +475,7 @@ class SettingsDialog(QtWidgets.QDialog):
         ])
         self.freq_combo.setCurrentIndex(1)
         self.freq_combo.currentIndexChanged.connect(self.on_freq_changed)
-        bottom_area.addWidget(self.freq_combo, alignment=Qt.AlignmentFlag.AlignVCenter)
+        bottom_area.addWidget(self.freq_combo, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
         # 开机启动
         self.startup_checkbox = QtWidgets.QCheckBox("开机自动启动")
         self.startup_checkbox.setChecked(self.is_startup_enabled())
@@ -462,12 +498,12 @@ class SettingsDialog(QtWidgets.QDialog):
                 border: 1px solid #2196f3;
             }
         """)
-        bottom_area.addWidget(self.startup_checkbox, alignment=Qt.AlignmentFlag.AlignVCenter)
+        bottom_area.addWidget(self.startup_checkbox, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
         
         # 版本号
         self.version_label = QtWidgets.QLabel(f"版本号：{APP_VERSION}")
         self.version_label.setStyleSheet("color: #666666; font-size: 16px;")
-        bottom_area.addWidget(self.version_label, alignment=Qt.AlignmentFlag.AlignVCenter)
+        bottom_area.addWidget(self.version_label, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
         
         # 检查更新按钮
         self.update_btn = QtWidgets.QPushButton("检查更新")
@@ -491,7 +527,7 @@ class SettingsDialog(QtWidgets.QDialog):
         """)
         self.update_btn.setFixedHeight(32)
         self.update_btn.clicked.connect(self.check_update)
-        bottom_area.addWidget(self.update_btn, alignment=Qt.AlignmentFlag.AlignVCenter)
+        bottom_area.addWidget(self.update_btn, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
         bottom_area.addStretch(1)
         # 右侧按钮区
         btn_ok = QtWidgets.QPushButton("确定")
@@ -538,8 +574,8 @@ class SettingsDialog(QtWidgets.QDialog):
         btn_cancel.setFixedHeight(36)
         btn_cancel.clicked.connect(self.reject)
         
-        bottom_area.addWidget(btn_ok, alignment=Qt.AlignmentFlag.AlignVCenter)
-        bottom_area.addWidget(btn_cancel, alignment=Qt.AlignmentFlag.AlignVCenter)
+        bottom_area.addWidget(btn_ok, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
+        bottom_area.addWidget(btn_cancel, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
         layout.addLayout(bottom_area)
 
     def load_current_stocks(self):
@@ -600,7 +636,9 @@ class SettingsDialog(QtWidgets.QDialog):
             item.setText(f"{emoji}  {display}")
             # 匹配内容高亮（背景+加粗）
             if text:
-                for part in [s['code'].lower(), s['name'].lower(), s.get('pinyin',''), s.get('abbr',''), base]:
+                base = s['name'].replace('*', '').replace('ST', '').replace(' ', '').lower()
+                parts_to_search = [s['code'].lower(), s['name'].lower(), s.get('pinyin',''), s.get('abbr',''), base]
+                for part in parts_to_search:
                     idx = part.find(text)
                     if idx != -1:
                         item.setBackground(QtGui.QColor('#eaf3fc'))
@@ -730,6 +768,7 @@ class SettingsDialog(QtWidgets.QDialog):
                     pass
 
     def check_update(self):
+        """检查更新"""
         import requests, re, os, sys, zipfile, tempfile, subprocess
         from packaging import version
         from PyQt5.QtWidgets import QMessageBox, QProgressDialog, QApplication
@@ -747,6 +786,7 @@ class SettingsDialog(QtWidgets.QDialog):
             if resp.status_code != 200:
                 if resp.status_code == 403 and 'rate limit' in resp.text.lower():
                     # 提示用户添加GitHub Token
+                    app_logger.warning("达到GitHub API速率限制")
                     QMessageBox.warning(self, "检查更新", "达到GitHub API速率限制，建议添加GitHub Token以提高请求频率。")
                     return
                 else:
@@ -763,9 +803,11 @@ class SettingsDialog(QtWidgets.QDialog):
                     break
             from main import APP_VERSION
             if not latest_ver or not asset_url:
+                app_logger.warning("未检测到新版本信息")
                 QMessageBox.warning(self, "检查更新", "未检测到新版本信息。")
                 return
             if version.parse(latest_ver) <= version.parse(APP_VERSION):
+                app_logger.info("当前已是最新版本")
                 QMessageBox.information(self, "检查更新", f"当前已是最新版本：{APP_VERSION}")
                 return
             reply = QMessageBox.question(
@@ -832,6 +874,7 @@ class SettingsDialog(QtWidgets.QDialog):
                 progress.setLabelText("下载完成，正在解压...")
                 QApplication.processEvents()
             except Exception as e:
+                app_logger.error(f"下载新版本失败: {e}")
                 progress.close()
                 QMessageBox.warning(self, "升级失败", f"下载新版本失败：{e}")
                 return
@@ -847,6 +890,7 @@ class SettingsDialog(QtWidgets.QDialog):
                 progress.setLabelText("解压完成，正在升级...")
                 QApplication.processEvents()
             except Exception as e:
+                app_logger.error(f"解压新版本失败: {e}")
                 progress.close()
                 QMessageBox.warning(self, "升级失败", f"解压新版本失败：{e}")
                 return
@@ -868,16 +912,20 @@ start "" "{exe_dir}\\stock_monitor.exe"
                 progress.setValue(100)
                 QApplication.processEvents()
             except Exception as e:
+                app_logger.error(f"写入升级脚本失败: {e}")
                 progress.close()
                 QMessageBox.warning(self, "升级失败", f"写入升级脚本失败：{e}")
                 return
             progress.close()
+            app_logger.info("升级完成，即将重启")
             QMessageBox.information(self, "升级提示", "即将自动升级并重启，请稍候。")
             subprocess.Popen(['cmd', '/c', bat_path])
             QApplication.quit()
         except requests.exceptions.RequestException as e:
+            app_logger.error(f"网络异常，无法连接到GitHub: {e}")
             QMessageBox.warning(self, "检查更新", f"网络异常，无法连接到GitHub：{e}")
         except Exception as e:
+            app_logger.error(f"检查更新时发生错误: {e}")
             QMessageBox.warning(self, "检查更新", f"检查更新时发生错误：{e}")
 
 # 主界面同步显示“名称 代码”
@@ -1016,7 +1064,7 @@ class MainWindow(QtWidgets.QWidget):
         # 初始化UI
         self.table = StockTable(self)
         layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setContentsMargins(6, 2, 6, 2)  # 进一步减小边距: 左6, 上2, 右6, 下2
         layout.setSpacing(0)
         layout.addWidget(self.table)
         self.setLayout(layout)
@@ -1244,12 +1292,12 @@ class MainWindow(QtWidgets.QWidget):
                 seal_vol = ''
                 seal_type = ''
                 try:
-                    if (is_equal(now, high) and is_equal(now, bid1) and 
-                        bid1_vol > 0 and is_equal(ask1, 0)):
+                    if (is_equal(str(now), str(high)) and is_equal(str(now), str(bid1)) and 
+                        bid1_vol > 0 and is_equal(str(ask1), "0")):
                         seal_vol = f"{int(bid1_vol/100):,}"
                         seal_type = 'up'
-                    elif (is_equal(now, low) and is_equal(now, ask1) and 
-                          ask1_vol > 0 and is_equal(bid1, 0)):
+                    elif (is_equal(str(now), str(low)) and is_equal(str(now), str(ask1)) and 
+                          ask1_vol > 0 and is_equal(str(bid1), "0")):
                         seal_vol = f"{int(ask1_vol/100):,}"
                         seal_type = 'down'
                 except (ValueError, TypeError):
@@ -1267,6 +1315,7 @@ class MainWindow(QtWidgets.QWidget):
         return stocks
 
     def refresh_now(self, stocks_list=None):
+        """立即刷新数据"""
         if stocks_list is None:
             stocks_list = self.current_user_stocks
         if hasattr(self, 'quotation') and hasattr(self.quotation, 'real') and callable(self.quotation.real):
@@ -1283,6 +1332,7 @@ class MainWindow(QtWidgets.QWidget):
                         else:
                             failed_stocks.append(code)
                     except Exception as e:
+                        app_logger.error(f'获取股票 {code} 数据失败: {e}')
                         print(f'获取股票 {code} 数据失败: {e}')
                         failed_stocks.append(code)
                 
@@ -1290,6 +1340,7 @@ class MainWindow(QtWidgets.QWidget):
                 
                 # 如果所有股票都失败了，显示错误信息
                 if len(failed_stocks) == len(stocks_list) and len(stocks_list) > 0:
+                    app_logger.error("所有股票数据获取失败")
                     error_stocks = [("数据加载失败", "--", "--", "#e6eaf3", "", "")] * len(stocks_list)
                     self.table.setRowCount(0)
                     self.table.clearContents()
@@ -1303,7 +1354,9 @@ class MainWindow(QtWidgets.QWidget):
                 self.table.repaint()
                 QtWidgets.QApplication.processEvents()
                 self.adjust_window_height()  # 每次刷新后自适应高度
+                app_logger.debug(f"数据刷新完成，失败{len(failed_stocks)}只股票")
             except Exception as e:
+                app_logger.error(f'行情刷新异常: {e}')
                 print('行情刷新异常:', e)
                 # 显示错误信息
                 error_stocks = [("数据加载异常", "--", "--", "#e6eaf3", "", "")] * max(3, len(stocks_list) if stocks_list else 3)
@@ -1329,6 +1382,7 @@ class MainWindow(QtWidgets.QWidget):
         self._refresh_thread.start()
 
     def _refresh_loop(self):
+        """刷新循环"""
         consecutive_failures = 0
         max_consecutive_failures = 3  # 最大连续失败次数
         
@@ -1349,6 +1403,7 @@ class MainWindow(QtWidgets.QWidget):
                                 else:
                                     failed_count += 1
                             except Exception as e:
+                                app_logger.error(f'获取股票 {code} 数据失败: {e}')
                                 print(f'获取股票 {code} 数据失败: {e}')
                                 failed_count += 1
                     
@@ -1356,24 +1411,29 @@ class MainWindow(QtWidgets.QWidget):
                     
                     # 如果所有股票都失败了，且股票列表不为空，显示错误信息
                     if failed_count == len(self.current_user_stocks) and len(self.current_user_stocks) > 0:
+                        app_logger.error("所有股票数据获取失败")
                         error_stocks = [("数据加载失败", "--", "--", "#e6eaf3", "", "")] * len(self.current_user_stocks)
                         self.update_table_signal.emit(error_stocks)
                     else:
                         self.update_table_signal.emit(stocks)
                         
                     consecutive_failures = 0  # 重置失败计数
+                    app_logger.debug(f"后台刷新完成，失败{failed_count}只股票")
                 except Exception as e:
+                    app_logger.error(f'行情刷新异常: {e}')
                     print('行情刷新异常:', e)
                     consecutive_failures += 1
                     
                     # 如果连续失败多次，发送错误信息到UI
                     if consecutive_failures >= max_consecutive_failures:
+                        app_logger.error(f"连续{max_consecutive_failures}次刷新失败")
                         error_stocks = [("网络连接异常", "--", "--", "#e6eaf3", "", "")] * max(3, len(self.current_user_stocks))
                         self.update_table_signal.emit(error_stocks)
                         consecutive_failures = 0  # 重置失败计数
             
             # 根据开市状态决定刷新间隔
             sleep_time = self.refresh_interval if is_market_open() else 30
+            app_logger.debug(f"下次刷新间隔: {sleep_time}秒")
             time.sleep(sleep_time)
 
     def load_user_stocks(self):
@@ -1489,7 +1549,7 @@ class MainWindow(QtWidgets.QWidget):
         else:
             row_height = 36  # 默认
         min_rows = 3
-        layout_margin = 24  # QVBoxLayout上下边距
+        layout_margin = 4  # 固定边距总和
         table_height = max(self.table.rowCount(), min_rows) * row_height
         # 增加表头高度（4列时略增）
         new_height = table_height + layout_margin
@@ -1501,10 +1561,16 @@ class MainWindow(QtWidgets.QWidget):
             if item and item.text().strip():
                 has_seal = True
                 break
+        
+        # 根据内容自适应宽度
+        base_width = 280  # 基础宽度
+        seal_width_addition = 80  # 有封单时的额外宽度
+        margin_adjustment = 12  # 边距调整
+        
         if has_seal:
-            self.setFixedWidth(400)
+            self.setFixedWidth(base_width + seal_width_addition - margin_adjustment)
         else:
-            self.setFixedWidth(320)
+            self.setFixedWidth(base_width - margin_adjustment)
 
 class StockListWidget(QtWidgets.QListWidget):
     def __init__(self, parent=None, sync_callback=None):
