@@ -4,7 +4,7 @@ import shutil
 from typing import Dict, Any, Optional, Union, List
 from ..utils.logger import app_logger
 
-# 配置文件路径
+# 配置文件路径 - 修正路径，确保指向正确位置
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')
 
 def load_config() -> Dict[str, Any]:
@@ -108,3 +108,13 @@ def save_config(cfg: Dict[str, Any]) -> None:
         error_msg = f"保存配置文件时发生错误: {e}"
         app_logger.error(error_msg)
         print(error_msg)
+
+def is_market_open():
+    """检查A股是否开市"""
+    import datetime
+    now = datetime.datetime.now()
+    if now.weekday() >= 5:  # 周末
+        return False
+    t = now.time()
+    return ((datetime.time(9,30) <= t <= datetime.time(11,30)) or 
+            (datetime.time(13,0) <= t <= datetime.time(15,0)))

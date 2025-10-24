@@ -51,8 +51,8 @@ jobs:
       run: |
         pyinstaller -y -w -i stock_monitor/resources/icon.ico -n stock_monitor stock_monitor/main.py `
           --add-data "$env:EQPATH\stock_codes.conf;easyquotation" `
-          --add-data "stock_monitor/resources/stock_basic.json;." `
-          --add-data "stock_monitor/resources/icon.ico;." `
+          --add-data "stock_monitor/resources/stock_basic.json;stock_monitor/resources" `
+          --add-data "stock_monitor/resources/icon.ico;stock_monitor/resources" `
           --hidden-import=pypinyin `
           --hidden-import=pypinyin.style
 

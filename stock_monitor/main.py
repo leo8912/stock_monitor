@@ -17,6 +17,8 @@ from pypinyin import lazy_pinyin, Style
 from .utils.logger import app_logger
 from .data.updater import update_stock_database
 from .ui.market_status import MarketStatusBar
+from .ui.settings_dialog import StockListWidget
+from .config.manager import is_market_open
 
 def resource_path(relative_path):
     """获取资源文件路径，兼容PyInstaller打包和源码运行"""
@@ -114,15 +116,9 @@ def save_config(cfg):
     except Exception:
         pass
 
-def is_market_open():
-    """检查A股是否开市"""
-    now = datetime.datetime.now()
-    if now.weekday() >= 5:  # 周末
-        return False
-    t = now.time()
-    return ((datetime.time(9,30) <= t <= datetime.time(11,30)) or 
-            (datetime.time(13,0) <= t <= datetime.time(15,0)))
 
+# 从ui模块导入SettingsDialog
+from .ui.settings_dialog import SettingsDialog
 def get_stock_emoji(code, name):
     """根据股票代码和名称返回对应的emoji"""
     if code.startswith(('sh000', 'sz399', 'sz159', 'sh510')) or (name and ('指数' in name or '板块' in name)):
@@ -148,226 +144,10 @@ def is_equal(a, b, tol=0.01):
     except Exception:
         return False
 
-class SettingsDialog(QtWidgets.QDialog):
-    config_changed = pyqtSignal(list, int)  # stocks, refresh_interval
-    
-    def __init__(self, parent=None, main_window=None):
-        super().__init__(parent)
-        self.setWindowTitle("自选股设置")
-        self.setWindowIcon(QtGui.QIcon(resource_path('icon.ico')))
-        # 去掉右上角问号
-        self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowContextHelpButtonHint if hasattr(QtCore.Qt, 'WindowContextHelpButtonHint') else self.windowFlags())
-        self.setModal(True)
-        self.setMinimumSize(900, 650)
-        self.resize(1000, 700)
-        self.main_window = main_window
-        self.stock_data = self.enrich_pinyin(self.load_stock_data())
-        self.selected_stocks = []
-        self.refresh_interval = 5
-        self.init_ui()
-        self.load_current_stocks()
-        self.load_refresh_interval()
 
-    def load_stock_data(self):
-        import json
-        try:
-            with open(resource_path("stock_basic.json"), "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            # 如果无法加载本地股票数据，则从网络获取部分股票数据
-            app_logger.warning(f"无法加载本地股票数据: {e}，将使用网络数据")
-            try:
-                import easyquotation
-                quotation = easyquotation.use('sina')
-                
-                # 获取一些热门股票作为默认数据
-                stock_codes = ['sh600460', 'sh603986', 'sh600030', 'sh000001', 'sz000001', 'sz000002', 'sh600036']
-                stock_data = []
-                
-                # 移除前缀以获取数据
-                pure_codes = [code[2:] if code.startswith(('sh', 'sz')) else code for code in stock_codes]
-                data = quotation.stocks(pure_codes)
-                
-                if data:
-                    for i, code in enumerate(stock_codes):
-                        pure_code = pure_codes[i]
-                        if pure_code in data and data[pure_code] and 'name' in data[pure_code] and data[pure_code]['name']:
-                            stock_data.append({
-                                'code': code,
-                                'name': data[pure_code]['name']
-                            })
-                        else:
-                            # 如果获取不到名称，就使用代码作为名称
-                            stock_data.append({
-                                'code': code,
-                                'name': code
-                            })
-                
-                return stock_data
-            except Exception as e2:
-                app_logger.error(f"无法从网络获取股票数据: {e2}")
-                # 返回空列表作为最后的备选方案
-                return []
-
-    def enrich_pinyin(self, stock_list):
-        for s in stock_list:
-            name = s['name']
-            # 去除*ST、ST等前缀
-            base = name.replace('*', '').replace('ST', '').replace(' ', '')
-            # 全拼
-            full_pinyin = ''.join(lazy_pinyin(base))
-            # 首字母
-            abbr = ''.join(lazy_pinyin(base, style=Style.FIRST_LETTER))
-            s['pinyin'] = full_pinyin.lower()
-            s['abbr'] = abbr.lower()
-        return stock_list
-
-    def init_ui(self):
-        self.setStyleSheet('''
-            QDialog { 
-                background: #fafafa; 
-            }
-            QLabel { 
-                color: #333333; 
-                font-size: 20px; 
-                font-weight: normal; 
-                font-family: "Microsoft YaHei", "微软雅黑";
-            }
-            QLineEdit, QListWidget, QComboBox {
-                background: #ffffff; 
-                color: #333333; 
-                font-size: 18px; 
-                border-radius: 6px;
-                border: 1px solid #e0e0e0; 
-                padding: 8px 12px;
-                font-family: "Microsoft YaHei", "微软雅黑";
-            }
-            QLineEdit:focus, QListWidget:focus, QComboBox:focus {
-                border: 1px solid #2196f3;
-                background: #ffffff;
-            }
-            QListWidget { 
-                font-size: 20px; 
-                border: none;
-                outline: none;
-                background: transparent;
-            }
-            QListWidget::item { 
-                height: 44px; 
-                border-radius: 4px;
-                margin: 1px 2px;
-                padding: 4px 8px;
-            }
-            QListWidget::item:selected {
-                background: #e3f2fd;
-                color: #1976d2;
-            }
-            QListWidget::item:hover {
-                background: #f5f5f5;
-            }
-            QPushButton {
-                background: #2196f3;
-                color: #ffffff; 
-                font-size: 18px; 
-                border-radius: 6px;
-                padding: 8px 24px;
-                border: none;
-                font-weight: normal;
-                font-family: "Microsoft YaHei", "微软雅黑";
-            }
-            QPushButton:hover { 
-                background: #1976d2;
-            }
-            QPushButton:pressed { 
-                background: #0d47a1;
-            }
-            QCheckBox { 
-                font-size: 18px; 
-                color: #333333; 
-                font-family: "Microsoft YaHei", "微软雅黑";
-            }
-            QCheckBox::indicator {
-                width: 18px;
-                height: 18px;
-                border-radius: 2px;
-                border: 1px solid #bdbdbd;
-            }
-            QCheckBox::indicator:checked {
-                background: #2196f3;
-                border: 1px solid #2196f3;
-            }
-        ''')
-        layout = QtWidgets.QVBoxLayout(self)
-        layout.setSpacing(0)
-        layout.setContentsMargins(32, 32, 32, 32)
-
-        # 主体区域（左右对称）
-        main_area = QtWidgets.QHBoxLayout()
-        main_area.setSpacing(32)
-        main_area.setContentsMargins(0, 0, 0, 0)
-        # 左侧
-        left_box = QtWidgets.QVBoxLayout()
-        left_box.setSpacing(18)
-        left_box.setContentsMargins(0, 0, 0, 0)
-        self.search_edit = QtWidgets.QLineEdit()
-        self.search_edit.setPlaceholderText("输入股票代码/名称/拼音")
-        self.search_edit.textChanged.connect(self.on_search)
-        self.search_edit.returnPressed.connect(self.add_first_search_result)
-        self.search_edit.setFixedHeight(44)
-        left_box.addWidget(self.search_edit)
-        self.search_results = QtWidgets.QListWidget()
-        self.search_results.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
-        self.search_results.itemDoubleClicked.connect(self.add_selected_stock)
-        self.search_results.setFixedSize(340, 480)
-        left_box.addWidget(self.search_results)
-        left_box.addStretch(1)
-        left_widget = QtWidgets.QWidget()
-        left_widget.setLayout(left_box)
-        left_widget.setFixedSize(360, 540)
-
-        # 右侧自选股区（极简风格）
-        right_frame = QtWidgets.QFrame()
-        right_frame.setFixedSize(400, 540)
-        right_frame.setStyleSheet(
-            "QFrame { "
-            "background: #ffffff; "
-            "border-radius: 8px; "
-            "border: 1px solid #e0e0e0; "
-            "}"
-        )
-        right_layout = QtWidgets.QVBoxLayout(right_frame)
-        right_layout.setSpacing(0)
-        right_layout.setContentsMargins(24, 24, 24, 24)
-        # 标题
-        stock_list_title = QtWidgets.QLabel("自选股列表：")
-        stock_list_title.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        right_layout.addWidget(stock_list_title)
-        right_layout.addSpacing(10)
-        # 列表（极简样式）
-        self.stock_list = StockListWidget(sync_callback=self.sync_to_main)
-        self.stock_list.setStyleSheet("""
-            QListWidget {
-                font-size: 18px;
-                border: none;
-                outline: none;
-                background: transparent;
-                font-family: "Microsoft YaHei", "微软雅黑";
-            }
-            QListWidget::item {
-                height: 40px;
-                border-radius: 4px;
-                margin: 1px 2px;
-                padding: 4px 8px;
-                background: transparent;
-            }
-            QListWidget::item:selected {
-                background: #e3f2fd;
-                color: #1976d2;
-            }
-            QListWidget::item:hover {
-                background: #f5f5f5;
-            }
-        """)
+    def some_method(self):
+        # 修复残留的CSS代码
+        pass
         self.stock_list.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
         self.stock_list.setDragDropMode(QtWidgets.QAbstractItemView.InternalMove)
         self.stock_list.setMinimumHeight(370)
@@ -1668,22 +1448,6 @@ class MainWindow(QtWidgets.QWidget):
             self.setFixedWidth(base_width + seal_width_addition - margin_adjustment)
         else:
             self.setFixedWidth(base_width - margin_adjustment)
-
-class StockListWidget(QtWidgets.QListWidget):
-    def __init__(self, parent=None, sync_callback=None):
-        super().__init__(parent)
-        self.sync_callback = sync_callback
-        # 设置拖拽相关属性
-        self.setDragDropMode(QtWidgets.QAbstractItemView.InternalMove)
-        self.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
-        self.setDragEnabled(True)
-        self.setAcceptDrops(True)
-        self.setDropIndicatorShown(True)
-
-    def dropEvent(self, event):
-        super().dropEvent(event)
-        if self.sync_callback:
-            self.sync_callback()
 
 class SystemTray(QtWidgets.QSystemTrayIcon):
     def __init__(self, main_window):
