@@ -118,7 +118,7 @@ def save_config(cfg):
 
 
 # 从ui模块导入SettingsDialog
-from .ui.settings_dialog import SettingsDialog
+from stock_monitor.ui.settings_dialog import SettingsDialog
 def get_stock_emoji(code, name):
     """根据股票代码和名称返回对应的emoji"""
     if code.startswith(('sh000', 'sz399', 'sz159', 'sh510')) or (name and ('指数' in name or '板块' in name)):
@@ -559,7 +559,7 @@ def is_equal(a, b, tol=0.01):
         from packaging import version
         from PyQt5.QtWidgets import QMessageBox, QProgressDialog, QApplication
         from PyQt5 import QtGui
-        from .network.manager import NetworkManager  # 使用新的网络管理器
+        from stock_monitor.network.manager import NetworkManager  # 使用新的网络管理器
         GITHUB_API = "https://api.github.com/repos/leo8912/stock_monitor/releases/latest"
         try:
             # 读取GitHub Token
@@ -906,7 +906,7 @@ class MainWindow(QtWidgets.QWidget):
             for child in widget.findChildren(QtWidgets.QWidget):
                 self.install_event_filters(child)
 
-    def eventFilter(self, a0, a1):
+    def eventFilter(self, obj, event):
         if event.type() == QtCore.QEvent.MouseButtonPress:  # type: ignore
             if event.button() == QtCore.Qt.LeftButton:  # type: ignore
                 self.drag_position = event.globalPos() - self.frameGeometry().topLeft()
@@ -979,7 +979,7 @@ class MainWindow(QtWidgets.QWidget):
             self.setCursor(QtCore.Qt.SizeAllCursor)  # type: ignore
             event.accept()
         elif event.button() == QtCore.Qt.RightButton:  # type: ignore
-            self.menu.popup(event.globalPos())
+            self.menu.popup(a1.globalPos())
 
     def mouseMoveEvent(self, a0):
         if event.buttons() == QtCore.Qt.LeftButton and self.drag_position is not None:  # type: ignore
