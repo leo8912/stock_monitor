@@ -14,11 +14,11 @@ from win32com.client import Dispatch
 # 在文件开头导入pypinyin
 from pypinyin import lazy_pinyin, Style
 
-from .utils.logger import app_logger
-from .data.updater import update_stock_database
-from .ui.market_status import MarketStatusBar
-from .ui.settings_dialog import StockListWidget
-from .config.manager import is_market_open
+from stock_monitor.utils.logger import app_logger
+from stock_monitor.data.updater import update_stock_database
+from stock_monitor.ui.market_status import MarketStatusBar
+from stock_monitor.ui.settings_dialog import StockListWidget
+from stock_monitor.config.manager import is_market_open
 
 def resource_path(relative_path):
     """获取资源文件路径，兼容PyInstaller打包和源码运行"""
@@ -906,7 +906,7 @@ class MainWindow(QtWidgets.QWidget):
             for child in widget.findChildren(QtWidgets.QWidget):
                 self.install_event_filters(child)
 
-    def eventFilter(self, obj, event):
+    def eventFilter(self, a0, a1):
         if event.type() == QtCore.QEvent.MouseButtonPress:  # type: ignore
             if event.button() == QtCore.Qt.LeftButton:  # type: ignore
                 self.drag_position = event.globalPos() - self.frameGeometry().topLeft()
@@ -973,7 +973,7 @@ class MainWindow(QtWidgets.QWidget):
             return True
         return super().eventFilter(obj, event)
 
-    def mousePressEvent(self, event):
+    def mousePressEvent(self, a0):
         if event.button() == QtCore.Qt.LeftButton:  # type: ignore
             self.drag_position = event.globalPos() - self.frameGeometry().topLeft()
             self.setCursor(QtCore.Qt.SizeAllCursor)  # type: ignore
@@ -981,12 +981,12 @@ class MainWindow(QtWidgets.QWidget):
         elif event.button() == QtCore.Qt.RightButton:  # type: ignore
             self.menu.popup(event.globalPos())
 
-    def mouseMoveEvent(self, event):
+    def mouseMoveEvent(self, a0):
         if event.buttons() == QtCore.Qt.LeftButton and self.drag_position is not None:  # type: ignore
             self.move(event.globalPos() - self.drag_position)
             event.accept()
 
-    def mouseReleaseEvent(self, event):
+    def mouseReleaseEvent(self, a0):
         self.drag_position = None
         self.setCursor(QtCore.Qt.ArrowCursor)  # type: ignore
         self.save_position()  # 拖动结束时自动保存位置
