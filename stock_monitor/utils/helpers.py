@@ -5,7 +5,10 @@ def resource_path(relative_path):
     """获取资源文件路径，兼容PyInstaller打包和源码运行"""
     if hasattr(sys, '_MEIPASS'):
         return os.path.join(getattr(sys, '_MEIPASS'), relative_path)
-    return os.path.join(os.path.abspath("."), relative_path)
+    # 基于当前文件的目录定位resources文件夹
+    current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    resources_dir = os.path.join(current_dir, 'resources')
+    return os.path.join(resources_dir, relative_path)
 
 def get_stock_emoji(code, name):
     """根据股票代码和名称返回对应的emoji"""

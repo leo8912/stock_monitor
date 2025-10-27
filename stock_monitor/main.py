@@ -1,4 +1,4 @@
-APP_VERSION = 'v1.1.6'
+APP_VERSION = 'v1.1.7'
 
 import sys
 import os
@@ -1136,7 +1136,8 @@ class MainWindow(QtWidgets.QWidget):
         # 更新股市状态条
         total_count = len(stocks_list)
         if total_count > 0:
-            self.market_status_bar.update_status(up_count, down_count, flat_count, total_count)
+            # 不再更新市场状态条，让它显示全市场的数据
+            pass
         
         return stocks
 
@@ -1289,6 +1290,9 @@ class MainWindow(QtWidgets.QWidget):
         # 等待应用启动完成
         time.sleep(10)
         
+        # 启动后立即更新一次市场状态
+        self.market_status_bar.update_market_status()
+        
         while True:
             try:
                 # 检查是否是凌晨时段（2:00-4:00之间）
@@ -1298,6 +1302,8 @@ class MainWindow(QtWidgets.QWidget):
                     success = update_stock_database()
                     if success:
                         app_logger.info("股票数据库更新完成")
+                        # 数据库更新完成后，更新市场状态
+                        self.market_status_bar.update_market_status()
                     else:
                         app_logger.warning("股票数据库更新失败")
                     
@@ -1307,8 +1313,9 @@ class MainWindow(QtWidgets.QWidget):
                     sleep_seconds = (tomorrow_update - now).total_seconds()
                     time.sleep(sleep_seconds)
                 else:
-                    # 如果不是更新时间，等待1小时再检查
-                    time.sleep(3600)
+                    # 每30秒更新一次市场状态
+                    time.sleep(30)
+                    self.market_status_bar.update_market_status()
             except Exception as e:
                 app_logger.error(f"数据库更新循环出错: {e}")
                 time.sleep(3600)  # 出错后等待1小时再重试

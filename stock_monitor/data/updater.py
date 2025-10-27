@@ -7,13 +7,14 @@ import json
 import os
 from typing import List, Dict
 from ..utils.logger import app_logger
+from typing import Any, Union
 
 
 def resource_path(relative_path):
     """获取资源文件路径，兼容PyInstaller打包和源码运行"""
     import sys
     if hasattr(sys, '_MEIPASS'):
-        return os.path.join(sys._MEIPASS, relative_path)
+        return os.path.join(getattr(sys, '_MEIPASS'), relative_path)
     # 基于当前文件的目录定位resources文件夹
     current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     resources_dir = os.path.join(current_dir, 'resources')
@@ -57,13 +58,57 @@ def fetch_all_stocks() -> List[Dict[str, str]]:
                     for j, code in enumerate(batch_codes):
                         pure_code = pure_codes[j]
                         if pure_code in data and data[pure_code] and 'name' in data[pure_code]:
+                            # 特殊处理：确保上证指数正确映射
+                            name = data[pure_code]['name']
+                            if pure_code == '000001':
+                                # 根据前缀确定正确的名称
+                                if code.startswith('sh'):
+                                    name = '上证指数'
+                                elif code.startswith('sz'):
+                                    name = '平安银行'
+                                    
                             stocks_data.append({
                                 'code': code,
-                                'name': data[pure_code]['name']
+                                'name': name
                             })
             except Exception as e:
                 app_logger.warning(f"获取批次股票数据失败: {e}")
                 continue
+        
+        # 添加主要指数数据
+        try:
+            index_data: Union[Dict[str, Any], None] = quotation.stocks(['sh000001', 'sh000002', 'sh000300', 'sz399001', 'sz399006'], prefix=True)
+            if index_data:
+                for code, info in index_data.items():
+                    if info and 'name' in info:
+                        stocks_data.append({
+                            'code': code,
+                            'name': info['name']
+                        })
+        except Exception as e:
+            app_logger.warning(f"获取指数数据失败: {e}")
+        
+        # 去重处理，确保每个代码只出现一次
+        unique_stocks = {}
+        for stock in stocks_data:
+            code = stock['code']
+            # 对于重复的代码，优先保留指数类的
+            if code in unique_stocks:
+                # 如果已存在的不是指数而当前是指数，则替换
+                existing_name = unique_stocks[code]['name']
+                current_name = stock['name']
+                # 特殊处理：确保上证指数和Ａ股指数优先
+                if (code == 'sh000001' and current_name == '上证指数') or \
+                   (code == 'sh000002' and 'Ａ股' in current_name) or \
+                   (code == 'sz000002' and current_name == '万科Ａ'):
+                    unique_stocks[code] = stock
+                elif ('指数' in current_name and '指数' not in existing_name) or \
+                     ('Ａ股' in current_name and 'Ａ股' not in existing_name):
+                    unique_stocks[code] = stock
+            else:
+                unique_stocks[code] = stock
+        
+        stocks_data = list(unique_stocks.values())
         
         app_logger.info(f"成功获取 {len(stocks_data)} 只股票数据")
         return stocks_data
@@ -91,12 +136,12 @@ def update_stock_database() -> bool:
         # 按代码排序
         stocks_data.sort(key=lambda x: x['code'])
         
-        # 写入文件
+        # 直接使用网络数据覆盖本地文件，去除所有手动修改
         stock_file_path = resource_path("stock_basic.json")
         with open(stock_file_path, 'w', encoding='utf-8') as f:
             json.dump(stocks_data, f, ensure_ascii=False, indent=2)
         
-        app_logger.info(f"股票数据库更新完成，共 {len(stocks_data)} 只股票")
+        app_logger.info(f"股票数据库更新完成，共 {len(stocks_data)} 只股票，已清除所有本地手动修改")
         return True
         
     except Exception as e:
@@ -106,7 +151,7 @@ def update_stock_database() -> bool:
 
 def get_stock_list() -> List[Dict[str, str]]:
     """
-    获取股票列表，优先从本地文件读取，如果失败则从网络获取
+    获取股票列表，完全从本地文件读取
     
     Returns:
         List[Dict[str, str]]: 股票列表
@@ -116,8 +161,9 @@ def get_stock_list() -> List[Dict[str, str]]:
         with open(stock_file_path, 'r', encoding='utf-8') as f:
             return json.load(f)
     except Exception as e:
-        app_logger.warning(f"无法从本地文件加载股票数据: {e}，尝试从网络获取")
-        return fetch_all_stocks()
+        app_logger.error(f"无法从本地文件加载股票数据: {e}")
+        # 返回空列表而不是从网络获取
+        return []
 
 
 if __name__ == "__main__":
