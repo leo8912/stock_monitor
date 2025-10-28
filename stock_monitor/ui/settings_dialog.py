@@ -20,6 +20,9 @@ from ..version import APP_VERSION
 
 
 class StockListWidget(QtWidgets.QListWidget):
+    # 定义一个节流信号，用于优化拖拽性能
+    items_reordered = pyqtSignal()
+    
     def __init__(self, parent=None, sync_callback=None):
         super(StockListWidget, self).__init__(parent)
         self.sync_callback = sync_callback
@@ -29,9 +32,26 @@ class StockListWidget(QtWidgets.QListWidget):
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
         self.setDropIndicatorShown(True)
+        
+        # 节流定时器，用于优化频繁的拖拽事件
+        self._throttle_timer = QtCore.QTimer(self)
+        self._throttle_timer.setSingleShot(True)
+        self._throttle_timer.timeout.connect(self._on_items_reordered)  # type: ignore
+        self.items_reordered.connect(self._throttle_reorder)  # type: ignore
 
     def dropEvent(self, event):
         super(StockListWidget, self).dropEvent(event)
+        # 发出重新排序信号而不是直接调用回调
+        self.items_reordered.emit()
+
+    def _throttle_reorder(self):
+        """节流处理重新排序事件"""
+        if self._throttle_timer.isActive():
+            self._throttle_timer.stop()
+        self._throttle_timer.start(100)  # 100ms节流延迟
+
+    def _on_items_reordered(self):
+        """实际处理重新排序的回调"""
         if self.sync_callback:
             self.sync_callback()
 
@@ -45,7 +65,7 @@ class SettingsDialog(QtWidgets.QDialog):
         self.setWindowIcon(QtGui.QIcon(resource_path('icon.ico')))
         # 去掉右上角问号
         if hasattr(QtCore.Qt, 'WindowContextHelpButtonHint'):
-            self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowContextHelpButtonHint)
+            self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowContextHelpButtonHint)  # type: ignore
         self.setModal(True)
         self.setMinimumSize(900, 650)
         self.resize(1000, 700)
@@ -79,7 +99,8 @@ class SettingsDialog(QtWidgets.QDialog):
                 # 移除前缀以获取数据
                 pure_codes = [code[2:] if code.startswith(('sh', 'sz')) else code for code in stock_codes]
                 try:
-                    data = quotation.stocks(pure_codes)
+                    # type: ignore 是因为pyright无法正确识别这个方法
+                    data = quotation.stocks(pure_codes)  # type: ignore
                 except Exception:
                     # fallback to all if stocks method is not available
                     data = getattr(quotation, 'all', {})
@@ -270,24 +291,14 @@ class SettingsDialog(QtWidgets.QDialog):
         self.stock_list.setDragDropMode(QtWidgets.QAbstractItemView.DragDropMode.InternalMove)
         self.stock_list.setMinimumHeight(370)
         self.stock_list.setMaximumHeight(370)
-        def center_items():
-            for i in range(self.stock_list.count()):
-                item = self.stock_list.item(i)
-                if item:
-                    item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        self.stock_list.itemChanged.connect(lambda _: center_items())
-        model = self.stock_list.model()
-        if model:
-            model.rowsInserted.connect(lambda *_: center_items())
-            model.rowsRemoved.connect(lambda *_: center_items())
-        QtCore.QTimer.singleShot(0, center_items)
+        
         right_layout.addWidget(self.stock_list)
         right_layout.addSpacing(16)
         # 删除按钮居中（在自选股列表下方）
         del_btn_layout = QtWidgets.QHBoxLayout()
         del_btn_layout.addStretch(1)
         btn_del = QtWidgets.QPushButton("删除选中")
-        btn_del.clicked.connect(self.delete_selected_stocks)
+        btn_del.clicked.connect(self.delete_selected_stocks)  # type: ignore
         btn_del.setFixedWidth(120)
         btn_del.setFixedHeight(36)
         btn_del.setStyleSheet("""
@@ -320,7 +331,7 @@ class SettingsDialog(QtWidgets.QDialog):
         github_token_layout.addWidget(github_token_label)
         self.github_token_edit = QtWidgets.QLineEdit()
         self.github_token_edit.setPlaceholderText("请输入GitHub Token（可选）")
-        self.github_token_edit.textChanged.connect(self.on_github_token_changed)
+        self.github_token_edit.textChanged.connect(self.on_github_token_changed)  # type: ignore
         github_token_layout.addWidget(self.github_token_edit)
         github_token_layout.addStretch(1)
         right_layout.addLayout(github_token_layout)
@@ -378,12 +389,12 @@ class SettingsDialog(QtWidgets.QDialog):
             "60秒 (极慢)"
         ])
         self.freq_combo.setCurrentIndex(1)
-        self.freq_combo.currentIndexChanged.connect(self.on_freq_changed)
+        self.freq_combo.currentIndexChanged.connect(self.on_freq_changed)  # type: ignore
         bottom_area.addWidget(self.freq_combo, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
         # 开机启动
         self.startup_checkbox = QtWidgets.QCheckBox("开机自动启动")
         self.startup_checkbox.setChecked(self.is_startup_enabled())
-        self.startup_checkbox.stateChanged.connect(self.on_startup_checkbox_changed)
+        self.startup_checkbox.stateChanged.connect(self.on_startup_checkbox_changed)  # type: ignore
         self.startup_checkbox.setStyleSheet("""
             QCheckBox {
                 color: #333333; 
@@ -430,7 +441,7 @@ class SettingsDialog(QtWidgets.QDialog):
             }
         """)
         self.update_btn.setFixedHeight(32)
-        self.update_btn.clicked.connect(self.check_update)
+        self.update_btn.clicked.connect(self.check_update)  # type: ignore
         bottom_area.addWidget(self.update_btn, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
         bottom_area.addStretch(1)
         # 右侧按钮区
@@ -454,7 +465,7 @@ class SettingsDialog(QtWidgets.QDialog):
             }
         """)
         btn_ok.setFixedHeight(36)
-        btn_ok.clicked.connect(self.accept)
+        btn_ok.clicked.connect(self.accept)  # type: ignore
         
         btn_cancel = QtWidgets.QPushButton("取消")
         btn_cancel.setStyleSheet("""
@@ -476,7 +487,7 @@ class SettingsDialog(QtWidgets.QDialog):
             }
         """)
         btn_cancel.setFixedHeight(36)
-        btn_cancel.clicked.connect(self.reject)
+        btn_cancel.clicked.connect(self.reject)  # type: ignore
         
         bottom_area.addWidget(btn_ok, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
         bottom_area.addWidget(btn_cancel, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
@@ -627,11 +638,11 @@ class SettingsDialog(QtWidgets.QDialog):
             reply = QMessageBox.question(
                 self, "发现新版本",
                 f"检测到新版本 {latest_ver}，是否自动下载并升级？",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-            if reply != QMessageBox.StandardButton.Yes:
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)  # type: ignore
+            if reply != QMessageBox.StandardButton.Yes:  # type: ignore
                 return
             # 美化进度对话框
-            progress = QProgressDialog("正在下载新版本...", None, 0, 100, self)
+            progress = QProgressDialog("正在下载新版本...", "", 0, 100, self)
             progress.setWindowTitle("自动升级进度")
             progress.setMinimumWidth(420)
             progress.setStyleSheet("""
