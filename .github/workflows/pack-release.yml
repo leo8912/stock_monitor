@@ -117,13 +117,13 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         files: stock_monitor.zip
-        tag_name: stock_monitor_${{ steps.get_version.outputs.version }}
-        name: stock_monitor_${{ steps.get_version.outputs.version }}
+        tag_name: stock_monitor_{{ steps.get_version.outputs.version }}
+        name: stock_monitor_{{ steps.get_version.outputs.version }}
         body: |
-          🤖 stock_monitor_${{ steps.get_version.outputs.version }} 发布说明
+          🤖 stock_monitor_{{ steps.get_version.outputs.version }} 发布说明
 
           > **本软件完全由AI自动开发，开发者零基础，所有功能均由AI智能生成。**
 
-          ${{ steps.extract_changelog.outputs.changelog }}
+          {{ steps.extract_changelog.outputs.changelog }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
