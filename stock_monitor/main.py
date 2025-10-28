@@ -723,18 +723,19 @@ class StockTable(QtWidgets.QTableWidget):
         v_header = self.verticalHeader()
         if h_header is not None:
             h_header.setVisible(False)
-            h_header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeToContents)
-            h_header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
-            h_header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeToContents)
-            h_header.setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeToContents)
+            h_header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+            h_header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+            h_header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+            h_header.setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
         if v_header is not None:
             v_header.setVisible(False)
         self.setShowGrid(False)
-        self.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
-        self.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
+        self.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.NoSelection)
         self.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)  # type: ignore
-        self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)  # type: ignore
-        self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)  # type: ignore
+        self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)  # type: ignore
+        self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)  # type: ignore
+        
         self.setStyleSheet('''
             QTableWidget {
                 background: transparent;
@@ -813,10 +814,10 @@ class StockTable(QtWidgets.QTableWidget):
             self.setItem(row, 3, item_seal)
         h_header = self.horizontalHeader()
         if h_header is not None:
-            h_header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeToContents)
-            h_header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
-            h_header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeToContents)
-            h_header.setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeToContents)
+            h_header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+            h_header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+            h_header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+            h_header.setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
         self.updateGeometry()
         QtWidgets.QApplication.processEvents()  # 强制刷新事件队列
 
@@ -832,6 +833,12 @@ class StockTable(QtWidgets.QTableWidget):
         except Exception:
             pass
         return ""
+        
+    # 重写wheelEvent方法以完全禁用鼠标滚轮事件
+    def wheelEvent(self, a0):
+        # 不调用父类的wheelEvent，直接忽略事件
+        # 这样可以完全防止鼠标滚轮引起的滚动
+        pass
 
 class MainWindow(QtWidgets.QWidget):
     update_table_signal = pyqtSignal(list)

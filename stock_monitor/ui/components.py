@@ -19,7 +19,9 @@ def resource_path(relative_path):
     """获取资源文件路径，兼容PyInstaller打包和源码运行"""
     try:
         # PyInstaller创建的临时文件夹
-        base_path = sys._MEIPASS
+        base_path = getattr(sys, '_MEIPASS', None)
+        if base_path is None:
+            raise AttributeError("_MEIPASS not found")
     except Exception:
         base_path = "."
     return QtCore.QDir(base_path).absoluteFilePath(relative_path)
@@ -57,18 +59,19 @@ class StockTable(QtWidgets.QTableWidget):
         v_header = self.verticalHeader()
         if h_header is not None:
             h_header.setVisible(False)
-            h_header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeToContents)
-            h_header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
-            h_header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeToContents)
-            h_header.setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeToContents)
+            h_header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+            h_header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+            h_header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+            h_header.setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
         if v_header is not None:
             v_header.setVisible(False)
         self.setShowGrid(False)
-        self.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
-        self.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
+        self.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.NoSelection)
         self.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)  # type: ignore
-        self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)  # type: ignore
-        self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)  # type: ignore
+        self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)  # type: ignore
+        self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)  # type: ignore
+        
         self.setStyleSheet('''
             QTableWidget {
                 background: transparent;
@@ -148,10 +151,10 @@ class StockTable(QtWidgets.QTableWidget):
                 self.setItem(row, 3, item_seal)
             h_header = self.horizontalHeader()
             if h_header is not None:
-                h_header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeToContents)
-                h_header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
-                h_header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeToContents)
-                h_header.setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeToContents)
+                h_header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+                h_header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+                h_header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+                h_header.setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
             self.updateGeometry()
             QtWidgets.QApplication.processEvents()  # 强制刷新事件队列
             app_logger.debug(f"表格数据更新完成，共{len(stocks)}行")
@@ -159,3 +162,9 @@ class StockTable(QtWidgets.QTableWidget):
             error_msg = f"更新表格数据时发生错误: {e}"
             app_logger.error(error_msg)
             print(error_msg)
+            
+    # 重写wheelEvent方法以完全禁用鼠标滚轮事件
+    def wheelEvent(self, a0):
+        # 不调用父类的wheelEvent，直接忽略事件
+        # 这样可以完全防止鼠标滚轮引起的滚动
+        pass
