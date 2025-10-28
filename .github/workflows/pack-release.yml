@@ -108,12 +108,15 @@ jobs:
                 $changelog = "暂无更新日志"
             }
         }
-        # Escape newlines for GitHub Actions
-        $changelog = $changelog -replace '\n', '%0A'
+        # Properly format multiline string for GitHub Actions
+        $formattedChangelog = $changelog -replace '\n', "`n"
         # Debug output to verify extracted content
-        echo "Extracted Changelog length: $($changelog.Length)"
-        echo "First 200 chars of changelog: $($changelog.Substring(0, [Math]::Min(200, $changelog.Length)))"
-        echo "changelog=$changelog" >> $GITHUB_OUTPUT
+        echo "Extracted Changelog length: $($formattedChangelog.Length)"
+        echo "First 200 chars of changelog: $($formattedChangelog.Substring(0, [Math]::Min(200, $formattedChangelog.Length)))"
+        # Use GitHub Actions syntax for multiline strings
+        echo "changelog<<EOF" >> $env:GITHUB_OUTPUT
+        echo "$formattedChangelog" >> $env:GITHUB_OUTPUT
+        echo "EOF" >> $env:GITHUB_OUTPUT
 
     - name: Create Release
       uses: softprops/action-gh-release@v1
@@ -123,9 +126,9 @@ jobs:
         name: stock_monitor_${{ steps.get_version.outputs.version }}
         body: |
           🤖 stock_monitor_${{ steps.get_version.outputs.version }} 发布说明
-
+          
           > **本软件完全由AI自动开发，开发者零基础，所有功能均由AI智能生成。**
-
+          
           ${{ steps.extract_changelog.outputs.changelog }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
