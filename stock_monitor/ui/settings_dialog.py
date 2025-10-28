@@ -16,6 +16,7 @@ from ..ui.stock_search import StockSearchWidget
 from ..utils.helpers import get_stock_emoji, is_equal, resource_path
 from ..config.manager import load_config, save_config, is_market_open
 from ..network.manager import NetworkManager
+from ..version import APP_VERSION
 
 
 class StockListWidget(QtWidgets.QListWidget):
@@ -400,7 +401,7 @@ class SettingsDialog(QtWidgets.QDialog):
         bottom_area.addWidget(self.startup_checkbox, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
         
         # 版本号
-        self.version_label = QtWidgets.QLabel("版本号：v1.1.6")
+        self.version_label = QtWidgets.QLabel(f"版本号：{APP_VERSION}")
         self.version_label.setStyleSheet("color: #666666; font-size: 16px;")
         bottom_area.addWidget(self.version_label, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
         

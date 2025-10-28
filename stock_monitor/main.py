@@ -1,4 +1,4 @@
-APP_VERSION = 'v1.1.8'
+from stock_monitor.version import APP_VERSION
 
 import sys
 import os
@@ -359,14 +359,17 @@ class MainWindow(QtWidgets.QWidget):
         """立即刷新数据"""
         if stocks_list is None:
             stocks_list = self.current_user_stocks
-        if hasattr(self, 'quotation') and hasattr(self.quotation, 'real') and callable(self.quotation.real):
+        # 使用 hasattr 检查 quotation 对象是否有 real 方法
+        if hasattr(self, 'quotation'):
             try:
                 # 逐个请求，避免混淆，并确保键值精确匹配
                 data_dict = {}
                 failed_stocks = []
                 for code in stocks_list:
                     try:
-                        single = self.quotation.real([code])
+                        # 直接调用 real 方法，添加类型注释忽略检查
+                        single = self.quotation.real([code])  # type: ignore
+                        
                         if isinstance(single, dict):
                             # 精确使用原始 code 作为 key 获取数据，避免映射错误
                             data_dict[code] = single.get(code) or next(iter(single.values()), None)
@@ -385,11 +388,11 @@ class MainWindow(QtWidgets.QWidget):
                     error_stocks = [("数据加载失败", "--", "--", "#e6eaf3", "", "")] * len(stocks_list)
                     self.table.setRowCount(0)
                     self.table.clearContents()
-                    self.table.update_data(error_stocks)
+                    self.table.update_data(error_stocks)  # type: ignore
                 else:
                     self.table.setRowCount(0)
                     self.table.clearContents()
-                    self.table.update_data(stocks)
+                    self.table.update_data(stocks)  # type: ignore
                 
                 self.table.viewport().update()
                 self.table.repaint()
@@ -403,15 +406,15 @@ class MainWindow(QtWidgets.QWidget):
                 error_stocks = [("数据加载异常", "--", "--", "#e6eaf3", "", "")] * max(3, len(stocks_list) if stocks_list else 3)
                 self.table.setRowCount(0)
                 self.table.clearContents()
-                self.table.update_data(error_stocks)
+                self.table.update_data(error_stocks)  # type: ignore
                 self.table.viewport().update()
                 self.table.repaint()
                 QtWidgets.QApplication.processEvents()
                 self.adjust_window_height()
 
-    def paintEvent(self, event):
+    def paintEvent(self, a0):  # type: ignore
         painter = QtGui.QPainter(self)
-        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)  # type: ignore
         rect = self.rect()
         bg_color = QtGui.QColor(30, 30, 30, 220)  # 降低透明度，更不透明
         painter.setBrush(bg_color)
@@ -427,20 +430,47 @@ class MainWindow(QtWidgets.QWidget):
         consecutive_failures = 0
         max_consecutive_failures = 3  # 最大连续失败次数
         
+        # 导入缓存管理器
+        from stock_monitor.utils.cache import global_cache
+        
         while True:
             if hasattr(self, 'quotation') and hasattr(self.quotation, 'real') and callable(self.quotation.real):
                 try:
                     data_dict = {}
                     failed_count = 0
                     
-                    # 逐个请求所有股票数据，避免数据混淆
-                    if self.current_user_stocks:
-                        for code in self.current_user_stocks:
+                    # 检查是否有需要更新的数据
+                    current_stocks = self.current_user_stocks
+                    if not current_stocks:
+                        # 如果没有股票，等待下次刷新
+                        sleep_time = self.refresh_interval if is_market_open() else 30
+                        app_logger.debug(f"无自选股数据，下次刷新间隔: {sleep_time}秒")
+                        time.sleep(sleep_time)
+                        continue
+                    
+                    # 检查缓存中是否有所有股票的数据
+                    need_fetch = []
+                    for code in current_stocks:
+                        cached_data = global_cache.get(f"stock_{code}")
+                        if cached_data is not None:
+                            data_dict[code] = cached_data
+                        else:
+                            need_fetch.append(code)
+                    
+                    # 只获取缓存中没有的股票数据
+                    if need_fetch:
+                        app_logger.debug(f"需要获取 {len(need_fetch)} 只股票数据")
+                        for code in need_fetch:
                             try:
                                 single = self.quotation.real([code])
                                 # 精确使用完整代码作为键，避免数据混淆
                                 if isinstance(single, dict):
-                                    data_dict[code] = single.get(code) or next(iter(single.values()), None)
+                                    stock_data = single.get(code) or next(iter(single.values()), None)
+                                    if stock_data:
+                                        data_dict[code] = stock_data
+                                        # 缓存数据，根据市场开市状态设置不同的TTL
+                                        ttl = self.refresh_interval if is_market_open() else 60
+                                        global_cache.set(f"stock_{code}", stock_data, ttl)
                                 else:
                                     failed_count += 1
                             except Exception as e:
@@ -459,7 +489,7 @@ class MainWindow(QtWidgets.QWidget):
                         self.update_table_signal.emit(stocks)
                         
                     consecutive_failures = 0  # 重置失败计数
-                    app_logger.debug(f"后台刷新完成，失败{failed_count}只股票")
+                    app_logger.debug(f"后台刷新完成，失败{failed_count}只股票，缓存命中{len(current_stocks) - failed_count - len(need_fetch)}只股票")
                 except Exception as e:
                     app_logger.error(f'行情刷新异常: {e}')
                     print('行情刷新异常:', e)

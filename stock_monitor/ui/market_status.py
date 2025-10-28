@@ -4,6 +4,7 @@
 """
 
 from PyQt5 import QtWidgets, QtGui, QtCore
+from ..utils.logger import app_logger
 
 
 class MarketStatusBar(QtWidgets.QWidget):
@@ -40,12 +41,17 @@ class MarketStatusBar(QtWidgets.QWidget):
         获取全市场数据并更新状态条显示
         """
         try:
+            # 检查是否已经有正在运行的线程
+            if hasattr(self, '_fetch_thread') and self._fetch_thread.is_alive():
+                app_logger.debug("市场状态更新线程已在运行，跳过本次更新")
+                return
+                
             # 在新线程中获取全市场数据，避免阻塞UI
             from threading import Thread
-            thread = Thread(target=self._fetch_market_data, daemon=True)
-            thread.start()
+            self._fetch_thread = Thread(target=self._fetch_market_data, daemon=True)
+            self._fetch_thread.start()
         except Exception as e:
-            print(f"获取市场数据时出错: {e}")
+            app_logger.error(f"获取市场数据时出错: {e}")
         
     def _fetch_market_data(self):
         """
