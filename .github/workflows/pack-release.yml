@@ -108,6 +108,8 @@ jobs:
                 $changelog = "暂无更新日志"
             }
         }
+        # Escape newlines for GitHub Actions
+        $changelog = $changelog -replace '\n', '%0A'
         # Debug output to verify extracted content
         echo "Extracted Changelog length: $($changelog.Length)"
         echo "First 200 chars of changelog: $($changelog.Substring(0, [Math]::Min(200, $changelog.Length)))"
