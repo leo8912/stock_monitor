@@ -89,8 +89,8 @@ class MainWindow(QtWidgets.QWidget):
         self._update_database_on_startup()
         
         # 显示窗口并加载位置
-        self.load_position()
         self.show()
+        self.load_position()
         self.raise_()
         self.activateWindow()
         self.install_event_filters(self)

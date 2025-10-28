@@ -4,8 +4,12 @@ import shutil
 from typing import Dict, Any, Optional, Union, List
 from ..utils.logger import app_logger
 
-# 配置文件路径 - 修正路径，确保指向正确位置
-CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')
+# 配置文件路径 - 存储在用户目录中，避免更新时丢失
+CONFIG_DIR = os.path.join(os.path.expanduser('~'), '.stock_monitor')
+CONFIG_PATH = os.path.join(CONFIG_DIR, 'config.json')
+
+# 确保配置目录存在
+os.makedirs(CONFIG_DIR, exist_ok=True)
 
 def load_config() -> Dict[str, Any]:
     """加载配置文件，包含完整的错误处理和默认值"""
@@ -16,8 +20,8 @@ def load_config() -> Dict[str, Any]:
                 "user_stocks": ["sh600460", "sh603986", "sh600030", "sh000001"],
                 "refresh_interval": 5,
                 "github_token": "",
-                "window_pos": None,
-                "settings_dialog_pos": None
+                "window_pos": [],
+                "settings_dialog_pos": []
             }
             with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
                 json.dump(default_config, f, ensure_ascii=False, indent=2)
@@ -34,9 +38,9 @@ def load_config() -> Dict[str, Any]:
         if 'github_token' not in config:
             config['github_token'] = ""
         if 'window_pos' not in config:
-            config['window_pos'] = None
+            config['window_pos'] = []
         if 'settings_dialog_pos' not in config:
-            config['settings_dialog_pos'] = None
+            config['settings_dialog_pos'] = []
             
         return config
     except json.JSONDecodeError as e:
@@ -58,8 +62,8 @@ def load_config() -> Dict[str, Any]:
             "user_stocks": ["sh600460", "sh603986", "sh600030", "sh000001"],
             "refresh_interval": 5,
             "github_token": "",
-            "window_pos": None,
-            "settings_dialog_pos": None
+            "window_pos": [],
+            "settings_dialog_pos": []
         }
         try:
             with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
@@ -78,8 +82,8 @@ def load_config() -> Dict[str, Any]:
             "user_stocks": ["sh600460", "sh603986", "sh600030", "sh000001"],
             "refresh_interval": 5,
             "github_token": "",
-            "window_pos": None,
-            "settings_dialog_pos": None
+            "window_pos": [],
+            "settings_dialog_pos": []
         }
     except Exception as e:
         error_msg = f"加载配置文件时发生未知错误: {e}"
@@ -89,8 +93,8 @@ def load_config() -> Dict[str, Any]:
             "user_stocks": ["sh600460", "sh603986", "sh600030", "sh000001"],
             "refresh_interval": 5,
             "github_token": "",
-            "window_pos": None,
-            "settings_dialog_pos": None
+            "window_pos": [],
+            "settings_dialog_pos": []
         }
 
 def save_config(cfg: Dict[str, Any]) -> None:

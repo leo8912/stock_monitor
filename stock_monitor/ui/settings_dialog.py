@@ -56,6 +56,10 @@ class SettingsDialog(QtWidgets.QDialog):
         self.init_ui()
         self.load_current_stocks()
         self.load_refresh_interval()
+        # 加载GitHub Token
+        cfg = load_config()
+        github_token = cfg.get('github_token', '')
+        self.github_token_edit.setText(github_token)
 
     def load_stock_data(self):
         try:
