@@ -616,9 +616,9 @@ class SettingsDialog(QtWidgets.QDialog):
                 app_logger.warning("未检测到新版本信息")
                 QMessageBox.warning(self, "检查更新", "未检测到新版本信息。")
                 return
-            if version.parse(latest_ver) <= version.parse("v1.1.6"):
+            if version.parse(latest_ver) <= version.parse(APP_VERSION):
                 app_logger.info("当前已是最新版本")
-                QMessageBox.information(self, "检查更新", f"当前已是最新版本：v1.1.6")
+                QMessageBox.information(self, "检查更新", f"当前已是最新版本：{APP_VERSION}")
                 return
             reply = QMessageBox.question(
                 self, "发现新版本",
