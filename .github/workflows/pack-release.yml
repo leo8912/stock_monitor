@@ -74,7 +74,7 @@ jobs:
       shell: bash
       run: |
         echo "import re" > get_version.py
-        echo "s=open('stock_monitor/main.py',encoding='utf-8').read()" >> get_version.py
+        echo "s=open('stock_monitor/version.py',encoding='utf-8').read()" >> get_version.py
         echo "m=re.search(r\"APP_VERSION\\s*=\\s*['\\\"](v[\\d\\.]+)['\\\"]\", s)" >> get_version.py
         echo "print(f'version={m.group(1)}' if m else 'version=unknown')" >> get_version.py
 
@@ -90,20 +90,27 @@ jobs:
       run: |
         # Extract the latest changelog entry using PowerShell
         $content = Get-Content -Path CHANGELOG.md -Raw
-        # Match the first version entry (most recent)
-        $pattern = "(## v\d+\.\d+\.\d+.*?)(?=## v\d+\.\d+\.\d+|\Z)"
+        # Match the first version entry (most recent) without the trailing separator
+        $pattern = "(## v\d+\.\d+\.\d+.*?)(?=\n---\s*\n## v\d+\.\d+\.\d+|\n---\s*\Z)"
         $match = [regex]::Match($content, $pattern, [System.Text.RegularExpressions.RegexOptions]::Singleline)
         if ($match.Success) {
             $changelog = $match.Groups[1].Value.Trim()
-            # Remove trailing dashes if present
-            $changelog = $changelog -replace '-{3,}\s*$', ''
-            $changelog = $changelog.Trim()
         } else {
-            $changelog = "暂无更新日志"
+            # Fallback pattern if the above doesn't match
+            $pattern = "(## v\d+\.\d+\.\d+.*?)(?=## v\d+\.\d+\.\d+|\Z)"
+            $match = [regex]::Match($content, $pattern, [System.Text.RegularExpressions.RegexOptions]::Singleline)
+            if ($match.Success) {
+                $changelog = $match.Groups[1].Value.Trim()
+                # Remove trailing dashes if present
+                $changelog = $changelog -replace '\n---\s*$'
+                $changelog = $changelog.Trim()
+            } else {
+                $changelog = "暂无更新日志"
+            }
         }
         # Debug output to verify extracted content
-        echo "Extracted Changelog:"
-        echo $changelog
+        echo "Extracted Changelog length: $($changelog.Length)"
+        echo "First 200 chars of changelog: $($changelog.Substring(0, [Math]::Min(200, $changelog.Length)))"
         echo "changelog=$changelog" >> $GITHUB_OUTPUT
 
     - name: Create Release
