@@ -39,7 +39,8 @@ stock_monitor/
 ├── API.md                 # API文档
 ├── build.py               # 构建脚本
 ├── build_config.py        # 构建配置
-├── requirements.txt       # 依赖列表
+├── requirements.txt       # 生产环境依赖列表
+├── requirements-dev.txt   # 开发环境依赖列表（包含测试依赖）
 ├── CHANGELOG.md           # 更新日志
 └── README.md              # 项目说明文档
 ```
@@ -151,12 +152,17 @@ stock_monitor/
 
 ## 依赖环境
 
+### 生产环境依赖
 - Python 3.7+
 - PyQt5
 - easyquotation
 - pypinyin
 - packaging
 - pywin32
+
+### 开发环境依赖
+除了生产环境依赖外，还包括：
+- pytest（用于测试）
 
 ## 构建与发布
 

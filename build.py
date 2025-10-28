@@ -10,6 +10,28 @@ import subprocess
 from pathlib import Path
 from build_config import BUILD_OPTIONS, DATA_FILES, REQUIRED_FILES, get_build_command
 
+def install_dependencies():
+    """安装生产依赖"""
+    try:
+        # 安装生产依赖
+        subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', 'requirements.txt'])
+        print("✓ 生产依赖安装完成")
+    except subprocess.CalledProcessError as e:
+        print(f"✗ 生产依赖安装失败: {e}")
+        return False
+    return True
+
+def install_dev_dependencies():
+    """安装开发依赖（包括测试依赖）"""
+    try:
+        # 安装开发依赖
+        subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', 'requirements-dev.txt'])
+        print("✓ 开发依赖安装完成")
+    except subprocess.CalledProcessError as e:
+        print(f"✗ 开发依赖安装失败: {e}")
+        return False
+    return True
+
 def install_easyquotation():
     """安装easyquotation并处理依赖"""
     try:
@@ -38,6 +60,9 @@ def build_executable():
     print("开始构建可执行文件...")
     
     # 安装依赖
+    if not install_dependencies():
+        return False
+        
     eq_path = install_easyquotation()
     
     # 构建命令
@@ -91,4 +116,4 @@ def main():
         sys.exit(1)
 
 if __name__ == '__main__':
-    main() 
+    main()

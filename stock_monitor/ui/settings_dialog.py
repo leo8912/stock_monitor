@@ -12,6 +12,7 @@ from ..utils.logger import app_logger
 from ..data.updater import update_stock_database
 from ..ui.market_status import MarketStatusBar
 from ..ui.components import StockTable
+from ..ui.stock_search import StockSearchWidget
 from ..utils.helpers import get_stock_emoji, is_equal, resource_path
 from ..config.manager import load_config, save_config, is_market_open
 from ..network.manager import NetworkManager
@@ -22,8 +23,8 @@ class StockListWidget(QtWidgets.QListWidget):
         super(StockListWidget, self).__init__(parent)
         self.sync_callback = sync_callback
         # 设置拖拽相关属性
-        self.setDragDropMode(QtWidgets.QAbstractItemView.InternalMove)
-        self.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
+        self.setDragDropMode(QtWidgets.QAbstractItemView.DragDropMode.InternalMove)
+        self.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
         self.setDropIndicatorShown(True)
@@ -201,17 +202,14 @@ class SettingsDialog(QtWidgets.QDialog):
         left_box = QtWidgets.QVBoxLayout()
         left_box.setSpacing(18)
         left_box.setContentsMargins(0, 0, 0, 0)
-        self.search_edit = QtWidgets.QLineEdit()
-        self.search_edit.setPlaceholderText("输入股票代码/名称/拼音")
-        self.search_edit.textChanged.connect(self.on_search)
-        self.search_edit.returnPressed.connect(self.add_first_search_result)
-        self.search_edit.setFixedHeight(44)
-        left_box.addWidget(self.search_edit)
-        self.search_results = QtWidgets.QListWidget()
-        self.search_results.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
-        self.search_results.itemDoubleClicked.connect(self.add_selected_stock)
-        self.search_results.setFixedSize(340, 480)
-        left_box.addWidget(self.search_results)
+        
+        # 使用股票搜索组件
+        self.stock_search = StockSearchWidget(
+            stock_data=self.stock_data, 
+            stock_list=None,  # 将在后面设置
+            sync_callback=self.sync_to_main
+        )
+        left_box.addWidget(self.stock_search)
         left_box.addStretch(1)
         left_widget = QtWidgets.QWidget()
         left_widget.setLayout(left_box)
@@ -237,6 +235,9 @@ class SettingsDialog(QtWidgets.QDialog):
         right_layout.addSpacing(10)
         # 列表（极简样式）
         self.stock_list = StockListWidget(sync_callback=self.sync_to_main)
+        # 设置股票搜索组件的股票列表引用
+        self.stock_search.stock_list = self.stock_list
+        
         self.stock_list.setStyleSheet("""
             QListWidget {
                 font-size: 18px;
@@ -260,8 +261,8 @@ class SettingsDialog(QtWidgets.QDialog):
                 background: #f5f5f5;
             }
         """)
-        self.stock_list.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
-        self.stock_list.setDragDropMode(QtWidgets.QAbstractItemView.InternalMove)
+        self.stock_list.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.stock_list.setDragDropMode(QtWidgets.QAbstractItemView.DragDropMode.InternalMove)
         self.stock_list.setMinimumHeight(370)
         self.stock_list.setMaximumHeight(370)
         def center_items():
@@ -501,90 +502,6 @@ class SettingsDialog(QtWidgets.QDialog):
         idx = {2:0, 5:1, 10:2, 30:3, 60:4}.get(interval, 1)
         self.freq_combo.setCurrentIndex(idx)
 
-    def on_search(self, text):
-        text = text.strip().lower()
-        self.search_results.clear()
-        if not text:
-            return
-        def is_index(stock):
-            return stock['code'].startswith(('sh000', 'sz399', 'sz159', 'sh510')) or '指数' in stock['name'] or '板块' in stock['name']
-        # 支持拼音、首字母、代码、名称模糊匹配，ST股票去前缀
-        results = []
-        for s in self.stock_data:
-            code_match = text in s['code'].lower()
-            name_match = text in s['name'].lower()
-            pinyin_match = text in s.get('pinyin','')
-            abbr_match = text in s.get('abbr','')
-            # 对于ST类，去掉*ST/ST前缀后再匹配
-            base = s['name'].replace('*', '').replace('ST', '').replace(' ', '').lower()
-            base_match = text in base
-            if code_match or name_match or pinyin_match or abbr_match or base_match:
-                results.append(s)
-        results.sort(key=lambda s: (not is_index(s), s['code']))
-        for s in results[:30]:
-            display = f"{s['name']} {s['code']}"
-            item = QtWidgets.QListWidgetItem(display)
-            # emoji区分类型
-            if is_index(s):
-                emoji = '📈'
-            elif '板块' in s['name']:
-                emoji = '📊'
-            else:
-                emoji = '⭐️'
-            item.setText(f"{emoji}  {display}")
-            # 匹配内容高亮（背景+加粗）
-            if text:
-                base = s['name'].replace('*', '').replace('ST', '').replace(' ', '').lower()
-                parts_to_search = [s['code'].lower(), s['name'].lower(), s.get('pinyin',''), s.get('abbr',''), base]
-                for part in parts_to_search:
-                    idx = part.find(text)
-                    if idx != -1:
-                        item.setBackground(QtGui.QColor('#eaf3fc'))
-                        item.setForeground(QtGui.QColor('#357abd'))
-                        font = item.font()
-                        font.setBold(True)
-                        item.setFont(font)
-                        break
-            self.search_results.addItem(item)
-
-    def add_selected_stock(self, item):
-        # item.text()格式为"名称 代码"
-        code = item.text().split()[-1]
-        name = " ".join(item.text().split()[:-1])
-        self.add_stock_to_list(code)
-
-    def add_first_search_result(self):
-        if self.search_results.count() > 0:
-            item = self.search_results.item(0)
-            self.add_selected_stock(item)
-
-    def add_stock_to_list(self, code):
-        name = self.get_name_by_code(code)
-        display = f"{name} {code}" if name else code
-        # emoji区分类型
-        emoji = get_stock_emoji(code, name)
-        display = f"{emoji}  {display}"
-        for i in range(self.stock_list.count()):
-            item = self.stock_list.item(i)
-            if item is not None and item.text() == display:
-                return
-        self.stock_list.addItem(display)
-        self.selected_stocks.append(code)
-        self.sync_to_main()
-
-    def get_stocks_from_list(self):
-        """从股票列表中提取股票代码"""
-        stocks = []
-        for i in range(self.stock_list.count()):
-            item = self.stock_list.item(i)
-            if item is not None and hasattr(item, 'text'):
-                text = item.text()
-                # 提取最后的股票代码部分
-                parts = text.split()
-                if len(parts) >= 2:
-                    stocks.append(parts[-1])
-        return stocks
-
     def delete_selected_stocks(self):
         for item in self.stock_list.selectedItems():
             if item is not None:
@@ -705,8 +622,8 @@ class SettingsDialog(QtWidgets.QDialog):
             reply = QMessageBox.question(
                 self, "发现新版本",
                 f"检测到新版本 {latest_ver}，是否自动下载并升级？",
-                QMessageBox.Yes | QMessageBox.No)
-            if reply != QMessageBox.Yes:
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            if reply != QMessageBox.StandardButton.Yes:
                 return
             # 美化进度对话框
             progress = QProgressDialog("正在下载新版本...", None, 0, 100, self)
@@ -822,3 +739,16 @@ start "" "{exe_dir}\\stock_monitor.exe"
         except Exception as e:
             app_logger.error(f"检查更新时发生错误: {e}")
             QMessageBox.warning(self, "检查更新", f"检查更新时发生错误：{e}")
+
+    def get_stocks_from_list(self):
+        """从股票列表中提取股票代码"""
+        stocks = []
+        for i in range(self.stock_list.count()):
+            item = self.stock_list.item(i)
+            if item is not None and hasattr(item, 'text'):
+                text = item.text()
+                # 提取最后的股票代码部分
+                parts = text.split()
+                if len(parts) >= 2:
+                    stocks.append(parts[-1])
+        return stocks

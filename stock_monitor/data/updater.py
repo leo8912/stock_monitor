@@ -8,18 +8,7 @@ import os
 from typing import List, Dict
 from ..utils.logger import app_logger
 from typing import Any, Union
-
-
-def resource_path(relative_path):
-    """获取资源文件路径，兼容PyInstaller打包和源码运行"""
-    import sys
-    if hasattr(sys, '_MEIPASS'):
-        return os.path.join(getattr(sys, '_MEIPASS'), relative_path)
-    # 基于当前文件的目录定位resources文件夹
-    current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    resources_dir = os.path.join(current_dir, 'resources')
-    return os.path.join(resources_dir, relative_path)
-
+from ..utils.helpers import resource_path
 
 def fetch_all_stocks() -> List[Dict[str, str]]:
     """

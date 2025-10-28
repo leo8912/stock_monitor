@@ -168,3 +168,9 @@ class StockTable(QtWidgets.QTableWidget):
         # 不调用父类的wheelEvent，直接忽略事件
         # 这样可以完全防止鼠标滚轮引起的滚动
         pass
+        
+    def get_name_by_code(self, code):
+        """根据股票代码获取股票名称"""
+        # 这里可以实现根据代码获取名称的逻辑
+        # 目前返回None，让调用者处理
+        return None

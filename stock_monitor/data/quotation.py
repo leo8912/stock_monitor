@@ -6,6 +6,7 @@ import datetime
 from typing import Dict, Any, List, Tuple, Optional
 from .stocks import is_equal
 from ..utils.logger import app_logger
+from ..utils.helpers import resource_path
 
 def get_quotation_engine():
     """获取行情引擎实例"""
@@ -126,7 +127,6 @@ def get_name_by_code(code: str) -> str:
     """根据股票代码获取股票名称"""
     # 读取本地股票数据
     try:
-        from ..utils.helpers import resource_path
         with open(resource_path("stock_basic.json"), "r", encoding="utf-8") as f:
             stock_data = json.load(f)
         for s in stock_data:

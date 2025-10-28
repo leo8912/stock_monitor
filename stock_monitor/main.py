@@ -1,4 +1,4 @@
-APP_VERSION = 'v1.1.7'
+APP_VERSION = 'v1.1.8'
 
 import sys
 import os
@@ -17,828 +17,16 @@ from pypinyin import lazy_pinyin, Style
 from stock_monitor.utils.logger import app_logger
 from stock_monitor.data.updater import update_stock_database
 from stock_monitor.ui.market_status import MarketStatusBar
-from stock_monitor.ui.settings_dialog import StockListWidget
-from stock_monitor.config.manager import is_market_open
 
-def resource_path(relative_path):
-    """获取资源文件路径，兼容PyInstaller打包和源码运行"""
-    if hasattr(sys, '_MEIPASS'):
-        return os.path.join(sys._MEIPASS, relative_path)
-    # 修改资源路径，使其指向resources目录
-    # 基于当前文件(main.py)的目录定位resources文件夹
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    resources_dir = os.path.join(current_dir, 'resources')
-    return os.path.join(resources_dir, relative_path)
+from stock_monitor.config.manager import is_market_open, load_config, save_config
 
-CONFIG_FILE = 'config.json'
+from stock_monitor.utils.helpers import resource_path, get_stock_emoji, is_equal
+
 ICON_FILE = resource_path('icon.ico')  # 统一使用ICO格式图标
-CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')
-
-def load_config():
-    """加载配置文件，包含完整的错误处理和默认值"""
-    try:
-        if not os.path.exists(CONFIG_PATH):
-            # 创建默认配置文件
-            default_config = {
-                "user_stocks": ["sh600460", "sh603986", "sh600030", "sh000001"],
-                "refresh_interval": 5,
-                "github_token": "",
-                "window_pos": None,
-                "settings_dialog_pos": None
-            }
-            with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-                json.dump(default_config, f, ensure_ascii=False, indent=2)
-            return default_config
-        
-        with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
-            config = json.load(f)
-            
-        # 确保必要的键存在
-        if 'user_stocks' not in config:
-            config['user_stocks'] = ["sh600460", "sh603986", "sh600030", "sh000001"]
-        if 'refresh_interval' not in config:
-            config['refresh_interval'] = 5
-        if 'github_token' not in config:
-            config['github_token'] = ""
-        if 'window_pos' not in config:
-            config['window_pos'] = None
-        if 'settings_dialog_pos' not in config:
-            config['settings_dialog_pos'] = None
-            
-        return config
-    except json.JSONDecodeError as e:
-        # 如果JSON解析失败，备份原文件并创建新配置
-        print(f"配置文件损坏，JSON解析错误: {e}，正在创建新的配置文件...")
-        if os.path.exists(CONFIG_PATH):
-            # 备份原文件
-            backup_path = CONFIG_PATH + ".bak"
-            import shutil
-            shutil.copy2(CONFIG_PATH, backup_path)
-            print(f"原配置文件已备份为: {backup_path}")
-            
-        # 创建默认配置文件
-        default_config = {
-            "user_stocks": ["sh600460", "sh603986", "sh600030", "sh000001"],
-            "refresh_interval": 5,
-            "github_token": "",
-            "window_pos": None,
-            "settings_dialog_pos": None
-        }
-        try:
-            with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-                json.dump(default_config, f, ensure_ascii=False, indent=2)
-        except Exception as save_error:
-            print(f"创建默认配置文件失败: {save_error}")
-        return default_config
-    except PermissionError as e:
-        print(f"配置文件权限错误: {e}，请检查文件权限")
-        return {
-            "user_stocks": ["sh600460", "sh603986", "sh600030", "sh000001"],
-            "refresh_interval": 5,
-            "github_token": "",
-            "window_pos": None,
-            "settings_dialog_pos": None
-        }
-    except Exception as e:
-        print(f"加载配置文件时发生未知错误: {e}")
-        return {
-            "user_stocks": ["sh600460", "sh603986", "sh600030", "sh000001"],
-            "refresh_interval": 5,
-            "github_token": "",
-            "window_pos": None,
-            "settings_dialog_pos": None
-        }
-
-def save_config(cfg):
-    try:
-        with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-            json.dump(cfg, f, ensure_ascii=False, indent=2)
-    except Exception:
-        pass
 
 
-# 从ui模块导入SettingsDialog
 from stock_monitor.ui.settings_dialog import SettingsDialog
-def get_stock_emoji(code, name):
-    """根据股票代码和名称返回对应的emoji"""
-    if code.startswith(('sh000', 'sz399', 'sz159', 'sh510')) or (name and ('指数' in name or '板块' in name)):
-        return '📈'
-    elif name and '银行' in name:
-        return '🏦'
-    elif name and '保险' in name:
-        return '🛡️'
-    elif name and '板块' in name:
-        return '📊'
-    elif name and ('能源' in name or '石油' in name or '煤' in name):
-        return '⛽️'
-    elif name and ('汽车' in name or '车' in name):
-        return '🚗'
-    elif name and ('科技' in name or '半导体' in name or '芯片' in name):
-        return '💻'
-    else:
-        return '⭐️'
-
-def is_equal(a, b, tol=0.01):
-    try:
-        return abs(float(a) - float(b)) < tol
-    except Exception:
-        return False
-
-
-    def some_method(self):
-        # 修复残留的CSS代码
-        pass
-        self.stock_list.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
-        self.stock_list.setDragDropMode(QtWidgets.QAbstractItemView.InternalMove)
-        self.stock_list.setMinimumHeight(370)
-        self.stock_list.setMaximumHeight(370)
-        def center_items():
-            for i in range(self.stock_list.count()):
-                item = self.stock_list.item(i)
-                if item:
-                    item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        self.stock_list.itemChanged.connect(lambda _: center_items())
-        model = self.stock_list.model()
-        if model:
-            model.rowsInserted.connect(lambda *_: center_items())
-            model.rowsRemoved.connect(lambda *_: center_items())
-        QtCore.QTimer.singleShot(0, center_items)
-        right_layout.addWidget(self.stock_list)
-        right_layout.addSpacing(16)
-        # 删除按钮居中（在自选股列表下方）
-        del_btn_layout = QtWidgets.QHBoxLayout()
-        del_btn_layout.addStretch(1)
-        btn_del = QtWidgets.QPushButton("删除选中")
-        btn_del.clicked.connect(self.delete_selected_stocks)
-        btn_del.setFixedWidth(120)
-        btn_del.setFixedHeight(36)
-        btn_del.setStyleSheet("""
-            QPushButton {
-                background: #f44336;
-                color: #ffffff;
-                font-size: 16px;
-                font-weight: normal;
-                padding: 6px 16px;
-                border-radius: 4px;
-                border: none;
-                font-family: "Microsoft YaHei", "微软雅黑";
-            }
-            QPushButton:hover {
-                background: #d32f2f;
-            }
-            QPushButton:pressed {
-                background: #b71c1c;
-            }
-        """)
-        del_btn_layout.addWidget(btn_del)
-        del_btn_layout.addStretch(1)
-        right_layout.addLayout(del_btn_layout)
-        
-        # 新增GitHub Token输入框
-        github_token_layout = QtWidgets.QHBoxLayout()
-        github_token_layout.addStretch(1)
-        github_token_label = QtWidgets.QLabel("GitHub Token:")
-        github_token_label.setStyleSheet("font-size: 16px; color: #333333;")
-        github_token_layout.addWidget(github_token_label)
-        self.github_token_edit = QtWidgets.QLineEdit()
-        self.github_token_edit.setPlaceholderText("请输入GitHub Token（可选）")
-        self.github_token_edit.textChanged.connect(self.on_github_token_changed)
-        github_token_layout.addWidget(self.github_token_edit)
-        github_token_layout.addStretch(1)
-        right_layout.addLayout(github_token_layout)
-        
-        right_layout.addStretch(1)
-
-        main_area.addWidget(left_widget)
-        main_area.addWidget(right_frame)
-        layout.addLayout(main_area)
-        layout.addStretch(1)
-
-        # 底部功能区（极简样式）
-        bottom_area = QtWidgets.QHBoxLayout()
-        bottom_area.setSpacing(16)
-        bottom_area.setContentsMargins(0, 24, 0, 0)
-        
-        # 刷新频率
-        freq_label = QtWidgets.QLabel("刷新频率：")
-        freq_label.setStyleSheet("font-size: 18px; color: #333333;")
-        bottom_area.addWidget(freq_label, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
-        
-        self.freq_combo = QtWidgets.QComboBox()
-        self.freq_combo.setMinimumWidth(120)
-        self.freq_combo.setFixedHeight(32)
-        self.freq_combo.setStyleSheet('''
-            QComboBox { 
-                font-size: 16px; 
-                padding: 4px 8px; 
-                min-width: 120px; 
-                border-radius: 4px; 
-                border: 1px solid #e0e0e0; 
-                background: #ffffff; 
-                color: #333333;
-                font-family: "Microsoft YaHei", "微软雅黑";
-            }
-            QComboBox QAbstractItemView { 
-                color: #333333; 
-                background: #ffffff; 
-                selection-background-color: #2196f3; 
-                selection-color: #ffffff; 
-                border-radius: 4px; 
-                font-size: 16px; 
-                border: 1px solid #e0e0e0;
-            }
-            QComboBox::drop-down { 
-                border: none; 
-                width: 20px; 
-            }
-        ''')
-        self.freq_combo.addItems([
-            "2秒 (极速)",
-            "5秒 (快速)",
-            "10秒 (标准)",
-            "30秒 (慢速)",
-            "60秒 (极慢)"
-        ])
-        self.freq_combo.setCurrentIndex(1)
-        self.freq_combo.currentIndexChanged.connect(self.on_freq_changed)
-        bottom_area.addWidget(self.freq_combo, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
-        # 开机启动
-        self.startup_checkbox = QtWidgets.QCheckBox("开机自动启动")
-        self.startup_checkbox.setChecked(self.is_startup_enabled())
-        self.startup_checkbox.stateChanged.connect(self.on_startup_checkbox_changed)
-        self.startup_checkbox.setStyleSheet("""
-            QCheckBox {
-                color: #333333; 
-                font-size: 16px; 
-                font-weight: normal;
-                font-family: "Microsoft YaHei", "微软雅黑";
-            }
-            QCheckBox::indicator {
-                width: 18px;
-                height: 18px;
-                border-radius: 2px;
-                border: 1px solid #bdbdbd;
-            }
-            QCheckBox::indicator:checked {
-                background: #2196f3;
-                border: 1px solid #2196f3;
-            }
-        """)
-        bottom_area.addWidget(self.startup_checkbox, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
-        
-        # 版本号
-        self.version_label = QtWidgets.QLabel(f"版本号：{APP_VERSION}")
-        self.version_label.setStyleSheet("color: #666666; font-size: 16px;")
-        bottom_area.addWidget(self.version_label, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
-        
-        # 检查更新按钮
-        self.update_btn = QtWidgets.QPushButton("检查更新")
-        self.update_btn.setStyleSheet("""
-            QPushButton {
-                background: #4caf50;
-                color: #ffffff;
-                font-size: 16px;
-                font-weight: normal;
-                padding: 6px 16px;
-                border-radius: 4px;
-                border: none;
-                font-family: "Microsoft YaHei", "微软雅黑";
-            }
-            QPushButton:hover {
-                background: #388e3c;
-            }
-            QPushButton:pressed {
-                background: #2e7d32;
-            }
-        """)
-        self.update_btn.setFixedHeight(32)
-        self.update_btn.clicked.connect(self.check_update)
-        bottom_area.addWidget(self.update_btn, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
-        bottom_area.addStretch(1)
-        # 右侧按钮区
-        btn_ok = QtWidgets.QPushButton("确定")
-        btn_ok.setStyleSheet("""
-            QPushButton {
-                background: #2196f3;
-                color: #ffffff;
-                font-size: 18px;
-                font-weight: normal;
-                padding: 8px 24px;
-                border-radius: 4px;
-                border: none;
-                font-family: "Microsoft YaHei", "微软雅黑";
-            }
-            QPushButton:hover {
-                background: #1976d2;
-            }
-            QPushButton:pressed {
-                background: #0d47a1;
-            }
-        """)
-        btn_ok.setFixedHeight(36)
-        btn_ok.clicked.connect(self.accept)
-        
-        btn_cancel = QtWidgets.QPushButton("取消")
-        btn_cancel.setStyleSheet("""
-            QPushButton {
-                background: #757575;
-                color: #ffffff;
-                font-size: 18px;
-                font-weight: normal;
-                padding: 8px 24px;
-                border-radius: 4px;
-                border: none;
-                font-family: "Microsoft YaHei", "微软雅黑";
-            }
-            QPushButton:hover {
-                background: #616161;
-            }
-            QPushButton:pressed {
-                background: #424242;
-            }
-        """)
-        btn_cancel.setFixedHeight(36)
-        btn_cancel.clicked.connect(self.reject)
-        
-        bottom_area.addWidget(btn_ok, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
-        bottom_area.addWidget(btn_cancel, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
-        layout.addLayout(bottom_area)
-
-    def load_current_stocks(self):
-        cfg = load_config()
-        stocks = cfg.get('user_stocks', ['sh600460', 'sh603986', 'sh600030', 'sh000001'])
-        self.stock_list.clear()
-        for stock in stocks:
-            name = self.get_name_by_code(stock)
-            # emoji区分类型
-            emoji = get_stock_emoji(stock, name)
-            display = f"{emoji}  {name} {stock}" if name else stock
-            self.stock_list.addItem(display)
-        self.selected_stocks = stocks[:]
-
-    def get_name_by_code(self, code):
-        for s in self.stock_data:
-            if s['code'] == code:
-                return s['name']
-        return ""
-
-    def load_refresh_interval(self):
-        cfg = load_config()
-        interval = cfg.get('refresh_interval', 5)
-        self.refresh_interval = interval
-        idx = {2:0, 5:1, 10:2, 30:3, 60:4}.get(interval, 1)
-        self.freq_combo.setCurrentIndex(idx)
-
-    def on_search(self, text):
-        text = text.strip().lower()
-        self.search_results.clear()
-        if not text:
-            return
-        def is_index(stock):
-            return stock['code'].startswith(('sh000', 'sz399', 'sz159', 'sh510')) or '指数' in stock['name'] or '板块' in stock['name']
-        # 支持拼音、首字母、代码、名称模糊匹配，ST股票去前缀
-        results = []
-        for s in self.stock_data:
-            code_match = text in s['code'].lower()
-            name_match = text in s['name'].lower()
-            pinyin_match = text in s.get('pinyin','')
-            abbr_match = text in s.get('abbr','')
-            # 对于ST类，去掉*ST/ST前缀后再匹配
-            base = s['name'].replace('*', '').replace('ST', '').replace(' ', '').lower()
-            base_match = text in base
-            if code_match or name_match or pinyin_match or abbr_match or base_match:
-                results.append(s)
-        results.sort(key=lambda s: (not is_index(s), s['code']))
-        for s in results[:30]:
-            display = f"{s['name']} {s['code']}"
-            item = QtWidgets.QListWidgetItem(display)
-            # emoji区分类型
-            if is_index(s):
-                emoji = '📈'
-            elif '板块' in s['name']:
-                emoji = '📊'
-            else:
-                emoji = '⭐️'
-            item.setText(f"{emoji}  {display}")
-            # 匹配内容高亮（背景+加粗）
-            if text:
-                base = s['name'].replace('*', '').replace('ST', '').replace(' ', '').lower()
-                parts_to_search = [s['code'].lower(), s['name'].lower(), s.get('pinyin',''), s.get('abbr',''), base]
-                for part in parts_to_search:
-                    idx = part.find(text)
-                    if idx != -1:
-                        item.setBackground(QtGui.QColor('#eaf3fc'))
-                        item.setForeground(QtGui.QColor('#357abd'))
-                        font = item.font()
-                        font.setBold(True)
-                        item.setFont(font)
-                        break
-            self.search_results.addItem(item)
-
-    def add_selected_stock(self, item):
-        # item.text()格式为“名称 代码”
-        code = item.text().split()[-1]
-        name = " ".join(item.text().split()[:-1])
-        self.add_stock_to_list(code)
-
-    def add_first_search_result(self):
-        if self.search_results.count() > 0:
-            item = self.search_results.item(0)
-            self.add_selected_stock(item)
-
-    def add_stock_to_list(self, code):
-        name = self.get_name_by_code(code)
-        display = f"{name} {code}" if name else code
-        # emoji区分类型
-        emoji = get_stock_emoji(code, name)
-        display = f"{emoji}  {display}"
-        for i in range(self.stock_list.count()):
-            item = self.stock_list.item(i)
-            if item is not None and item.text() == display:
-                return
-        self.stock_list.addItem(display)
-        self.selected_stocks.append(code)
-        self.sync_to_main()
-
-    def get_stocks_from_list(self):
-        """从股票列表中提取股票代码"""
-        stocks = []
-        for i in range(self.stock_list.count()):
-            item = self.stock_list.item(i)
-            if item is not None and hasattr(item, 'text'):
-                text = item.text()
-                # 提取最后的股票代码部分
-                parts = text.split()
-                if len(parts) >= 2:
-                    stocks.append(parts[-1])
-        return stocks
-
-    def delete_selected_stocks(self):
-        for item in self.stock_list.selectedItems():
-            if item is not None:
-                self.stock_list.takeItem(self.stock_list.row(item))
-        self.selected_stocks = self.get_stocks_from_list()
-        self.sync_to_main()
-
-    def on_freq_changed(self, idx):
-        interval = [2, 5, 10, 30, 60][idx]
-        self.refresh_interval = interval
-        self.sync_to_main()
-
-    def accept(self):
-        # 保存配置
-        stocks = self.get_stocks_from_list()
-        cfg = load_config()
-        cfg['user_stocks'] = stocks
-        cfg['refresh_interval'] = self.refresh_interval
-        save_config(cfg)
-        self.config_changed.emit(stocks, self.refresh_interval)
-        super().accept()
-
-    def sync_to_main(self):
-        # 实时同步到主界面
-        stocks = self.get_stocks_from_list()
-        cfg = load_config()
-        cfg['user_stocks'] = stocks
-        cfg['refresh_interval'] = self.refresh_interval
-        save_config(cfg)
-        self.config_changed.emit(stocks, self.refresh_interval)
-
-    # 新增方法：实时保存GitHub Token
-    def on_github_token_changed(self, text):
-        # 实时保存GitHub Token（可选）
-        cfg = load_config()
-        cfg['github_token'] = text.strip()
-        save_config(cfg)
-
-    def closeEvent(self, event):
-        cfg = load_config()
-        pos = self.pos()
-        cfg['settings_dialog_pos'] = [int(pos.x()), int(pos.y())]
-        
-        # 保存GitHub Token
-        cfg['github_token'] = self.github_token_edit.text().strip()
-        
-        save_config(cfg)
-        # 关键：关闭时让主界面指针置空，防止多实例
-        p = self.parent()
-        if p is not None and hasattr(p, 'settings_dialog'):
-            setattr(p, 'settings_dialog', None)
-        super().closeEvent(event)
-
-    def is_startup_enabled(self):
-        import os
-        startup_dir = os.path.join(os.environ["APPDATA"], r"Microsoft\Windows\Start Menu\Programs\Startup")
-        shortcut_path = os.path.join(startup_dir, "StockMonitor.lnk")
-        return os.path.exists(shortcut_path)
-
-    def on_startup_checkbox_changed(self, state):
-        import os
-        startup_dir = os.path.join(os.environ["APPDATA"], r"Microsoft\Windows\Start Menu\Programs\Startup")
-        exe_path = sys.executable
-        shortcut_path = os.path.join(startup_dir, "StockMonitor.lnk")
-        if state == QtCore.Qt.CheckState.Checked:
-            # 添加快捷方式
-            shell = Dispatch('WScript.Shell')
-            shortcut = shell.CreateShortCut(shortcut_path)
-            shortcut.Targetpath = exe_path
-            shortcut.WorkingDirectory = os.path.dirname(exe_path)
-            shortcut.IconLocation = exe_path
-            shortcut.save()
-        else:
-            # 删除快捷方式
-            if os.path.exists(shortcut_path):
-                try:
-                    os.remove(shortcut_path)
-                except Exception:
-                    pass
-
-    def check_update(self):
-        """检查更新"""
-        import requests, re, os, sys, zipfile, tempfile, subprocess
-        from packaging import version
-        from PyQt5.QtWidgets import QMessageBox, QProgressDialog, QApplication
-        from PyQt5 import QtGui
-        from stock_monitor.network.manager import NetworkManager  # 使用新的网络管理器
-        GITHUB_API = "https://api.github.com/repos/leo8912/stock_monitor/releases/latest"
-        try:
-            # 读取GitHub Token
-            cfg = load_config()
-            github_token = cfg.get('github_token', '')
-            
-            # 使用新的网络管理器
-            network_manager = NetworkManager()
-            data = network_manager.github_api_request(GITHUB_API, github_token)
-            
-            if not data:
-                app_logger.warning("无法获取GitHub发布信息")
-                QMessageBox.warning(self, "检查更新", "无法获取GitHub发布信息。")
-                return
-                
-            tag = data.get('tag_name', '')
-            m = re.search(r'v(\d+\.\d+\.\d+)', tag)
-            latest_ver = m.group(0) if m else None
-            asset_url = None
-            for asset in data.get('assets', []):
-                if asset['name'] == 'stock_monitor.zip':
-                    asset_url = asset['browser_download_url']
-                    break
-            # 修复导入方式，使用全局变量
-            global APP_VERSION
-            if not latest_ver or not asset_url:
-                app_logger.warning("未检测到新版本信息")
-                QMessageBox.warning(self, "检查更新", "未检测到新版本信息。")
-                return
-            if version.parse(latest_ver) <= version.parse(APP_VERSION):
-                app_logger.info("当前已是最新版本")
-                QMessageBox.information(self, "检查更新", f"当前已是最新版本：{APP_VERSION}")
-                return
-            reply = QMessageBox.question(
-                self, "发现新版本",
-                f"检测到新版本 {latest_ver}，是否自动下载并升级？",
-                QMessageBox.Yes | QMessageBox.No)
-            if reply != QMessageBox.Yes:
-                return
-            # 美化进度对话框
-            progress = QProgressDialog("正在下载新版本...", None, 0, 100, self)
-            progress.setWindowTitle("自动升级进度")
-            progress.setMinimumWidth(420)
-            progress.setStyleSheet("""
-                QProgressDialog {
-                    background: #23272e;
-                    color: #fff;
-                    font-size: 18px;
-                    border-radius: 10px;
-                }
-                QLabel {
-                    color: #fff;
-                    font-size: 18px;
-                }
-                QProgressBar {
-                    border: 1px solid #bbb;
-                    border-radius: 8px;
-                    background: #333;
-                    height: 32px;
-                    text-align: center;
-                    color: #fff;
-                    font-size: 22px;
-                    font-weight: bold;
-                }
-                QProgressBar::chunk {
-                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4a90e2, stop:1 #00c6fb);
-                    border-radius: 8px;
-                }
-            """)
-            progress.setAutoClose(False)
-            progress.setAutoReset(False)
-            progress.setValue(0)
-            QApplication.processEvents()
-            # 下载
-            tmpdir = tempfile.gettempdir()
-            zip_path = os.path.join(tmpdir, "stock_monitor_upgrade.zip")
-            extract_dir = os.path.join(tmpdir, "stock_monitor_upgrade")
-            try:
-                progress.setLabelText("正在下载新版本...")
-                QApplication.processEvents()
-                # 使用新的网络管理器下载文件
-                response = network_manager.get(asset_url, stream=True)
-                if not response:
-                    raise Exception("下载失败")
-                    
-                total = int(response.headers.get('content-length', 0))
-                downloaded = 0
-                with open(zip_path, 'wb') as f:
-                    for chunk in response.iter_content(chunk_size=8192):
-                        if chunk:
-                            f.write(chunk)
-                            downloaded += len(chunk)
-                            if total:
-                                percent = int(downloaded * 100 / total)
-                                progress.setValue(min(percent, 99))
-                                QApplication.processEvents()
-                progress.setValue(100)
-                progress.setLabelText("下载完成，正在解压...")
-                QApplication.processEvents()
-            except Exception as e:
-                app_logger.error(f"下载新版本失败: {e}")
-                progress.close()
-                QMessageBox.warning(self, "升级失败", f"下载新版本失败：{e}")
-                return
-            # 解压
-            try:
-                import shutil
-                progress.setLabelText("正在解压新版本...")
-                QApplication.processEvents()
-                if os.path.exists(extract_dir):
-                    shutil.rmtree(extract_dir)
-                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                    zip_ref.extractall(extract_dir)
-                progress.setLabelText("解压完成，正在升级...")
-                QApplication.processEvents()
-            except Exception as e:
-                app_logger.error(f"解压新版本失败: {e}")
-                progress.close()
-                QMessageBox.warning(self, "升级失败", f"解压新版本失败：{e}")
-                return
-            # 写升级批处理
-            try:
-                progress.setLabelText("正在写入升级脚本...")
-                QApplication.processEvents()
-                bat_path = os.path.join(tmpdir, "stock_monitor_upgrade.bat")
-                exe_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
-                with open(bat_path, 'w', encoding='gbk') as f:
-                    f.write(f"""@echo off
-timeout /t 1 >nul
-xcopy /y /e /q "{extract_dir}\\*" "{exe_dir}\\"
-rd /s /q "{extract_dir}"
-del "{zip_path}"
-start "" "{exe_dir}\\stock_monitor.exe"
-""")
-                progress.setLabelText("升级完成，正在重启...")
-                progress.setValue(100)
-                QApplication.processEvents()
-            except Exception as e:
-                app_logger.error(f"写入升级脚本失败: {e}")
-                progress.close()
-                QMessageBox.warning(self, "升级失败", f"写入升级脚本失败：{e}")
-                return
-            progress.close()
-            app_logger.info("升级完成，即将重启")
-            QMessageBox.information(self, "升级提示", "即将自动升级并重启，请稍候。")
-            subprocess.Popen(['cmd', '/c', bat_path])
-            QApplication.quit()
-        except requests.exceptions.RequestException as e:
-            app_logger.error(f"网络异常，无法连接到GitHub: {e}")
-            QMessageBox.warning(self, "检查更新", f"网络异常，无法连接到GitHub：{e}")
-        except Exception as e:
-            app_logger.error(f"检查更新时发生错误: {e}")
-            QMessageBox.warning(self, "检查更新", f"检查更新时发生错误：{e}")
-
-# 主界面同步显示“名称 代码”
-class StockTable(QtWidgets.QTableWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setColumnCount(4)  # 增加一列：封单手
-        h_header = self.horizontalHeader()
-        v_header = self.verticalHeader()
-        if h_header is not None:
-            h_header.setVisible(False)
-            h_header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-            h_header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-            h_header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-            h_header.setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-        if v_header is not None:
-            v_header.setVisible(False)
-        self.setShowGrid(False)
-        self.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.NoSelection)
-        self.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)  # type: ignore
-        self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)  # type: ignore
-        self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)  # type: ignore
-        
-        self.setStyleSheet('''
-            QTableWidget {
-                background: transparent;
-                border: none;
-                outline: none;
-                gridline-color: transparent;
-                selection-background-color: transparent;
-                selection-color: #fff;
-                font-family: "微软雅黑";
-                font-size: 20px;
-                font-weight: bold;
-                color: #fff;
-            }
-            QTableWidget::item {
-                border: none;
-                padding: 0px;
-                background: transparent;
-            }
-            QTableWidget::item:selected {
-                background: transparent;
-                color: #fff;
-            }
-            QHeaderView::section {
-                background: transparent;
-                border: none;
-                color: transparent;
-            }
-            QScrollBar {
-                background: transparent;
-                width: 0px;
-                height: 0px;
-            }
-            QScrollBar::handle {
-                background: transparent;
-            }
-            QScrollBar::add-line, QScrollBar::sub-line {
-                background: transparent;
-                border: none;
-            }
-        ''')
-
-    @pyqtSlot(list)
-    def update_data(self, stocks):
-        self.setRowCount(len(stocks))
-        for row, stock in enumerate(stocks):
-            name, price, change, color, seal_vol, seal_type = stock
-            # ======= 表格渲染 =======
-            item_name = QtWidgets.QTableWidgetItem(name)
-            item_price = QtWidgets.QTableWidgetItem(price)
-            if not change.endswith('%'):
-                change = change + '%'
-            item_change = QtWidgets.QTableWidgetItem(change)
-            item_seal = QtWidgets.QTableWidgetItem(seal_vol)
-            # 涨停/跌停高亮
-            if seal_type == 'up':
-                for item in [item_name, item_price, item_change, item_seal]:
-                    item.setBackground(QtGui.QColor('#ffecec'))
-                    # 使用与个股红盘一致的颜色，超过5%的用深红色
-                    item.setForeground(QtGui.QColor(color))
-            elif seal_type == 'down':
-                for item in [item_name, item_price, item_change, item_seal]:
-                    item.setBackground(QtGui.QColor('#e8f5e9'))
-                    item.setForeground(QtGui.QColor('#27ae60'))
-            else:
-                item_name.setForeground(QtGui.QColor(color))
-                item_price.setForeground(QtGui.QColor(color))
-                item_change.setForeground(QtGui.QColor(color))
-                item_seal.setForeground(QtGui.QColor('#888'))
-            item_name.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)  # type: ignore
-            item_price.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)  # type: ignore
-            item_change.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)  # type: ignore
-            item_seal.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)  # type: ignore
-            self.setItem(row, 0, item_name)
-            self.setItem(row, 1, item_price)
-            self.setItem(row, 2, item_change)
-            self.setItem(row, 3, item_seal)
-        h_header = self.horizontalHeader()
-        if h_header is not None:
-            h_header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-            h_header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-            h_header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-            h_header.setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-        self.updateGeometry()
-        QtWidgets.QApplication.processEvents()  # 强制刷新事件队列
-
-    def get_name_by_code(self, code):
-        # 读取本地股票数据
-        try:
-            import json
-            with open(resource_path("stock_basic.json"), "r", encoding="utf-8") as f:
-                stock_data = json.load(f)
-            for s in stock_data:
-                if s['code'] == code:
-                    return s['name']
-        except Exception:
-            pass
-        return ""
-        
-    # 重写wheelEvent方法以完全禁用鼠标滚轮事件
-    def wheelEvent(self, a0):
-        # 不调用父类的wheelEvent，直接忽略事件
-        # 这样可以完全防止鼠标滚轮引起的滚动
-        pass
+from stock_monitor.ui.components import StockTable
 
 class MainWindow(QtWidgets.QWidget):
     update_table_signal = pyqtSignal(list)
@@ -870,7 +58,7 @@ class MainWindow(QtWidgets.QWidget):
         # 设置样式
         self.setMinimumHeight(80)
         self.setMinimumWidth(280)
-        self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)  # type: ignore
         font = QtGui.QFont('微软雅黑', 20)
         self.setFont(font)
         self.setStyleSheet('QWidget { font-family: "微软雅黑"; font-size: 20px; color: #fff; background: transparent; border: none; }')
@@ -890,7 +78,7 @@ class MainWindow(QtWidgets.QWidget):
         self.current_user_stocks = self.load_user_stocks()
         
         # 启动刷新线程和信号连接
-        self.update_table_signal.connect(self.table.update_data)
+        self.update_table_signal.connect(self.table.update_data)  # type: ignore
         
         # 立即刷新一次，确保在窗口显示前加载数据
         self.refresh_now(self.current_user_stocks)
@@ -913,10 +101,14 @@ class MainWindow(QtWidgets.QWidget):
             for child in widget.findChildren(QtWidgets.QWidget):
                 self.install_event_filters(child)
 
-    def eventFilter(self, obj, event):
+    def eventFilter(self, a0, a1):
+        event = a1
         if event.type() == QtCore.QEvent.MouseButtonPress:  # type: ignore
             if event.button() == QtCore.Qt.LeftButton:  # type: ignore
-                self.drag_position = event.globalPos() - self.frameGeometry().topLeft()
+                cursor_pos = QtGui.QCursor.pos()
+                frame_top_left = self.frameGeometry().topLeft()
+                self.drag_position = QtCore.QPoint(cursor_pos.x() - frame_top_left.x(), 
+                                                  cursor_pos.y() - frame_top_left.y())
                 self.setCursor(QtCore.Qt.SizeAllCursor)  # type: ignore
                 event.accept()
                 return True
@@ -954,7 +146,7 @@ class MainWindow(QtWidgets.QWidget):
                 action_settings = menu.addAction('设置')
                 menu.addSeparator()
                 action_quit = menu.addAction('退出')
-                action = menu.exec_(event.globalPos())
+                action = menu.exec_(QtGui.QCursor.pos())
                 if action == action_settings:
                     if not hasattr(self, 'settings_dialog') or self.settings_dialog is None:
                         self.settings_dialog = SettingsDialog(self, main_window=self)
@@ -969,7 +161,9 @@ class MainWindow(QtWidgets.QWidget):
                 return True
         elif event.type() == QtCore.QEvent.MouseMove:  # type: ignore
             if event.buttons() == QtCore.Qt.LeftButton and self.drag_position is not None:  # type: ignore
-                self.move(event.globalPos() - self.drag_position)
+                cursor_pos = QtGui.QCursor.pos()
+                self.move(cursor_pos.x() - self.drag_position.x(), 
+                         cursor_pos.y() - self.drag_position.y())
                 event.accept()
                 return True
         elif event.type() == QtCore.QEvent.MouseButtonRelease:  # type: ignore
@@ -978,29 +172,29 @@ class MainWindow(QtWidgets.QWidget):
             self.save_position()  # 拖动结束时自动保存位置
             event.accept()
             return True
-        return super().eventFilter(obj, event)
+        return super().eventFilter(a0, a1)
 
-    def mousePressEvent(self, a0):
+    def mousePressEvent(self, event):  # type: ignore
         if event.button() == QtCore.Qt.LeftButton:  # type: ignore
             self.drag_position = event.globalPos() - self.frameGeometry().topLeft()
             self.setCursor(QtCore.Qt.SizeAllCursor)  # type: ignore
             event.accept()
         elif event.button() == QtCore.Qt.RightButton:  # type: ignore
-            self.menu.popup(a1.globalPos())
+            self.menu.popup(QtGui.QCursor.pos())
 
-    def mouseMoveEvent(self, a0):
+    def mouseMoveEvent(self, event):  # type: ignore
         if event.buttons() == QtCore.Qt.LeftButton and self.drag_position is not None:  # type: ignore
             self.move(event.globalPos() - self.drag_position)
             event.accept()
 
-    def mouseReleaseEvent(self, a0):
+    def mouseReleaseEvent(self, event):  # type: ignore
         self.drag_position = None
         self.setCursor(QtCore.Qt.ArrowCursor)  # type: ignore
         self.save_position()  # 拖动结束时自动保存位置
 
-    def closeEvent(self, event):
+    def closeEvent(self, a0):  # type: ignore
         self.save_position()
-        super().closeEvent(event)
+        super().closeEvent(a0)
 
     def save_position(self):
         cfg = load_config()
@@ -1115,20 +309,33 @@ class MainWindow(QtWidgets.QWidget):
                 # 检测涨停/跌停封单
                 seal_vol = ''
                 seal_type = ''
-                try:
-                    if (is_equal(str(now), str(high)) and is_equal(str(now), str(bid1)) and 
-                        bid1_vol > 0 and is_equal(str(ask1), "0")):
-                        # 将封单数转换为以"k"为单位，封单数/100000来算（万手转k）
-                        seal_vol = f"{int(bid1_vol/100000)}k" if bid1_vol >= 100000 else f"{int(bid1_vol)}"
-                        seal_type = 'up'
-                    elif (is_equal(str(now), str(low)) and is_equal(str(now), str(ask1)) and 
-                          ask1_vol > 0 and is_equal(str(bid1), "0")):
-                        # 将封单数转换为以"k"为单位，封单数/100000来算（万手转k）
-                        seal_vol = f"{int(ask1_vol/100000)}k" if ask1_vol >= 100000 else f"{int(ask1_vol)}"
-                        seal_type = 'down'
-                except (ValueError, TypeError):
-                    pass  # 忽略封单计算中的错误
+                # 确保变量都已定义且不为None
+                if all(var_name in locals() and locals()[var_name] is not None 
+                       for var_name in ['now', 'high', 'low', 'bid1', 'ask1', 'bid1_vol', 'ask1_vol']):
+                    now_val = locals()['now']
+                    high_val = locals()['high']
+                    low_val = locals()['low']
+                    bid1_val = locals()['bid1']
+                    ask1_val = locals()['ask1']
+                    bid1_vol_val = locals()['bid1_vol']
+                    ask1_vol_val = locals()['ask1_vol']
                     
+                    try:
+                        # 使用工具函数进行数值比较
+                        from stock_monitor.data.stocks import is_equal
+                        if (is_equal(str(now_val), str(high_val)) and is_equal(str(now_val), str(bid1_val)) and 
+                            bid1_vol_val > 0 and is_equal(str(ask1_val), "0")):
+                            # 将封单数转换为以"k"为单位，封单数/100000来算（万手转k）
+                            seal_vol = f"{int(bid1_vol_val/100000)}k" if bid1_vol_val >= 100000 else f"{int(bid1_vol_val)}"
+                            seal_type = 'up'
+                        elif (is_equal(str(now_val), str(low_val)) and is_equal(str(now_val), str(ask1_val)) and 
+                              ask1_vol_val > 0 and is_equal(str(bid1_val), "0")):
+                            # 将封单数转换为以"k"为单位，封单数/100000来算（万手转k）
+                            seal_vol = f"{int(ask1_vol_val/100000)}k" if ask1_vol_val >= 100000 else f"{int(ask1_vol_val)}"
+                            seal_type = 'down'
+                    except (ValueError, TypeError):
+                        pass  # 忽略封单计算中的错误
+                
                 stocks.append((name, price, change_str, color, seal_vol, seal_type))
             else:
                 # 如果没有获取到数据，显示默认值
@@ -1475,10 +682,10 @@ class SystemTray(QtWidgets.QSystemTrayIcon):
         self.action_settings.triggered.connect(self.open_settings)  # type: ignore
         self.action_quit.triggered.connect(QtWidgets.QApplication.quit)  # type: ignore
         self.activated.connect(self.on_activated)
-        # self.settings_dialog = None  # 删除托盘自己的 settings_dialog
+
 
     def open_settings(self):
-        # 直接调用主界面的 open_settings，确保唯一实例和信号链路
+
         self.main_window.open_settings()
 
     def on_activated(self, reason):
@@ -1497,4 +704,4 @@ def main():
     sys.exit(app.exec_())
 
 if __name__ == '__main__':
-    main() 
+    main()
