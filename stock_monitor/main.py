@@ -94,6 +94,23 @@ class MainWindow(QtWidgets.QWidget):
         self.raise_()
         self.activateWindow()
         self.install_event_filters(self)
+        
+        # 立即更新市场状态条，提高优先级
+        self._update_market_status_immediately()
+        
+    def _update_market_status_immediately(self):
+        """立即更新市场状态条，提高优先级"""
+        # 在新线程中立即更新市场状态，避免阻塞UI
+        update_thread = threading.Thread(target=self._immediate_market_status_update, daemon=True)
+        update_thread.start()
+        
+    def _immediate_market_status_update(self):
+        """立即更新市场状态的实现"""
+        try:
+            # 直接调用市场状态条的更新方法
+            self.market_status_bar.update_market_status()
+        except Exception as e:
+            app_logger.error(f"立即更新市场状态失败: {e}")
 
     def install_event_filters(self, widget):
         if isinstance(widget, QtWidgets.QWidget):

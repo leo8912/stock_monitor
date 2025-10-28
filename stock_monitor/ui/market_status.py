@@ -12,10 +12,10 @@ class MarketStatusBar(QtWidgets.QWidget):
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.up_count = 0      # 上涨股票数
+        self.up_count = 100    # 上涨股票数，默认全红
         self.down_count = 0    # 下跌股票数
         self.flat_count = 0    # 平盘股票数
-        self.total_count = 0   # 总股票数
+        self.total_count = 100 # 总股票数
         self.setMinimumHeight(3)
         self.setMaximumHeight(3)
         
@@ -64,7 +64,8 @@ class MarketStatusBar(QtWidgets.QWidget):
             
             # 获取股票列表
             quotation = easyquotation.use('sina')
-            stock_list = quotation.market_snapshot(prefix=True)
+            # type: ignore 是因为pyright无法正确识别这个方法
+            stock_list = quotation.market_snapshot(prefix=True)  # type: ignore
             
             if not stock_list:
                 return
@@ -107,7 +108,7 @@ class MarketStatusBar(QtWidgets.QWidget):
             QMetaObject.invokeMethod(
                 self, 
                 "_update_status_internal", 
-                Qt.QueuedConnection,
+                Qt.QueuedConnection,  # type: ignore
                 QtCore.Q_ARG(int, up_count),
                 QtCore.Q_ARG(int, down_count),
                 QtCore.Q_ARG(int, flat_count),
@@ -120,11 +121,11 @@ class MarketStatusBar(QtWidgets.QWidget):
     def paintEvent(self, event):  # type: ignore
         """绘制状态条"""
         painter = QtGui.QPainter(self)
-        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)  # type: ignore
         
         if self.total_count == 0:
-            # 如果没有数据，显示灰色
-            painter.fillRect(self.rect(), QtGui.QColor(128, 128, 128, 100))
+            # 如果没有数据，显示红色
+            painter.fillRect(self.rect(), QtGui.QColor(231, 76, 60, 200))
             return
             
         # 计算各部分宽度
