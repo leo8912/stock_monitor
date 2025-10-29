@@ -30,6 +30,11 @@ class StockSearchWidget(QtWidgets.QWidget):
         self.stock_list = stock_list
         self.sync_callback = sync_callback
         self.selected_stocks = []
+        # 添加搜索节流定时器
+        self.search_timer = QtCore.QTimer(self)
+        self.search_timer.setSingleShot(True)
+        self.search_timer.timeout.connect(self._perform_search)  # type: ignore
+        self.pending_search_text = ""
         self.init_ui()
         
     def init_ui(self):
@@ -82,7 +87,13 @@ class StockSearchWidget(QtWidgets.QWidget):
         Args:
             text (str): 搜索文本
         """
-        text = text.strip().lower()
+        # 使用节流机制优化搜索性能
+        self.pending_search_text = text.strip()
+        self.search_timer.start(100)  # 100ms节流延迟
+        
+    def _perform_search(self):
+        """执行实际的搜索操作"""
+        text = self.pending_search_text.lower()
         self.search_results.clear()
         if not text:
             return
@@ -225,7 +236,8 @@ class StockSearchWidget(QtWidgets.QWidget):
         self.stock_list.addItem(display)
         self.selected_stocks.append(code)
         if self.sync_callback:
-            self.sync_callback()
+            # 使用 QTimer.singleShot 延迟执行同步回调，避免阻塞UI
+            QtCore.QTimer.singleShot(100, self.sync_callback)
             
     def get_name_by_code(self, code):
         """

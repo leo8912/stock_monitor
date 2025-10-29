@@ -105,6 +105,11 @@ class SettingsDialog(QtWidgets.QDialog):
         self.stock_data = self.enrich_pinyin(self.load_stock_data())
         self.selected_stocks = []
         self.refresh_interval = 5
+        # 添加配置保存节流定时器
+        self._save_throttle_timer = QtCore.QTimer(self)
+        self._save_throttle_timer.setSingleShot(True)
+        self._save_throttle_timer.timeout.connect(self._throttled_save_config)  # type: ignore
+        self._pending_save_config = None
         self.init_ui()
         self.load_current_stocks()
         self.load_refresh_interval()
@@ -489,8 +494,8 @@ class SettingsDialog(QtWidgets.QDialog):
 
     def sync_to_main(self):
         """同步配置到主界面"""
-        # 实时同步到主界面
-        self._save_user_config()
+        # 实时同步到主界面，使用节流机制避免频繁保存
+        self._throttle_save_config_params()
         # 使用QueuedConnection避免阻塞UI
         stocks = self.get_stocks_from_list()
         self.config_changed.emit(stocks, self.refresh_interval)
@@ -501,22 +506,51 @@ class SettingsDialog(QtWidgets.QDialog):
         cfg = load_config()
         cfg['user_stocks'] = stocks
         cfg['refresh_interval'] = self.refresh_interval
-        # 在后台线程中保存配置以避免阻塞UI
-        save_thread = threading.Thread(target=self._save_config_and_emit_signal, 
-                                     args=(cfg, stocks, self.refresh_interval))
-        save_thread.daemon = True
-        save_thread.start()
+        # 使用节流机制保存配置
+        self._throttle_save_config_params(cfg, stocks, self.refresh_interval)
 
-    def _save_config_and_emit_signal(self, cfg, stocks, refresh_interval):
-        """
-        在后台线程中保存配置并发出信号
+    def _throttle_save_config_params(self, cfg=None, stocks=None, refresh_interval=None):
+        """带参数的节流配置保存"""
+        if cfg is not None and stocks is not None and refresh_interval is not None:
+            # 直接调用方式
+            self._pending_save_config = (cfg, stocks, refresh_interval)
+        else:
+            # 从当前状态获取参数
+            stocks = self.get_stocks_from_list()
+            cfg = load_config()
+            cfg['user_stocks'] = stocks
+            cfg['refresh_interval'] = self.refresh_interval
+            self._pending_save_config = (cfg, stocks, refresh_interval)
         
-        Args:
-            cfg (dict): 配置字典
-            stocks (list): 股票列表
-            refresh_interval (int): 刷新间隔
-        """
-        save_config(cfg)
+        # 启动节流定时器，延迟1秒执行保存
+        if self._save_throttle_timer.isActive():
+            self._save_throttle_timer.stop()
+        self._save_throttle_timer.start(1000)  # 1秒节流延迟
+
+    def _throttled_save_config(self):
+        """节流后的配置保存"""
+        if self._pending_save_config:
+            cfg, stocks, refresh_interval = self._pending_save_config
+            # 在后台线程中保存配置以避免阻塞UI
+            save_thread = threading.Thread(target=self._save_config_and_emit_signal_wrapper, 
+                                         args=(cfg, stocks, refresh_interval))
+            save_thread.daemon = True
+            save_thread.start()
+            self._pending_save_config = None
+            
+    def _save_config_and_emit_signal_wrapper(self, cfg, stocks, refresh_interval):
+        """包装_save_config_and_emit_signal方法的包装器"""
+        # 确保在保存前重新加载配置以避免覆盖其他设置
+        try:
+            from ..config.manager import load_config, save_config
+            current_cfg = load_config()
+            current_cfg.update(cfg)
+            save_config(current_cfg)
+        except Exception as e:
+            # 如果重新加载失败，则直接保存传入的配置
+            from ..config.manager import save_config
+            save_config(cfg)
+        
         # 使用QueuedConnection避免阻塞UI
         self.config_changed.emit(stocks, refresh_interval)
 
