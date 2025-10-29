@@ -1,18 +1,17 @@
-from stock_monitor.version import APP_VERSION
+"""
+股票监控主程序
+用于监控A股股票实时行情
+"""
 
 import sys
 import os
-import json
 import threading
 import easyquotation
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtCore import pyqtSignal, pyqtSlot
 import time
 import datetime
-import requests
 from win32com.client import Dispatch
-# 在文件开头导入pypinyin
-from pypinyin import lazy_pinyin, Style
 
 from stock_monitor.utils.logger import app_logger
 from stock_monitor.data.updater import update_stock_database
@@ -20,7 +19,7 @@ from stock_monitor.ui.market_status import MarketStatusBar
 
 from stock_monitor.config.manager import is_market_open, load_config, save_config
 
-from stock_monitor.utils.helpers import resource_path, get_stock_emoji, is_equal
+from stock_monitor.utils.helpers import resource_path, get_stock_emoji
 
 ICON_FILE = resource_path('icon.ico')  # 统一使用ICO格式图标
 
@@ -29,7 +28,12 @@ from stock_monitor.ui.settings_dialog import SettingsDialog
 from stock_monitor.ui.components import StockTable
 
 class MainWindow(QtWidgets.QWidget):
+    """
+    主窗口类
+    负责显示股票行情、处理用户交互和管理应用状态
+    """
     update_table_signal = pyqtSignal(list)
+    
     def __init__(self):
         super().__init__()
         self.setWindowTitle('A股行情监控')
@@ -113,12 +117,28 @@ class MainWindow(QtWidgets.QWidget):
             app_logger.error(f"立即更新市场状态失败: {e}")
 
     def install_event_filters(self, widget):
+        """
+        为控件安装事件过滤器
+        
+        Args:
+            widget: 需要安装事件过滤器的控件
+        """
         if isinstance(widget, QtWidgets.QWidget):
             widget.installEventFilter(self)
             for child in widget.findChildren(QtWidgets.QWidget):
                 self.install_event_filters(child)
 
     def eventFilter(self, a0, a1):
+        """
+        事件过滤器，处理鼠标事件
+        
+        Args:
+            a0: 事件对象
+            a1: 事件参数
+            
+        Returns:
+            bool: 是否处理了事件
+        """
         event = a1
         if event.type() == QtCore.QEvent.MouseButtonPress:  # type: ignore
             if event.button() == QtCore.Qt.LeftButton:  # type: ignore
@@ -192,6 +212,12 @@ class MainWindow(QtWidgets.QWidget):
         return super().eventFilter(a0, a1)
 
     def mousePressEvent(self, event):  # type: ignore
+        """
+        鼠标按下事件处理
+        
+        Args:
+            event: 鼠标事件对象
+        """
         if event.button() == QtCore.Qt.LeftButton:  # type: ignore
             self.drag_position = event.globalPos() - self.frameGeometry().topLeft()
             self.setCursor(QtCore.Qt.SizeAllCursor)  # type: ignore
@@ -200,26 +226,46 @@ class MainWindow(QtWidgets.QWidget):
             self.menu.popup(QtGui.QCursor.pos())
 
     def mouseMoveEvent(self, event):  # type: ignore
+        """
+        鼠标移动事件处理
+        
+        Args:
+            event: 鼠标事件对象
+        """
         if event.buttons() == QtCore.Qt.LeftButton and self.drag_position is not None:  # type: ignore
             self.move(event.globalPos() - self.drag_position)
             event.accept()
 
     def mouseReleaseEvent(self, event):  # type: ignore
+        """
+        鼠标释放事件处理
+        
+        Args:
+            event: 鼠标事件对象
+        """
         self.drag_position = None
         self.setCursor(QtCore.Qt.ArrowCursor)  # type: ignore
         self.save_position()  # 拖动结束时自动保存位置
 
     def closeEvent(self, a0):  # type: ignore
+        """
+        窗口关闭事件处理
+        
+        Args:
+            a0: 关闭事件对象
+        """
         self.save_position()
         super().closeEvent(a0)
 
     def save_position(self):
+        """保存窗口位置到配置文件"""
         cfg = load_config()
         pos = self.pos()
         cfg['window_pos'] = [pos.x(), pos.y()]
         save_config(cfg)
 
     def load_position(self):
+        """从配置文件加载窗口位置"""
         cfg = load_config()
         pos = cfg.get('window_pos')
         if pos and isinstance(pos, list) and len(pos) == 2:
@@ -228,10 +274,12 @@ class MainWindow(QtWidgets.QWidget):
             self.move_to_bottom_right()
 
     def move_to_bottom_right(self):
+        """将窗口移动到屏幕右下角"""
         screen = QtWidgets.QApplication.primaryScreen().availableGeometry()  # type: ignore
         self.move(screen.right() - self.width() - 20, screen.bottom() - self.height() - 40)
 
     def open_settings(self):
+        """打开设置对话框"""
         if self.settings_dialog is None:
             self.settings_dialog = SettingsDialog(self, main_window=self)
         else:
@@ -240,8 +288,7 @@ class MainWindow(QtWidgets.QWidget):
             except Exception:
                 pass
         # 使用QueuedConnection避免阻塞UI
-        from PyQt5.QtCore import Qt
-        self.settings_dialog.config_changed.connect(self.on_user_stocks_changed, type=Qt.ConnectionType.QueuedConnection)
+        self.settings_dialog.config_changed.connect(self.on_user_stocks_changed)
         
         # 设置弹窗位置
         cfg = load_config()
@@ -266,17 +313,38 @@ class MainWindow(QtWidgets.QWidget):
         self.settings_dialog.activateWindow()
 
     def on_user_stocks_changed(self, user_stocks, refresh_interval):
+        """
+        用户股票列表改变时的处理函数
+        
+        Args:
+            user_stocks (list): 用户股票列表
+            refresh_interval (int): 刷新间隔
+        """
         self.current_user_stocks = user_stocks
         self.refresh_interval = refresh_interval  # 关键：更新刷新间隔
         self.refresh_now(user_stocks)
 
     def process_stock_data(self, data, stocks_list):
-        """处理股票数据，返回格式化的股票列表"""
+        """
+        处理股票数据，返回格式化的股票列表
+        
+        Args:
+            data: 原始股票数据
+            stocks_list: 股票列表
+            
+        Returns:
+            list: 格式化后的股票数据列表
+        """
         from stock_monitor.data.quotation import process_stock_data as quotation_process_stock_data
         return quotation_process_stock_data(data, stocks_list)
 
     def refresh_now(self, stocks_list=None):
-        """立即刷新数据"""
+        """
+        立即刷新数据
+        
+        Args:
+            stocks_list (list, optional): 股票列表
+        """
         if stocks_list is None:
             stocks_list = self.current_user_stocks
         # 使用 hasattr 检查 quotation 对象是否有 real 方法
@@ -333,6 +401,12 @@ class MainWindow(QtWidgets.QWidget):
                 self.adjust_window_height()
 
     def paintEvent(self, a0):  # type: ignore
+        """
+        绘制事件处理，用于绘制窗口背景
+        
+        Args:
+            a0: 绘制事件对象
+        """
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.Antialiasing)  # type: ignore
         rect = self.rect()
@@ -342,6 +416,7 @@ class MainWindow(QtWidgets.QWidget):
         painter.drawRect(rect)
 
     def _start_refresh_thread(self):
+        """启动刷新线程"""
         self._refresh_thread = threading.Thread(target=self._refresh_loop, daemon=True)
         self._refresh_thread.start()
 
@@ -354,7 +429,7 @@ class MainWindow(QtWidgets.QWidget):
         from stock_monitor.utils.cache import global_cache
         
         while True:
-            if hasattr(self, 'quotation') and hasattr(self.quotation, 'real') and callable(self.quotation.real):
+            if hasattr(self, 'quotation'):
                 try:
                     data_dict = {}
                     failed_count = 0
@@ -489,7 +564,12 @@ class MainWindow(QtWidgets.QWidget):
                 time.sleep(3600)  # 出错后等待1小时再重试
 
     def load_user_stocks(self):
-        """加载用户自选股列表，包含完整的错误处理和格式规范化"""
+        """
+        加载用户自选股列表，包含完整的错误处理和格式规范化
+        
+        Returns:
+            list: 用户股票列表
+        """
         try:
             cfg = load_config()
             stocks = cfg.get('user_stocks', None)
@@ -553,12 +633,26 @@ class MainWindow(QtWidgets.QWidget):
             return ['sh600460', 'sh603986', 'sh600030', 'sh000001']
 
     def _format_stock_code(self, code):
-        """格式化股票代码，确保正确的前缀"""
+        """
+        格式化股票代码，确保正确的前缀
+        
+        Args:
+            code (str): 股票代码
+            
+        Returns:
+            str: 格式化后的股票代码
+        """
         # 使用工具函数处理股票代码格式化
         from stock_monitor.utils.helpers import format_stock_code
         return format_stock_code(code)
 
     def load_theme_config(self):
+        """
+        加载主题配置
+        
+        Returns:
+            dict: 主题配置字典
+        """
         import json
         try:
             with open(resource_path("theme_config.json"), "r", encoding="utf-8") as f:
@@ -567,6 +661,9 @@ class MainWindow(QtWidgets.QWidget):
             return {}
 
     def adjust_window_height(self):
+        """
+        根据内容调整窗口高度
+        """
         # 用真实行高自适应主窗口高度，最小3行
         QtWidgets.QApplication.processEvents()
         vh = self.table.verticalHeader()
@@ -599,6 +696,10 @@ class MainWindow(QtWidgets.QWidget):
             self.setFixedWidth(base_width - margin_adjustment)
 
 class SystemTray(QtWidgets.QSystemTrayIcon):
+    """
+    系统托盘类
+    负责处理系统托盘图标和相关菜单
+    """
     def __init__(self, main_window):
         icon = QtGui.QIcon(ICON_FILE) if os.path.exists(ICON_FILE) else QtWidgets.QApplication.style().standardIcon(QtWidgets.QStyle.SP_ComputerIcon)  # type: ignore
         super().__init__(icon)
@@ -609,14 +710,20 @@ class SystemTray(QtWidgets.QSystemTrayIcon):
         self.setContextMenu(self.menu)
         self.action_settings.triggered.connect(self.open_settings)  # type: ignore
         self.action_quit.triggered.connect(QtWidgets.QApplication.quit)  # type: ignore
-        self.activated.connect(self.on_activated)
+        self.activated.connect(self.on_activated)  # type: ignore
 
 
     def open_settings(self):
-
+        """打开设置窗口"""
         self.main_window.open_settings()
 
     def on_activated(self, reason):
+        """
+        托盘图标激活事件处理
+        
+        Args:
+            reason: 激活原因
+        """
         if reason == QtWidgets.QSystemTrayIcon.Trigger:  # type: ignore
             self.main_window.show()
             self.main_window.raise_()
@@ -625,6 +732,7 @@ class SystemTray(QtWidgets.QSystemTrayIcon):
             self.contextMenu().popup(QtGui.QCursor.pos())  # type: ignore
 
 def main():
+    """主函数"""
     app = QtWidgets.QApplication(sys.argv)
     main_window = MainWindow()
     tray = SystemTray(main_window)

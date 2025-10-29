@@ -1,30 +1,44 @@
+"""
+设置对话框模块
+用于管理用户设置，包括自选股列表和刷新频率等配置
+"""
+
 import sys
 import os
-import json
-import easyquotation
 import threading
 from PyQt5 import QtWidgets, QtGui, QtCore
-from PyQt5.QtCore import pyqtSignal, pyqtSlot
+from PyQt5.QtCore import pyqtSignal
 from win32com.client import Dispatch
 # 在文件开头导入pypinyin
 from pypinyin import lazy_pinyin, Style
 
 from ..utils.logger import app_logger
-from ..data.updater import update_stock_database
-from ..ui.market_status import MarketStatusBar
-from ..ui.components import StockTable
 from ..ui.stock_search import StockSearchWidget
-from ..utils.helpers import get_stock_emoji, is_equal, resource_path
+from ..ui.settings_panel import SettingsPanel
+from ..utils.helpers import get_stock_emoji, resource_path
 from ..config.manager import load_config, save_config, is_market_open
 from ..network.manager import NetworkManager
 from ..version import APP_VERSION
+from ..data.stocks import load_stock_data, enrich_pinyin
+from ..data.quotation import get_name_by_code as get_stock_name_by_code
 
 
 class StockListWidget(QtWidgets.QListWidget):
+    """
+    股票列表控件
+    支持拖拽重新排序功能
+    """
     # 定义一个节流信号，用于优化拖拽性能
     items_reordered = pyqtSignal()
     
     def __init__(self, parent=None, sync_callback=None):
+        """
+        初始化股票列表控件
+        
+        Args:
+            parent: 父级控件
+            sync_callback: 同步回调函数
+        """
         super(StockListWidget, self).__init__(parent)
         self.sync_callback = sync_callback
         # 设置拖拽相关属性
@@ -41,6 +55,12 @@ class StockListWidget(QtWidgets.QListWidget):
         self.items_reordered.connect(self._throttle_reorder)  # type: ignore
 
     def dropEvent(self, event):
+        """
+        拖拽放置事件处理
+        
+        Args:
+            event: 拖拽事件对象
+        """
         super(StockListWidget, self).dropEvent(event)
         # 发出重新排序信号而不是直接调用回调
         self.items_reordered.emit()
@@ -58,9 +78,20 @@ class StockListWidget(QtWidgets.QListWidget):
 
 
 class SettingsDialog(QtWidgets.QDialog):
+    """
+    设置对话框类
+    提供用户配置界面，包括自选股设置和应用设置
+    """
     config_changed = pyqtSignal(list, int)  # stocks, refresh_interval
     
     def __init__(self, parent=None, main_window=None):
+        """
+        初始化设置对话框
+        
+        Args:
+            parent: 父级控件
+            main_window: 主窗口引用
+        """
         super(SettingsDialog, self).__init__(parent)
         self.setWindowTitle("自选股设置")
         self.setWindowIcon(QtGui.QIcon(resource_path('icon.ico')))
@@ -80,9 +111,16 @@ class SettingsDialog(QtWidgets.QDialog):
 
 
     def load_stock_data(self):
+        """
+        加载股票数据
+        
+        Returns:
+            list: 股票数据列表
+        """
         try:
-            with open(resource_path("stock_basic.json"), "r", encoding="utf-8") as f:
-                return json.load(f)
+            # 使用缓存机制加载股票数据
+            from ..utils.stock_cache import global_stock_cache
+            return global_stock_cache.get_stock_data()
         except Exception as e:
             # 如果无法加载本地股票数据，则从网络获取部分股票数据
             app_logger.warning(f"无法加载本地股票数据: {e}，将使用网络数据")
@@ -120,26 +158,28 @@ class SettingsDialog(QtWidgets.QDialog):
                                 'name': code
                             })
                 
-                return stock_data
+                # 使用统一的拼音处理函数
+                return enrich_pinyin(stock_data)
             except Exception as e2:
                 app_logger.error(f"无法从网络获取股票数据: {e2}")
                 # 返回空列表作为最后的备选方案
                 return []
 
     def enrich_pinyin(self, stock_list):
-        for s in stock_list:
-            name = s['name']
-            # 去除*ST、ST等前缀
-            base = name.replace('*', '').replace('ST', '').replace(' ', '')
-            # 全拼
-            full_pinyin = ''.join(lazy_pinyin(base))
-            # 首字母
-            abbr = ''.join(lazy_pinyin(base, style=Style.FIRST_LETTER))
-            s['pinyin'] = full_pinyin.lower()
-            s['abbr'] = abbr.lower()
-        return stock_list
+        """
+        丰富股票列表的拼音信息
+        
+        Args:
+            stock_list (list): 股票列表
+            
+        Returns:
+            list: 添加了拼音信息的股票列表
+        """
+        # 使用统一的拼音处理函数
+        return enrich_pinyin(stock_list)
 
     def init_ui(self):
+        """初始化用户界面"""
         self.setStyleSheet('''
             QDialog { 
                 background: #fafafa; 
@@ -218,7 +258,7 @@ class SettingsDialog(QtWidgets.QDialog):
         layout.setSpacing(0)
         layout.setContentsMargins(32, 32, 32, 32)
 
-        # 主体区域（左右对称）
+        # 主体区域（使用更灵活的布局）
         main_area = QtWidgets.QHBoxLayout()
         main_area.setSpacing(32)
         main_area.setContentsMargins(0, 0, 0, 0)
@@ -330,106 +370,13 @@ class SettingsDialog(QtWidgets.QDialog):
         layout.addLayout(main_area)
         layout.addStretch(1)
 
-        # 底部功能区（极简样式）
+        # 底部设置面板
+        self.settings_panel = SettingsPanel()
+        self.settings_panel.settings_changed.connect(self.on_settings_changed)  # type: ignore
         bottom_area = QtWidgets.QHBoxLayout()
         bottom_area.setSpacing(16)
         bottom_area.setContentsMargins(0, 24, 0, 0)
-        
-        # 刷新频率
-        freq_label = QtWidgets.QLabel("刷新频率：")
-        freq_label.setStyleSheet("font-size: 18px; color: #333333;")
-        bottom_area.addWidget(freq_label, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
-        
-        self.freq_combo = QtWidgets.QComboBox()
-        self.freq_combo.setMinimumWidth(120)
-        self.freq_combo.setFixedHeight(32)
-        self.freq_combo.setStyleSheet('''
-            QComboBox { 
-                font-size: 16px; 
-                padding: 4px 8px; 
-                min-width: 120px; 
-                border-radius: 4px; 
-                border: 1px solid #e0e0e0; 
-                background: #ffffff; 
-                color: #333333;
-                font-family: "Microsoft YaHei", "微软雅黑";
-            }
-            QComboBox QAbstractItemView { 
-                color: #333333; 
-                background: #ffffff; 
-                selection-background-color: #2196f3; 
-                selection-color: #ffffff; 
-                border-radius: 4px; 
-                font-size: 16px; 
-                border: 1px solid #e0e0e0;
-            }
-            QComboBox::drop-down { 
-                border: none; 
-                width: 20px; 
-            }
-        ''')
-        self.freq_combo.addItems([
-            "2秒 (极速)",
-            "5秒 (快速)",
-            "10秒 (标准)",
-            "30秒 (慢速)",
-            "60秒 (极慢)"
-        ])
-        self.freq_combo.setCurrentIndex(1)
-        self.freq_combo.currentIndexChanged.connect(self.on_freq_changed)  # type: ignore
-        bottom_area.addWidget(self.freq_combo, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
-        # 开机启动
-        self.startup_checkbox = QtWidgets.QCheckBox("开机自动启动")
-        self.startup_checkbox.setChecked(self.is_startup_enabled())
-        self.startup_checkbox.stateChanged.connect(self.on_startup_checkbox_changed)  # type: ignore
-        self.startup_checkbox.setStyleSheet("""
-            QCheckBox {
-                color: #333333; 
-                font-size: 16px; 
-                font-weight: normal;
-                font-family: "Microsoft YaHei", "微软雅黑";
-            }
-            QCheckBox::indicator {
-                width: 18px;
-                height: 18px;
-                border-radius: 2px;
-                border: 1px solid #bdbdbd;
-            }
-            QCheckBox::indicator:checked {
-                background: #2196f3;
-                border: 1px solid #2196f3;
-            }
-        """)
-        bottom_area.addWidget(self.startup_checkbox, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
-        
-        # 版本号
-        self.version_label = QtWidgets.QLabel(f"版本号：{APP_VERSION}")
-        self.version_label.setStyleSheet("color: #666666; font-size: 16px;")
-        bottom_area.addWidget(self.version_label, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
-        
-        # 检查更新按钮
-        self.update_btn = QtWidgets.QPushButton("检查更新")
-        self.update_btn.setStyleSheet("""
-            QPushButton {
-                background: #4caf50;
-                color: #ffffff;
-                font-size: 16px;
-                font-weight: normal;
-                padding: 6px 16px;
-                border-radius: 4px;
-                border: none;
-                font-family: "Microsoft YaHei", "微软雅黑";
-            }
-            QPushButton:hover {
-                background: #388e3c;
-            }
-            QPushButton:pressed {
-                background: #2e7d32;
-            }
-        """)
-        self.update_btn.setFixedHeight(32)
-        self.update_btn.clicked.connect(self.check_update)  # type: ignore
-        bottom_area.addWidget(self.update_btn, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
+        bottom_area.addWidget(self.settings_panel)
         bottom_area.addStretch(1)
         # 右侧按钮区
         btn_ok = QtWidgets.QPushButton("确定")
@@ -481,6 +428,7 @@ class SettingsDialog(QtWidgets.QDialog):
         layout.addLayout(bottom_area)
 
     def load_current_stocks(self):
+        """加载当前用户股票列表"""
         cfg = load_config()
         stocks = cfg.get('user_stocks', ['sh600460', 'sh603986', 'sh600030', 'sh000001'])
         self.stock_list.clear()
@@ -493,52 +441,62 @@ class SettingsDialog(QtWidgets.QDialog):
         self.selected_stocks = stocks[:]
 
     def get_name_by_code(self, code):
-        for s in self.stock_data:
-            if s['code'] == code:
-                return s['name']
-        return ""
+        """
+        根据股票代码获取股票名称
+        
+        Args:
+            code (str): 股票代码
+            
+        Returns:
+            str: 股票名称
+        """
+        # 使用统一的获取股票名称函数
+        return get_stock_name_by_code(code)
 
     def load_refresh_interval(self):
+        """加载刷新间隔配置"""
         cfg = load_config()
         interval = cfg.get('refresh_interval', 5)
         self.refresh_interval = interval
+        # 更新设置面板的刷新频率
         idx = {2:0, 5:1, 10:2, 30:3, 60:4}.get(interval, 1)
-        self.freq_combo.setCurrentIndex(idx)
+        self.settings_panel.freq_combo.setCurrentIndex(idx)
 
     def delete_selected_stocks(self):
+        """删除选中的股票"""
         for item in self.stock_list.selectedItems():
             if item is not None:
                 self.stock_list.takeItem(self.stock_list.row(item))
         self.selected_stocks = self.get_stocks_from_list()
         self.sync_to_main()
 
-    def on_freq_changed(self, idx):
-        interval = [2, 5, 10, 30, 60][idx]
-        self.refresh_interval = interval
+    def on_settings_changed(self, refresh_interval, startup_enabled):
+        """
+        设置改变时的处理函数
+        
+        Args:
+            refresh_interval (int): 刷新间隔
+            startup_enabled (bool): 是否开机启动
+        """
+        self.refresh_interval = refresh_interval
         self.sync_to_main()
 
     def accept(self):
+        """确定按钮点击事件处理"""
         # 保存配置
-        stocks = self.get_stocks_from_list()
-        cfg = load_config()
-        cfg['user_stocks'] = stocks
-        cfg['refresh_interval'] = self.refresh_interval
-        # 在后台线程中保存配置以避免阻塞UI
-        save_thread = threading.Thread(target=self._save_config_and_emit_signal, 
-                                     args=(cfg, stocks, self.refresh_interval))
-        save_thread.daemon = True
-        save_thread.start()
+        self._save_user_config()
         super(SettingsDialog, self).accept()
 
-    def _save_config_and_emit_signal(self, cfg, stocks, refresh_interval):
-        """在后台线程中保存配置并发出信号"""
-        save_config(cfg)
-        # 使用QueuedConnection避免阻塞UI
-        from PyQt5.QtCore import Qt
-        self.config_changed.emit(stocks, refresh_interval)
-
     def sync_to_main(self):
+        """同步配置到主界面"""
         # 实时同步到主界面
+        self._save_user_config()
+        # 使用QueuedConnection避免阻塞UI
+        stocks = self.get_stocks_from_list()
+        self.config_changed.emit(stocks, self.refresh_interval)
+
+    def _save_user_config(self):
+        """保存用户配置到文件"""
         stocks = self.get_stocks_from_list()
         cfg = load_config()
         cfg['user_stocks'] = stocks
@@ -548,13 +506,27 @@ class SettingsDialog(QtWidgets.QDialog):
                                      args=(cfg, stocks, self.refresh_interval))
         save_thread.daemon = True
         save_thread.start()
+
+    def _save_config_and_emit_signal(self, cfg, stocks, refresh_interval):
+        """
+        在后台线程中保存配置并发出信号
+        
+        Args:
+            cfg (dict): 配置字典
+            stocks (list): 股票列表
+            refresh_interval (int): 刷新间隔
+        """
+        save_config(cfg)
         # 使用QueuedConnection避免阻塞UI
-        from PyQt5.QtCore import Qt
-        self.config_changed.emit(stocks, self.refresh_interval)
-
-
+        self.config_changed.emit(stocks, refresh_interval)
 
     def closeEvent(self, a0):
+        """
+        关闭事件处理
+        
+        Args:
+            a0: 关闭事件对象
+        """
         cfg = load_config()
         pos = self.pos()
         cfg['settings_dialog_pos'] = [int(pos.x()), int(pos.y())]
@@ -569,12 +541,24 @@ class SettingsDialog(QtWidgets.QDialog):
         super(SettingsDialog, self).closeEvent(a0)
 
     def is_startup_enabled(self):
+        """
+        检查是否已设置开机启动
+        
+        Returns:
+            bool: 是否已设置开机启动
+        """
         import os
         startup_dir = os.path.join(os.environ["APPDATA"], r"Microsoft\Windows\Start Menu\Programs\Startup")
         shortcut_path = os.path.join(startup_dir, "StockMonitor.lnk")
         return os.path.exists(shortcut_path)
 
     def on_startup_checkbox_changed(self, state):
+        """
+        开机启动复选框状态改变处理
+        
+        Args:
+            state: 复选框状态
+        """
         import os
         startup_dir = os.path.join(os.environ["APPDATA"], r"Microsoft\Windows\Start Menu\Programs\Startup")
         exe_path = sys.executable
@@ -597,10 +581,18 @@ class SettingsDialog(QtWidgets.QDialog):
 
     def check_update(self):
         """检查更新"""
+        # 将检查更新功能移到设置面板中
+        self.settings_panel.parent_dialog = self  # type: ignore
+        self.settings_panel.check_update()
+        
+    def _check_update_impl(self):
+        """检查更新的实际实现"""
         import requests, re, os, sys, zipfile, tempfile, subprocess
         from packaging import version
         from PyQt5.QtWidgets import QMessageBox, QProgressDialog, QApplication
         from PyQt5 import QtGui
+        from ..network.manager import NetworkManager
+        from ..config.manager import CONFIG_DIR
         GITHUB_API = "https://api.github.com/repos/leo8912/stock_monitor/releases/latest"
         try:
             # 使用新的网络管理器
@@ -721,12 +713,32 @@ class SettingsDialog(QtWidgets.QDialog):
                 QApplication.processEvents()
                 bat_path = os.path.join(tmpdir, "stock_monitor_upgrade.bat")
                 exe_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+                
+                # 修复问题1：升级时保护用户配置目录
                 with open(bat_path, 'w', encoding='gbk') as f:
                     f.write(f"""@echo off
 timeout /t 1 >nul
+echo 正在升级应用程序...
+REM 升级前备份配置目录
+if exist "{CONFIG_DIR}" (
+    echo 备份用户配置...
+    xcopy /y /e /q "{CONFIG_DIR}" "{extract_dir}\\config_backup\\"
+)
+
+REM 执行升级
 xcopy /y /e /q "{extract_dir}\\*" "{exe_dir}\\"
+
+REM 恢复配置目录
+if exist "{extract_dir}\\config_backup\\" (
+    echo 恢复用户配置...
+    xcopy /y /e /q "{extract_dir}\\config_backup\\" "{CONFIG_DIR}"
+    rd /s /q "{extract_dir}\\config_backup"
+)
+
+REM 清理临时文件
 rd /s /q "{extract_dir}"
 del "{zip_path}"
+echo 升级完成，正在启动新版本...
 start "" "{exe_dir}\\stock_monitor.exe"
 """)
                 progress.setLabelText("升级完成，正在重启...")
@@ -750,7 +762,12 @@ start "" "{exe_dir}\\stock_monitor.exe"
             QMessageBox.warning(self, "检查更新", f"检查更新时发生错误：{e}")
 
     def get_stocks_from_list(self):
-        """从股票列表中提取股票代码"""
+        """
+        从股票列表中提取股票代码
+        
+        Returns:
+            list: 股票代码列表
+        """
         stocks = []
         # 使用count()方法获取项目数量，然后逐个处理
         for i in range(self.stock_list.count()):

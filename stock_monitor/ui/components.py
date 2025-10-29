@@ -1,8 +1,3 @@
-import sys
-from PyQt5 import QtWidgets, QtGui, QtCore
-from PyQt5.QtCore import pyqtSignal, pyqtSlot
-
-# -*- coding: utf-8 -*-
 """
 UI组件模块
 包含股票表格等UI组件的实现
@@ -14,9 +9,18 @@ from PyQt5.QtCore import pyqtSignal, pyqtSlot
 
 # 导入日志记录器
 from ..utils.logger import app_logger
+from ..data.quotation import get_name_by_code
 
 def resource_path(relative_path):
-    """获取资源文件路径，兼容PyInstaller打包和源码运行"""
+    """
+    获取资源文件路径，兼容PyInstaller打包和源码运行
+    
+    Args:
+        relative_path (str): 相对路径
+        
+    Returns:
+        str: 资源文件的绝对路径
+    """
     try:
         # PyInstaller创建的临时文件夹
         base_path = getattr(sys, '_MEIPASS', None)
@@ -27,7 +31,16 @@ def resource_path(relative_path):
     return QtCore.QDir(base_path).absoluteFilePath(relative_path)
 
 def get_stock_emoji(code, name):
-    """根据股票代码和名称返回对应的emoji"""
+    """
+    根据股票代码和名称返回对应的emoji
+    
+    Args:
+        code (str): 股票代码
+        name (str): 股票名称
+        
+    Returns:
+        str: 对应的emoji字符
+    """
     try:
         if code.startswith(('sh000', 'sz399', 'sz159', 'sh510')) or (name and ('指数' in name or '板块' in name)):
             return '📈'
@@ -52,7 +65,18 @@ def get_stock_emoji(code, name):
         return '⭐️'
 
 class StockTable(QtWidgets.QTableWidget):
+    """
+    股票表格控件
+    用于显示股票行情数据
+    """
+    
     def __init__(self, parent=None):
+        """
+        初始化股票表格
+        
+        Args:
+            parent: 父级控件
+        """
         super().__init__(parent)
         self.setColumnCount(4)  # 增加一列：封单手
         h_header = self.horizontalHeader()
@@ -115,6 +139,12 @@ class StockTable(QtWidgets.QTableWidget):
 
     @pyqtSlot(list)
     def update_data(self, stocks):
+        """
+        更新表格数据
+        
+        Args:
+            stocks (list): 股票数据列表
+        """
         try:
             self.setRowCount(len(stocks))
             for row, stock in enumerate(stocks):
@@ -165,12 +195,12 @@ class StockTable(QtWidgets.QTableWidget):
             
     # 重写wheelEvent方法以完全禁用鼠标滚轮事件
     def wheelEvent(self, a0):
+        """
+        鼠标滚轮事件处理，禁用滚轮滚动
+        
+        Args:
+            a0: 滚轮事件对象
+        """
         # 不调用父类的wheelEvent，直接忽略事件
         # 这样可以完全防止鼠标滚轮引起的滚动
         pass
-        
-    def get_name_by_code(self, code):
-        """根据股票代码获取股票名称"""
-        # 这里可以实现根据代码获取名称的逻辑
-        # 目前返回None，让调用者处理
-        return None

@@ -1,9 +1,22 @@
+"""
+工具函数模块
+包含各种通用工具函数
+"""
+
 import os
 import sys
 from typing import Callable, Any, Optional
 
 def resource_path(relative_path):
-    """获取资源文件路径，兼容PyInstaller打包和源码运行"""
+    """
+    获取资源文件路径，兼容PyInstaller打包和源码运行
+    
+    Args:
+        relative_path (str): 相对路径
+        
+    Returns:
+        str: 资源文件的绝对路径
+    """
     if hasattr(sys, '_MEIPASS'):
         return os.path.join(getattr(sys, '_MEIPASS'), relative_path)
     # 基于当前文件的目录定位resources文件夹
@@ -12,7 +25,16 @@ def resource_path(relative_path):
     return os.path.join(resources_dir, relative_path)
 
 def get_stock_emoji(code, name):
-    """根据股票代码和名称返回对应的emoji"""
+    """
+    根据股票代码和名称返回对应的emoji
+    
+    Args:
+        code (str): 股票代码
+        name (str): 股票名称
+        
+    Returns:
+        str: 对应的emoji字符
+    """
     if code.startswith(('sh000', 'sz399', 'sz159', 'sh510')) or (name and ('指数' in name or '板块' in name)):
         return '📈'
     elif name and '银行' in name:
@@ -31,6 +53,17 @@ def get_stock_emoji(code, name):
         return '⭐️'
 
 def is_equal(a, b, tol=0.01):
+    """
+    比较两个字符串数值是否近似相等
+    
+    Args:
+        a: 第一个数值字符串
+        b: 第二个数值字符串
+        tol (float): 容差值，默认为0.01
+        
+    Returns:
+        bool: 如果两个数值差的绝对值小于容差值则返回True，否则返回False
+    """
     try:
         return abs(float(a) - float(b)) < tol
     except Exception:
