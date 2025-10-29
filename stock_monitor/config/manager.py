@@ -3,6 +3,7 @@ import json
 import shutil
 from typing import Dict, Any, Optional, Union, List
 from ..utils.logger import app_logger
+from ..utils.helpers import handle_exception
 
 # 配置文件路径 - 存储在用户目录中，避免更新时丢失
 CONFIG_DIR = os.path.join(os.path.expanduser('~'), '.stock_monitor')
@@ -13,7 +14,7 @@ os.makedirs(CONFIG_DIR, exist_ok=True)
 
 def load_config() -> Dict[str, Any]:
     """加载配置文件，包含完整的错误处理和默认值"""
-    try:
+    def _load_config():
         if not os.path.exists(CONFIG_PATH):
             # 创建默认配置文件
             default_config = {
@@ -43,9 +44,10 @@ def load_config() -> Dict[str, Any]:
             config['settings_dialog_pos'] = []
             
         return config
-    except json.JSONDecodeError as e:
+    
+    def _handle_json_decode_error():
         # 如果JSON解析失败，备份原文件并创建新配置
-        error_msg = f"配置文件损坏，JSON解析错误: {e}，正在创建新的配置文件..."
+        error_msg = f"配置文件损坏，正在创建新的配置文件..."
         app_logger.error(error_msg)
         print(error_msg)
         
@@ -65,17 +67,14 @@ def load_config() -> Dict[str, Any]:
             "window_pos": [],
             "settings_dialog_pos": []
         }
-        try:
-            with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-                json.dump(default_config, f, ensure_ascii=False, indent=2)
-            app_logger.info(f"默认配置文件已创建: {CONFIG_PATH}")
-        except Exception as save_error:
-            save_error_msg = f"创建默认配置文件失败: {save_error}"
-            app_logger.error(save_error_msg)
-            print(save_error_msg)
+        
+        with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+            json.dump(default_config, f, ensure_ascii=False, indent=2)
+        app_logger.info(f"默认配置文件已创建: {CONFIG_PATH}")
         return default_config
-    except PermissionError as e:
-        error_msg = f"配置文件权限错误: {e}，请检查文件权限"
+    
+    def _handle_permission_error():
+        error_msg = "配置文件权限错误，请检查文件权限"
         app_logger.error(error_msg)
         print(error_msg)
         return {
@@ -85,17 +84,49 @@ def load_config() -> Dict[str, Any]:
             "window_pos": [],
             "settings_dialog_pos": []
         }
-    except Exception as e:
-        error_msg = f"加载配置文件时发生未知错误: {e}"
-        app_logger.error(error_msg)
-        print(error_msg)
-        return {
-            "user_stocks": ["sh600460", "sh603986", "sh600030", "sh000001"],
-            "refresh_interval": 5,
-            "github_token": "",
-            "window_pos": [],
-            "settings_dialog_pos": []
-        }
+    
+    try:
+        return _load_config()
+    except json.JSONDecodeError:
+        return handle_exception(
+            "处理JSON解码错误",
+            _handle_json_decode_error,
+            {
+                "user_stocks": ["sh600460", "sh603986", "sh600030", "sh000001"],
+                "refresh_interval": 5,
+                "github_token": "",
+                "window_pos": [],
+                "settings_dialog_pos": []
+            },
+            app_logger
+        )
+    except PermissionError:
+        return handle_exception(
+            "处理权限错误",
+            _handle_permission_error,
+            {
+                "user_stocks": ["sh600460", "sh603986", "sh600030", "sh000001"],
+                "refresh_interval": 5,
+                "github_token": "",
+                "window_pos": [],
+                "settings_dialog_pos": []
+            },
+            app_logger
+        )
+    except Exception:
+        return handle_exception(
+            "加载配置文件",
+            _load_config,
+            {
+                "user_stocks": ["sh600460", "sh603986", "sh600030", "sh000001"],
+                "refresh_interval": 5,
+                "github_token": "",
+                "window_pos": [],
+                "settings_dialog_pos": []
+            },
+            app_logger
+        )
+
 
 def save_config(cfg: Dict[str, Any]) -> None:
     """
@@ -104,14 +135,18 @@ def save_config(cfg: Dict[str, Any]) -> None:
     Args:
         cfg: 配置字典
     """
-    try:
+    def _save_config():
         with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
             json.dump(cfg, f, ensure_ascii=False, indent=2)
         app_logger.info("配置文件保存成功")
-    except Exception as e:
-        error_msg = f"保存配置文件时发生错误: {e}"
-        app_logger.error(error_msg)
-        print(error_msg)
+    
+    handle_exception(
+        "保存配置文件",
+        _save_config,
+        None,
+        app_logger
+    )
+
 
 def is_market_open():
     """检查A股是否开市"""

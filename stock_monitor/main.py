@@ -448,6 +448,10 @@ class MainWindow(QtWidgets.QWidget):
         """启动数据库更新线程"""
         self._database_update_thread = threading.Thread(target=self._database_update_loop, daemon=True)
         self._database_update_thread.start()
+        
+        # 启动缓存预加载调度器
+        from stock_monitor.data.updater import start_preload_scheduler
+        start_preload_scheduler()
 
     def _database_update_loop(self):
         """数据库更新循环 - 每天更新一次股票数据库"""
@@ -548,7 +552,11 @@ class MainWindow(QtWidgets.QWidget):
             # 返回安全的默认值
             return ['sh600460', 'sh603986', 'sh600030', 'sh000001']
 
-
+    def _format_stock_code(self, code):
+        """格式化股票代码，确保正确的前缀"""
+        # 使用工具函数处理股票代码格式化
+        from stock_monitor.utils.helpers import format_stock_code
+        return format_stock_code(code)
 
     def load_theme_config(self):
         import json

@@ -1,5 +1,6 @@
 import os
 import sys
+from typing import Callable, Any, Optional
 
 def resource_path(relative_path):
     """获取资源文件路径，兼容PyInstaller打包和源码运行"""
