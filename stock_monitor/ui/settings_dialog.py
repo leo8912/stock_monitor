@@ -2,6 +2,7 @@ import sys
 import os
 import json
 import easyquotation
+import threading
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtCore import pyqtSignal, pyqtSlot
 from win32com.client import Dispatch
@@ -76,10 +77,7 @@ class SettingsDialog(QtWidgets.QDialog):
         self.init_ui()
         self.load_current_stocks()
         self.load_refresh_interval()
-        # 加载GitHub Token
-        cfg = load_config()
-        github_token = cfg.get('github_token', '')
-        self.github_token_edit.setText(github_token)
+
 
     def load_stock_data(self):
         try:
@@ -323,18 +321,7 @@ class SettingsDialog(QtWidgets.QDialog):
         del_btn_layout.addStretch(1)
         right_layout.addLayout(del_btn_layout)
         
-        # 新增GitHub Token输入框
-        github_token_layout = QtWidgets.QHBoxLayout()
-        github_token_layout.addStretch(1)
-        github_token_label = QtWidgets.QLabel("GitHub Token:")
-        github_token_label.setStyleSheet("font-size: 16px; color: #333333;")
-        github_token_layout.addWidget(github_token_label)
-        self.github_token_edit = QtWidgets.QLineEdit()
-        self.github_token_edit.setPlaceholderText("请输入GitHub Token（可选）")
-        self.github_token_edit.textChanged.connect(self.on_github_token_changed)  # type: ignore
-        github_token_layout.addWidget(self.github_token_edit)
-        github_token_layout.addStretch(1)
-        right_layout.addLayout(github_token_layout)
+
         
         right_layout.addStretch(1)
 
@@ -536,9 +523,19 @@ class SettingsDialog(QtWidgets.QDialog):
         cfg = load_config()
         cfg['user_stocks'] = stocks
         cfg['refresh_interval'] = self.refresh_interval
-        save_config(cfg)
-        self.config_changed.emit(stocks, self.refresh_interval)
+        # 在后台线程中保存配置以避免阻塞UI
+        save_thread = threading.Thread(target=self._save_config_and_emit_signal, 
+                                     args=(cfg, stocks, self.refresh_interval))
+        save_thread.daemon = True
+        save_thread.start()
         super(SettingsDialog, self).accept()
+
+    def _save_config_and_emit_signal(self, cfg, stocks, refresh_interval):
+        """在后台线程中保存配置并发出信号"""
+        save_config(cfg)
+        # 使用QueuedConnection避免阻塞UI
+        from PyQt5.QtCore import Qt
+        self.config_changed.emit(stocks, refresh_interval)
 
     def sync_to_main(self):
         # 实时同步到主界面
@@ -546,23 +543,23 @@ class SettingsDialog(QtWidgets.QDialog):
         cfg = load_config()
         cfg['user_stocks'] = stocks
         cfg['refresh_interval'] = self.refresh_interval
-        save_config(cfg)
+        # 在后台线程中保存配置以避免阻塞UI
+        save_thread = threading.Thread(target=self._save_config_and_emit_signal, 
+                                     args=(cfg, stocks, self.refresh_interval))
+        save_thread.daemon = True
+        save_thread.start()
+        # 使用QueuedConnection避免阻塞UI
+        from PyQt5.QtCore import Qt
         self.config_changed.emit(stocks, self.refresh_interval)
 
-    # 新增方法：实时保存GitHub Token
-    def on_github_token_changed(self, text):
-        # 实时保存GitHub Token（可选）
-        cfg = load_config()
-        cfg['github_token'] = text.strip()
-        save_config(cfg)
+
 
     def closeEvent(self, a0):
         cfg = load_config()
         pos = self.pos()
         cfg['settings_dialog_pos'] = [int(pos.x()), int(pos.y())]
         
-        # 保存GitHub Token
-        cfg['github_token'] = self.github_token_edit.text().strip()
+
         
         save_config(cfg)
         # 关键：关闭时让主界面指针置空，防止多实例
@@ -606,13 +603,9 @@ class SettingsDialog(QtWidgets.QDialog):
         from PyQt5 import QtGui
         GITHUB_API = "https://api.github.com/repos/leo8912/stock_monitor/releases/latest"
         try:
-            # 读取GitHub Token
-            cfg = load_config()
-            github_token = cfg.get('github_token', '')
-            
             # 使用新的网络管理器
             network_manager = NetworkManager()
-            data = network_manager.github_api_request(GITHUB_API, github_token)
+            data = network_manager.github_api_request(GITHUB_API)
             
             if not data:
                 app_logger.warning("无法获取GitHub发布信息")
@@ -759,9 +752,10 @@ start "" "{exe_dir}\\stock_monitor.exe"
     def get_stocks_from_list(self):
         """从股票列表中提取股票代码"""
         stocks = []
+        # 使用count()方法获取项目数量，然后逐个处理
         for i in range(self.stock_list.count()):
             item = self.stock_list.item(i)
-            if item is not None and hasattr(item, 'text'):
+            if item is not None:
                 text = item.text()
                 # 提取最后的股票代码部分
                 parts = text.split()

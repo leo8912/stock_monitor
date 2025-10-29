@@ -239,7 +239,9 @@ class MainWindow(QtWidgets.QWidget):
                 self.settings_dialog.config_changed.disconnect(self.on_user_stocks_changed)
             except Exception:
                 pass
-        self.settings_dialog.config_changed.connect(self.on_user_stocks_changed)
+        # 使用QueuedConnection避免阻塞UI
+        from PyQt5.QtCore import Qt
+        self.settings_dialog.config_changed.connect(self.on_user_stocks_changed, type=Qt.ConnectionType.QueuedConnection)
         
         # 设置弹窗位置
         cfg = load_config()
@@ -270,107 +272,8 @@ class MainWindow(QtWidgets.QWidget):
 
     def process_stock_data(self, data, stocks_list):
         """处理股票数据，返回格式化的股票列表"""
-        stocks = []
-        up_count = 0    # 上涨股票数
-        down_count = 0  # 下跌股票数
-        flat_count = 0  # 平盘股票数
-        
-        for code in stocks_list:
-            info = None
-            # 优先使用完整代码作为键进行精确匹配，防止 sh000001 和 000001 混淆
-            if isinstance(data, dict):
-                info = data.get(code)  # 精确匹配完整代码
-            
-            if info:
-                name = info.get('name', code)
-                try:
-                    price = f"{float(info.get('now', 0)):.2f}"
-                except (ValueError, TypeError):
-                    price = "--"
-                    
-                try:
-                    close = float(info.get('close', 0))
-                    now = float(info.get('now', 0))
-                    high = float(info.get('high', 0))
-                    low = float(info.get('low', 0))
-                    bid1 = float(info.get('bid1', 0))
-                    bid1_vol = float(info.get('bid1_volume', 0))
-                    ask1 = float(info.get('ask1', 0))
-                    ask1_vol = float(info.get('ask1_volume', 0))
-                    
-                    percent = ((now - close) / close * 100) if close else 0
-                    # 修改颜色逻辑：超过5%的涨幅使用亮红色
-                    if percent >= 5:
-                        color = '#FF4500'  # 亮红色（更亮的红色）
-                    elif percent > 0:
-                        color = '#e74c3f'  # 红色
-                    elif percent < 0:
-                        color = '#27ae60'  # 绿色
-                    else:
-                        color = '#e6eaf3'  # 平盘
-                    
-                    change_str = f"{percent:+.2f}%"
-                    
-                    # 统计涨跌数量
-                    if percent > 0:
-                        up_count += 1
-                    elif percent < 0:
-                        down_count += 1
-                    else:
-                        flat_count += 1
-                except (ValueError, TypeError, ZeroDivisionError):
-                    color = '#e6eaf3'
-                    change_str = "--"
-                    flat_count += 1  # 无法计算的股票视为平盘
-                
-                # 检测涨停/跌停封单
-                seal_vol = ''
-                seal_type = ''
-                # 确保变量都已定义且不为None
-                if all(var_name in locals() and locals()[var_name] is not None 
-                       for var_name in ['now', 'high', 'low', 'bid1', 'ask1', 'bid1_vol', 'ask1_vol']):
-                    now_val = locals()['now']
-                    high_val = locals()['high']
-                    low_val = locals()['low']
-                    bid1_val = locals()['bid1']
-                    ask1_val = locals()['ask1']
-                    bid1_vol_val = locals()['bid1_vol']
-                    ask1_vol_val = locals()['ask1_vol']
-                    
-                    try:
-                        # 使用工具函数进行数值比较
-                        from stock_monitor.data.stocks import is_equal
-                        if (is_equal(str(now_val), str(high_val)) and is_equal(str(now_val), str(bid1_val)) and 
-                            bid1_vol_val > 0 and is_equal(str(ask1_val), "0")):
-                            # 将封单数转换为以"k"为单位，封单数/100000来算（万手转k）
-                            seal_vol = f"{int(bid1_vol_val/100000)}k" if bid1_vol_val >= 100000 else f"{int(bid1_vol_val)}"
-                            seal_type = 'up'
-                        elif (is_equal(str(now_val), str(low_val)) and is_equal(str(now_val), str(ask1_val)) and 
-                              ask1_vol_val > 0 and is_equal(str(bid1_val), "0")):
-                            # 将封单数转换为以"k"为单位，封单数/100000来算（万手转k）
-                            seal_vol = f"{int(ask1_vol_val/100000)}k" if ask1_vol_val >= 100000 else f"{int(ask1_vol_val)}"
-                            seal_type = 'down'
-                    except (ValueError, TypeError):
-                        pass  # 忽略封单计算中的错误
-                
-                stocks.append((name, price, change_str, color, seal_vol, seal_type))
-            else:
-                # 如果没有获取到数据，显示默认值
-                name = code
-                # 尝试从本地数据获取股票名称
-                local_name = self.table.get_name_by_code(code)
-                if local_name:
-                    name = local_name
-                stocks.append((name, "--", "--", "#e6eaf3", "", ""))
-                flat_count += 1  # 无数据的股票视为平盘
-        
-        # 更新股市状态条
-        total_count = len(stocks_list)
-        if total_count > 0:
-            # 不再更新市场状态条，让它显示全市场的数据
-            pass
-        
-        return stocks
+        from stock_monitor.data.quotation import process_stock_data as quotation_process_stock_data
+        return quotation_process_stock_data(data, stocks_list)
 
     def refresh_now(self, stocks_list=None):
         """立即刷新数据"""
@@ -610,7 +513,8 @@ class MainWindow(QtWidgets.QWidget):
                             code = stock.strip()
                         
                         # 格式化股票代码
-                        formatted_code = self._format_stock_code(code)
+                        from stock_monitor.utils.helpers import format_stock_code
+                        formatted_code = format_stock_code(code)
                         if formatted_code:
                             processed_stocks.append(formatted_code)
                     
@@ -644,38 +548,7 @@ class MainWindow(QtWidgets.QWidget):
             # 返回安全的默认值
             return ['sh600460', 'sh603986', 'sh600030', 'sh000001']
 
-    def _format_stock_code(self, code):
-        """格式化股票代码，确保正确的前缀"""
-        if not isinstance(code, str) or not code:
-            return None
-            
-        code = code.strip().lower()
-        
-        # 移除可能存在的额外字符
-        code = ''.join(c for c in code if c.isalnum())
-        
-        if not code:
-            return None
-            
-        # 检查是否已经有正确前缀
-        if code.startswith('sh') or code.startswith('sz'):
-            # 验证代码长度和数字部分
-            if len(code) == 8 and code[2:].isdigit():
-                return code
-            else:
-                return None
-                
-        # 6位纯数字代码
-        elif len(code) == 6 and code.isdigit():
-            if code.startswith('6') or code.startswith('5'):
-                return 'sh' + code
-            elif code.startswith('0') or code.startswith('3') or code.startswith('2'):
-                return 'sz' + code
-            else:
-                return None
-        
-        # 其他情况返回None
-        return None
+
 
     def load_theme_config(self):
         import json

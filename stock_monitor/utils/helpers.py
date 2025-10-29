@@ -34,3 +34,44 @@ def is_equal(a, b, tol=0.01):
         return abs(float(a) - float(b)) < tol
     except Exception:
         return False
+
+def format_stock_code(code):
+    """
+    格式化股票代码，确保正确的前缀
+    
+    Args:
+        code: 股票代码字符串
+        
+    Returns:
+        格式化后的股票代码，如果无效则返回None
+    """
+    if not isinstance(code, str) or not code:
+        return None
+        
+    code = code.strip().lower()
+    
+    # 移除可能存在的额外字符
+    code = ''.join(c for c in code if c.isalnum())
+    
+    if not code:
+        return None
+        
+    # 检查是否已经有正确前缀
+    if code.startswith('sh') or code.startswith('sz'):
+        # 验证代码长度和数字部分
+        if len(code) == 8 and code[2:].isdigit():
+            return code
+        else:
+            return None
+            
+    # 6位纯数字代码
+    elif len(code) == 6 and code.isdigit():
+        if code.startswith('6') or code.startswith('5'):
+            return 'sh' + code
+        elif code.startswith('0') or code.startswith('3') or code.startswith('2'):
+            return 'sz' + code
+        else:
+            return None
+    
+    # 其他情况返回None
+    return None

@@ -72,22 +72,17 @@ class NetworkManager:
             app_logger.error(f"POST请求失败: {url}, 错误: {e}")
             return None
     
-    def github_api_request(self, url: str, token: Optional[str] = None) -> Optional[Dict[Any, Any]]:
+    def github_api_request(self, url: str) -> Optional[Dict[Any, Any]]:
         """
         发送GitHub API请求
         
         Args:
             url: GitHub API URL
-            token: GitHub Token（可选）
             
         Returns:
             JSON响应数据或None（如果失败）
         """
-        headers = {}
-        if token:
-            headers['Authorization'] = f'token {token}'
-            
-        response = self.get(url, headers=headers)
+        response = self.get(url)
         if response:
             try:
                 return response.json()
