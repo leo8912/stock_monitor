@@ -76,3 +76,29 @@ def format_stock_code(code):
     
     # 其他情况返回None
     return None
+
+def handle_exception(
+    operation_name: str,
+    operation_func: Callable[[], Any],
+    default_return: Any,
+    logger: Any
+) -> Any:
+    """
+    通用异常处理函数
+    
+    Args:
+        operation_name: 操作名称
+        operation_func: 执行操作的函数
+        default_return: 默认返回值
+        logger: 日志记录器
+        
+    Returns:
+        操作结果或默认值
+    """
+    try:
+        return operation_func()
+    except Exception as e:
+        error_msg = f"{operation_name}时发生错误: {e}"
+        logger.error(error_msg)
+        print(error_msg)
+        return default_return
