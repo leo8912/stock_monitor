@@ -49,6 +49,13 @@ all_data = quotation.all
 snapshot = quotation.market_snapshot(prefix=True)
 ```
 
+#### 获取实时行情
+
+```python
+# 获取实时行情数据
+real_data = quotation.real(['000001', '000002'])
+```
+
 ### 3. 获取股票代码列表
 
 ```python
@@ -103,6 +110,83 @@ stock_list = quotation.stock_list
 | sz399001 | 深证成指 |
 | sz399006 | 创业板指 |
 
+## 最佳实践
+
+### 1. 股票代码处理
+
+为了确保正确识别股票，建议始终使用带前缀的股票代码：
+```python
+# 推荐方式
+stock_data = quotation.stocks(['sh600000', 'sz000001'], prefix=True)
+
+# 不推荐方式（可能导致代码冲突）
+stock_data = quotation.stocks(['600000', '000001'])
+```
+
+### 2. 错误处理
+
+在获取股票数据时，应当添加适当的错误处理机制：
+```python
+try:
+    data = quotation.stocks(['sh600000'])
+    if data:
+        # 处理数据
+        process_stock_data(data)
+    else:
+        print("未获取到股票数据")
+except Exception as e:
+    print(f"获取股票数据时发生错误: {e}")
+```
+
+### 3. 数据缓存
+
+对于频繁访问的数据，建议使用缓存机制以减少网络请求：
+```python
+import time
+
+# 简单的缓存实现
+cache = {}
+CACHE_TTL = 60  # 缓存60秒
+
+def get_stock_data_with_cache(stock_codes):
+    cache_key = ','.join(stock_codes)
+    current_time = time.time()
+    
+    # 检查缓存是否存在且未过期
+    if cache_key in cache:
+        data, timestamp = cache[cache_key]
+        if current_time - timestamp < CACHE_TTL:
+            return data
+    
+    # 缓存未命中或已过期，重新获取数据
+    try:
+        data = quotation.stocks(stock_codes)
+        cache[cache_key] = (data, current_time)
+        return data
+    except Exception as e:
+        print(f"获取股票数据失败: {e}")
+        return None
+```
+
+### 4. 批量处理
+
+当需要获取大量股票数据时，建议分批处理以避免请求超时：
+```python
+def get_all_stocks_batch(stock_codes, batch_size=50):
+    all_data = {}
+    
+    for i in range(0, len(stock_codes), batch_size):
+        batch = stock_codes[i:i+batch_size]
+        try:
+            batch_data = quotation.stocks(batch)
+            all_data.update(batch_data)
+        except Exception as e:
+            print(f"获取批次数据失败: {e}")
+            continue
+    
+    return all_data
+```
+
 ## 注意事项
 
 1. 股票代码前缀规则：
@@ -112,3 +196,7 @@ stock_list = quotation.stock_list
 2. 对于指数和个股的区分，需要根据前缀和代码来判断
 
 3. 接口返回的数据可能会有延迟，具体取决于数据源
+
+4. 频繁请求可能触发反爬虫机制，请合理控制请求频率
+
+5. 某些字段在不同数据源中可能有所不同，请以实际返回数据为准

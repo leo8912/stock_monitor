@@ -1,55 +1,74 @@
 """
 缓存管理模块
 用于缓存股票数据，减少网络请求频率
+
+该模块提供了基于LRU（最近最少使用）策略的数据缓存功能，
+可以有效减少对网络API的请求次数，提高应用性能。
 """
 
 import time
 from typing import Dict, Any, Optional
+from collections import OrderedDict
 from .logger import app_logger
 
 
 class DataCache:
-    """数据缓存管理器"""
+    """数据缓存管理器，支持LRU淘汰策略"""
     
-    def __init__(self, default_ttl: int = 30):
+    def __init__(self, default_ttl: int = 30, max_size: int = 1000):
         """
         初始化缓存管理器
         
         Args:
-            default_ttl: 默认缓存过期时间（秒）
+            default_ttl (int): 默认缓存过期时间（秒），默认30秒
+            max_size (int): 缓存最大容量（项数），默认1000项
         """
         self.default_ttl = default_ttl
-        self._cache: Dict[str, Dict[str, Any]] = {}
+        self.max_size = max_size
+        self._cache: OrderedDict[str, Dict[str, Any]] = OrderedDict()
         app_logger.debug("数据缓存管理器初始化完成")
     
     def set(self, key: str, data: Any, ttl: Optional[int] = None) -> None:
         """
         设置缓存数据
         
+        如果缓存已满，会根据LRU策略自动淘汰最久未使用的项。
+        
         Args:
-            key: 缓存键
-            data: 缓存数据
-            ttl: 过期时间（秒），如果为None则使用默认值
+            key (str): 缓存键
+            data (Any): 要缓存的数据
+            ttl (Optional[int]): 过期时间（秒），如果为None则使用默认值
         """
         if ttl is None:
             ttl = self.default_ttl
+            
+        # 如果缓存已满，删除最久未使用的项
+        if len(self._cache) >= self.max_size:
+            # 删除最久未使用的项（OrderedDict的第一个元素）
+            oldest_key, _ = self._cache.popitem(last=False)
+            app_logger.debug(f"LRU淘汰: 删除最久未使用的缓存项 {oldest_key}")
             
         self._cache[key] = {
             'data': data,
             'timestamp': time.time(),
             'ttl': ttl
         }
+        # 将该项移到最后（表示最近使用）
+        self._cache.move_to_end(key)
         app_logger.debug(f"设置缓存: {key}, TTL: {ttl}秒")
     
     def get(self, key: str) -> Optional[Any]:
         """
         获取缓存数据
         
+        如果缓存项存在且未过期，则返回缓存数据并更新其访问时间；
+        如果缓存项不存在或已过期，则返回None并删除过期项。
+        
         Args:
-            key: 缓存键
+            key (str): 缓存键
             
         Returns:
-            缓存数据，如果不存在或已过期则返回None
+            Optional[Any]: 缓存数据，如果不存在或已过期则返回None
         """
         if key not in self._cache:
             app_logger.debug(f"缓存未命中: {key}")
@@ -64,6 +83,8 @@ class DataCache:
             app_logger.debug(f"缓存已过期并删除: {key}")
             return None
             
+        # 将访问的项移到最后（表示最近使用）
+        self._cache.move_to_end(key)
         app_logger.debug(f"缓存命中: {key}, 剩余时间: {cache_entry['ttl'] - elapsed:.1f}秒")
         return cache_entry['data']
     
@@ -72,7 +93,7 @@ class DataCache:
         清除缓存
         
         Args:
-            key: 缓存键，如果为None则清除所有缓存
+            key (Optional[str]): 缓存键，如果为None则清除所有缓存
         """
         if key is None:
             self._cache.clear()
@@ -86,8 +107,10 @@ class DataCache:
         """
         清理过期缓存
         
+        遍历所有缓存项，删除已过期的项。
+        
         Returns:
-            清理的缓存项数量
+            int: 清理的缓存项数量
         """
         current_time = time.time()
         expired_keys = []
@@ -106,8 +129,10 @@ class DataCache:
         """
         获取缓存统计信息
         
+        返回当前缓存的状态信息，包括总项数、过期项数、有效项数等。
+        
         Returns:
-            包含缓存统计信息的字典
+            Dict[str, Any]: 包含缓存统计信息的字典
         """
         total_items = len(self._cache)
         current_time = time.time()
@@ -120,7 +145,9 @@ class DataCache:
         return {
             'total_items': total_items,
             'expired_items': expired_count,
-            'valid_items': total_items - expired_count
+            'valid_items': total_items - expired_count,
+            'max_size': self.max_size,
+            'usage_percentage': (total_items / self.max_size) * 100 if self.max_size > 0 else 0
         }
 
 

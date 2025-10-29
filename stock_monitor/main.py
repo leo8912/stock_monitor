@@ -545,6 +545,10 @@ class MainWindow(QtWidgets.QWidget):
         """启动数据库更新线程"""
         self._database_update_thread = threading.Thread(target=self._database_update_loop, daemon=True)
         self._database_update_thread.start()
+        
+        # 启动缓存预加载调度器
+        from stock_monitor.data.updater import start_preload_scheduler
+        start_preload_scheduler()
 
     def _database_update_loop(self):
         """数据库更新循环 - 每天更新一次股票数据库"""
@@ -646,36 +650,9 @@ class MainWindow(QtWidgets.QWidget):
 
     def _format_stock_code(self, code):
         """格式化股票代码，确保正确的前缀"""
-        if not isinstance(code, str) or not code:
-            return None
-            
-        code = code.strip().lower()
-        
-        # 移除可能存在的额外字符
-        code = ''.join(c for c in code if c.isalnum())
-        
-        if not code:
-            return None
-            
-        # 检查是否已经有正确前缀
-        if code.startswith('sh') or code.startswith('sz'):
-            # 验证代码长度和数字部分
-            if len(code) == 8 and code[2:].isdigit():
-                return code
-            else:
-                return None
-                
-        # 6位纯数字代码
-        elif len(code) == 6 and code.isdigit():
-            if code.startswith('6') or code.startswith('5'):
-                return 'sh' + code
-            elif code.startswith('0') or code.startswith('3') or code.startswith('2'):
-                return 'sz' + code
-            else:
-                return None
-        
-        # 其他情况返回None
-        return None
+        # 使用工具函数处理股票代码格式化
+        from stock_monitor.utils.helpers import format_stock_code
+        return format_stock_code(code)
 
     def load_theme_config(self):
         import json

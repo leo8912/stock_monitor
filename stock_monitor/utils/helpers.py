@@ -1,5 +1,6 @@
 import os
 import sys
+from typing import Callable, Any, Optional
 
 def resource_path(relative_path):
     """获取资源文件路径，兼容PyInstaller打包和源码运行"""
@@ -34,3 +35,67 @@ def is_equal(a, b, tol=0.01):
         return abs(float(a) - float(b)) < tol
     except Exception:
         return False
+
+def format_stock_code(code):
+    """
+    格式化股票代码，确保正确的前缀
+    
+    Args:
+        code: 股票代码字符串
+        
+    Returns:
+        格式化后的股票代码，如果无效则返回None
+    """
+    if not isinstance(code, str) or not code:
+        return None
+        
+    code = code.strip().lower()
+    
+    # 移除可能存在的额外字符
+    code = ''.join(c for c in code if c.isalnum())
+    
+    if not code:
+        return None
+        
+    # 检查是否已经有正确前缀
+    if code.startswith('sh') or code.startswith('sz'):
+        # 验证代码长度和数字部分
+        if len(code) == 8 and code[2:].isdigit():
+            return code
+        else:
+            return None
+            
+    # 6位纯数字代码
+    elif len(code) == 6 and code.isdigit():
+        if code.startswith('6') or code.startswith('5'):
+            return 'sh' + code
+        elif code.startswith('0') or code.startswith('3') or code.startswith('2'):
+            return 'sz' + code
+        else:
+            return None
+    
+    # 其他情况返回None
+    return None
+
+def handle_exception(operation: str, func: Callable[[], Any], default_value: Any = None, 
+                     logger=None) -> Any:
+    """
+    统一异常处理函数
+    
+    Args:
+        operation: 操作描述
+        func: 要执行的函数
+        default_value: 出现异常时的默认返回值
+        logger: 日志记录器
+        
+    Returns:
+        函数执行结果或默认值
+    """
+    try:
+        return func()
+    except Exception as e:
+        if logger:
+            logger.error(f"{operation}时发生错误: {e}")
+        else:
+            print(f"{operation}时发生错误: {e}")
+        return default_value
