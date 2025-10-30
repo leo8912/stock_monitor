@@ -169,8 +169,13 @@ class StockSearchWidget(QtWidgets.QWidget):
             elif text in base:
                 score += 10
             # 特殊处理港股代码匹配
-            elif stock['code'].startswith('hk') and text == stock['code'][2:]:
-                score += 500  # 与精确代码匹配相同分数
+            elif stock['code'].startswith('hk'):
+                # 精确匹配港股代码（不带hk前缀）
+                if text == stock['code'][2:]:
+                    score += 500  # 与精确代码匹配相同分数
+                # 包含匹配港股代码（不带hk前缀）
+                elif text in stock['code'][2:]:
+                    score += 300  # 包含匹配得分
                 
             # 优先显示非指数类股票
             if not is_index(stock):
