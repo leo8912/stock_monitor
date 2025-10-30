@@ -18,8 +18,10 @@ def resource_path(relative_path):
         str: 资源文件的绝对路径
     """
     if hasattr(sys, '_MEIPASS'):
-        return os.path.join(getattr(sys, '_MEIPASS'), relative_path)
-    # 基于当前文件的目录定位resources文件夹
+        # PyInstaller打包环境
+        base_path = getattr(sys, '_MEIPASS')
+        return os.path.join(base_path, 'stock_monitor', 'resources', relative_path)
+    # 源码运行环境
     current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     resources_dir = os.path.join(current_dir, 'resources')
     return os.path.join(resources_dir, relative_path)
