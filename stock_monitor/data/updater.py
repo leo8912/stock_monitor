@@ -13,7 +13,6 @@ from typing import Any, Union
 from ..utils.helpers import resource_path
 from ..utils.cache import global_cache
 import requests
-from openpyxl import load_workbook
 import io
 
 
