@@ -5,6 +5,7 @@
 
 import sys
 import json
+import threading
 from PyQt5 import QtWidgets, QtGui, QtCore
 from ..utils.logger import app_logger
 from ..utils.helpers import get_stock_emoji, resource_path
@@ -37,6 +38,10 @@ class StockSearchWidget(QtWidgets.QWidget):
         self.pending_search_text = ""
         self.init_ui()
         
+        # 如果股票数据为空，立即加载
+        if not self.stock_data:
+            self.stock_data = self.load_stock_data()
+            
     def init_ui(self):
         """初始化搜索界面"""
         layout = QtWidgets.QVBoxLayout(self)
@@ -87,9 +92,9 @@ class StockSearchWidget(QtWidgets.QWidget):
         Args:
             text (str): 搜索文本
         """
-        # 使用节流机制优化搜索性能
+        # 直接执行搜索，不使用节流机制
         self.pending_search_text = text.strip()
-        self.search_timer.start(100)  # 100ms节流延迟
+        self._perform_search()
         
     def _perform_search(self):
         """执行实际的搜索操作"""
@@ -101,6 +106,7 @@ class StockSearchWidget(QtWidgets.QWidget):
         def is_index(stock):
             return stock['code'].startswith(('sh000', 'sz399', 'sz159', 'sh510')) or '指数' in stock['name'] or '板块' in stock['name']
             
+        # 直接执行搜索
         # 支持拼音、首字母、代码、名称模糊匹配，ST股票去前缀
         results = []
         # 优化搜索算法：先进行简单的过滤，再进行复杂的匹配
@@ -115,6 +121,9 @@ class StockSearchWidget(QtWidgets.QWidget):
                 # 对于ST类，去掉*ST/ST前缀后再匹配
                 base = s['name'].replace('*', '').replace('ST', '').replace(' ', '').lower()
                 if text in base:
+                    results.append(s)
+                # 特殊处理港股代码，支持不带hk前缀的搜索
+                elif s['code'].startswith('hk') and text in s['code'][2:]:
                     results.append(s)
         
         # 实现智能排序，将匹配度高的结果排在前面
@@ -159,6 +168,9 @@ class StockSearchWidget(QtWidgets.QWidget):
                 score += 20
             elif text in base:
                 score += 10
+            # 特殊处理港股代码匹配
+            elif stock['code'].startswith('hk') and text == stock['code'][2:]:
+                score += 500  # 与精确代码匹配相同分数
                 
             # 优先显示非指数类股票
             if not is_index(stock):
@@ -168,23 +180,22 @@ class StockSearchWidget(QtWidgets.QWidget):
             
         # 根据匹配度排序
         results.sort(key=lambda s: (-match_score(s), s['code']))
-            
+        
+        # 更新UI
         # 限制显示结果数量
         for s in results[:50]:
             display = f"{s['name']} {s['code']}"
             item = QtWidgets.QListWidgetItem(display)
             # emoji区分类型
-            if is_index(s):
-                emoji = '📈'
-            elif '板块' in s['name']:
-                emoji = '📊'
-            else:
-                emoji = '⭐️'
+            emoji = get_stock_emoji(s['code'], s['name'])
             item.setText(f"{emoji}  {display}")
             # 匹配内容高亮（背景+加粗）
             if text:
                 base = s['name'].replace('*', '').replace('ST', '').replace(' ', '').lower()
                 parts_to_search = [s['code'].lower(), s['name'].lower(), s.get('pinyin', ''), s.get('abbr', ''), base]
+                # 添加港股特殊处理
+                if s['code'].startswith('hk'):
+                    parts_to_search.append(s['code'][2:])  # 不带hk前缀的代码
                 for part in parts_to_search:
                     idx = part.find(text)
                     if idx != -1:
@@ -195,7 +206,7 @@ class StockSearchWidget(QtWidgets.QWidget):
                         item.setFont(font)
                         break
             self.search_results.addItem(item)
-            
+        
     def add_selected_stock(self, item):
         """
         添加选中的股票
@@ -204,9 +215,35 @@ class StockSearchWidget(QtWidgets.QWidget):
             item: 选中的列表项
         """
         # item.text()格式为"名称 代码"
-        code = item.text().split()[-1]
-        name = " ".join(item.text().split()[:-1])
-        self.add_stock_to_list(code)
+        # 修复港股代码只保存中文部分的问题
+        text = item.text().strip()
+        if text.startswith(('🇭🇰', '⭐️', '📈', '📊', '🏦', '🛡️', '⛽️', '🚗', '💻')):
+            text = text[2:].strip()  # 移除emoji
+        
+        code = None
+        # 特殊处理港股
+        if text.startswith('hk'):
+            # 港股代码格式为hkxxxxx
+            parts = text.split()
+            if len(parts) >= 1:
+                code = parts[0]  # 港股代码就是第一部分
+        else:
+            # 提取最后的股票代码部分
+            parts = text.split()
+            if len(parts) >= 2:
+                code = parts[-1]
+        
+        # 确保代码有效后再添加
+        if code:
+            # 格式化股票代码
+            from stock_monitor.utils.helpers import format_stock_code
+            formatted_code = format_stock_code(code)
+            if formatted_code:
+                self.add_stock_to_list(formatted_code)
+            else:
+                # 如果格式化失败，但代码以hk开头，则直接添加
+                if code.startswith('hk') and len(code) == 7 and code[2:].isdigit():
+                    self.add_stock_to_list(code)
         
     def add_first_search_result(self):
         """添加第一个搜索结果"""
@@ -225,19 +262,31 @@ class StockSearchWidget(QtWidgets.QWidget):
             return
             
         name = self.get_name_by_code(code)
-        display = f"{name} {code}" if name else code
+        # 对于港股，只显示中文名称部分
+        if code.startswith('hk'):
+            # 去除"-"及之后的部分，只保留中文名称
+            if name and '-' in name:
+                name = name.split('-')[0].strip()
         # emoji区分类型
         emoji = get_stock_emoji(code, name)
-        display = f"{emoji}  {display}"
+        
+        # 构造显示文本
+        if name:
+            display = f"{emoji}  {name} {code}"
+        else:
+            display = f"{emoji}  {code}"
+            
+        # 检查是否已存在
         for i in range(self.stock_list.count()):
             item = self.stock_list.item(i)
             if item is not None and item.text() == display:
                 return
+                
         self.stock_list.addItem(display)
         self.selected_stocks.append(code)
         if self.sync_callback:
-            # 使用 QTimer.singleShot 延迟执行同步回调，避免阻塞UI
-            QtCore.QTimer.singleShot(100, self.sync_callback)
+            # 直接调用同步回调，不使用延迟执行
+            self.sync_callback()
             
     def get_name_by_code(self, code):
         """

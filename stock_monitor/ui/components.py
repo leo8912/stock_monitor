@@ -71,12 +71,7 @@ class StockTable(QtWidgets.QTableWidget):
     """
     
     def __init__(self, parent=None):
-        """
-        初始化股票表格
-        
-        Args:
-            parent: 父级控件
-        """
+        """初始化股票表格"""
         super().__init__(parent)
         self.setColumnCount(4)  # 增加一列：封单手
         h_header = self.horizontalHeader()
@@ -87,6 +82,9 @@ class StockTable(QtWidgets.QTableWidget):
             h_header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
             h_header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
             h_header.setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+            # 设置最小列宽，防止名称过长撑大表格
+            h_header.setMinimumSectionSize(80)  # 名称列最小宽度
+            h_header.setMaximumSectionSize(150)  # 名称列最大宽度
         if v_header is not None:
             v_header.setVisible(False)
         self.setShowGrid(False)
@@ -95,6 +93,9 @@ class StockTable(QtWidgets.QTableWidget):
         self.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)  # type: ignore
         self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)  # type: ignore
         self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)  # type: ignore
+        
+        # 设置表格的最大宽度，防止超出父容器
+        self.setMaximumWidth(400)
         
         self.setStyleSheet('''
             QTableWidget {
@@ -149,6 +150,13 @@ class StockTable(QtWidgets.QTableWidget):
             self.setRowCount(len(stocks))
             for row, stock in enumerate(stocks):
                 name, price, change, color, seal_vol, seal_type = stock
+                # 处理港股名称显示，只显示中文部分
+                if name.startswith('hk') and ':' in name:
+                    # 处理从行情数据获取的名称格式（hk09988:阿里巴巴）
+                    name = name.split(':')[1].strip()
+                elif name.startswith('hk') and '-' in name:
+                    # 处理从本地数据获取的名称，去除"-"及之后的部分，只保留中文名称
+                    name = name.split('-')[0].strip()
                 # ======= 表格渲染 =======
                 item_name = QtWidgets.QTableWidgetItem(name)
                 item_price = QtWidgets.QTableWidgetItem(price)

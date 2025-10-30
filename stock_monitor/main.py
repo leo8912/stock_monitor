@@ -62,6 +62,7 @@ class MainWindow(QtWidgets.QWidget):
         # 设置样式
         self.setMinimumHeight(80)
         self.setMinimumWidth(280)
+        self.setMaximumWidth(600)  # 增加最大宽度以适应港股长名称
         self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)  # type: ignore
         font = QtGui.QFont('微软雅黑', 20)
         self.setFont(font)
@@ -355,12 +356,19 @@ class MainWindow(QtWidgets.QWidget):
                 failed_stocks = []
                 for code in stocks_list:
                     try:
+                        # 根据股票代码类型选择不同的行情引擎
+                        if code.startswith('hk'):
+                            quotation_engine = easyquotation.use('hkquote')
+                        else:
+                            quotation_engine = easyquotation.use('sina')
                         # 直接调用 real 方法，添加类型注释忽略检查
-                        single = self.quotation.real([code])  # type: ignore
+                        # 对于港股，使用纯数字代码查询
+                        query_code = code[2:] if code.startswith('hk') else code
+                        single = quotation_engine.stocks([query_code])
                         
                         if isinstance(single, dict):
                             # 精确使用原始 code 作为 key 获取数据，避免映射错误
-                            data_dict[code] = single.get(code) or next(iter(single.values()), None)
+                            data_dict[code] = single.get(query_code) or next(iter(single.values()), None)
                         else:
                             failed_stocks.append(code)
                     except Exception as e:
@@ -457,10 +465,17 @@ class MainWindow(QtWidgets.QWidget):
                         app_logger.debug(f"需要获取 {len(need_fetch)} 只股票数据")
                         for code in need_fetch:
                             try:
-                                single = self.quotation.real([code])
+                                # 根据股票代码类型选择不同的行情引擎
+                                if code.startswith('hk'):
+                                    quotation_engine = easyquotation.use('hkquote')
+                                else:
+                                    quotation_engine = easyquotation.use('sina')
+                                # 对于港股，使用纯数字代码查询
+                                query_code = code[2:] if code.startswith('hk') else code
+                                single = quotation_engine.stocks([query_code])
                                 # 精确使用完整代码作为键，避免数据混淆
                                 if isinstance(single, dict):
-                                    stock_data = single.get(code) or next(iter(single.values()), None)
+                                    stock_data = single.get(query_code) or next(iter(single.values()), None)
                                     if stock_data:
                                         data_dict[code] = stock_data
                                         # 缓存数据，根据市场开市状态设置不同的TTL
@@ -500,6 +515,9 @@ class MainWindow(QtWidgets.QWidget):
             # 根据开市状态决定刷新间隔
             sleep_time = self.refresh_interval if is_market_open() else 30
             app_logger.debug(f"下次刷新间隔: {sleep_time}秒")
+            # 确保睡眠时间非负
+            if sleep_time < 0:
+                sleep_time = 5  # 默认5秒
             time.sleep(sleep_time)
 
     def _update_database_on_startup(self):
@@ -587,14 +605,23 @@ class MainWindow(QtWidgets.QWidget):
                     # 处理字符串类型的股票标识
                     if isinstance(stock, str):
                         # 如果包含空格，提取最后一个部分作为代码
-                        if ' ' in stock:
-                            parts = [p.strip() for p in stock.split() if p.strip()]
+                        # 修复港股代码保存问题
+                        stock_text = stock.strip()
+                        if stock_text.startswith(('🇭🇰', '⭐️', '📈', '📊', '🏦', '🛡️', '⛽️', '🚗', '💻')):
+                            stock_text = stock_text[2:].strip()  # 移除emoji
+                        
+                        # 特殊处理港股
+                        if stock_text.startswith('hk'):
+                            # 港股代码格式为hkxxxxx
+                            code = stock_text.split()[0]
+                        elif ' ' in stock_text:
+                            parts = [p.strip() for p in stock_text.split() if p.strip()]
                             if len(parts) >= 2:
                                 code = parts[-1]
                             else:
                                 code = parts[0] if parts else ''
                         else:
-                            code = stock.strip()
+                            code = stock_text
                         
                         # 格式化股票代码
                         from stock_monitor.utils.helpers import format_stock_code
@@ -662,7 +689,7 @@ class MainWindow(QtWidgets.QWidget):
 
     def adjust_window_height(self):
         """
-        根据内容调整窗口高度
+        根据内容调整窗口高度和宽度
         """
         # 用真实行高自适应主窗口高度，最小3行
         QtWidgets.QApplication.processEvents()
@@ -677,23 +704,37 @@ class MainWindow(QtWidgets.QWidget):
         # 增加表头高度（4列时略增）
         new_height = table_height + layout_margin
         self.setFixedHeight(new_height)
-        # ====== 新增：宽度自适应封单手显示 ======
+        # ====== 新增：宽度自适应内容显示 ======
         has_seal = False
+        has_long_name = False  # 检查是否有长名称（如港股）
         for row in range(self.table.rowCount()):
+            # 检查是否有封单
             item = self.table.item(row, 3)
             if item and item.text().strip():
                 has_seal = True
+                break
+                
+        # 检查是否有长名称
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 0)  # 名称列
+            if item and len(item.text().strip()) > 8:  # 如果名称长度超过8个字符，认为是长名称
+                has_long_name = True
                 break
         
         # 根据内容自适应宽度
         base_width = 280  # 基础宽度
         seal_width_addition = 80  # 有封单时的额外宽度
+        long_name_width_addition = 100  # 有长名称时的额外宽度
         margin_adjustment = 12  # 边距调整
         
+        # 计算最终宽度
+        final_width = base_width - margin_adjustment
         if has_seal:
-            self.setFixedWidth(base_width + seal_width_addition - margin_adjustment)
-        else:
-            self.setFixedWidth(base_width - margin_adjustment)
+            final_width += seal_width_addition
+        if has_long_name:
+            final_width += long_name_width_addition
+            
+        self.setFixedWidth(final_width)
 
 class SystemTray(QtWidgets.QSystemTrayIcon):
     """

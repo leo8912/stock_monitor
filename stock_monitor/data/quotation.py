@@ -8,11 +8,11 @@ from .stocks import is_equal
 from ..utils.logger import app_logger
 from ..utils.helpers import resource_path
 
-def get_quotation_engine():
+def get_quotation_engine(market_type='sina'):
     """获取行情引擎实例"""
     try:
-        engine = easyquotation.use('sina')
-        app_logger.debug("行情引擎初始化成功")
+        engine = easyquotation.use(market_type)
+        app_logger.debug(f"行情引擎初始化成功: {market_type}")
         return engine
     except Exception as e:
         error_msg = f"初始化行情引擎失败: {e}"
@@ -51,23 +51,26 @@ def process_stock_data(data: Dict[str, Any], stocks_list: List[str]) -> List[Tup
         
         if info:
             name = info.get('name', code)
+            # 对于港股，只保留中文部分
+            if code.startswith('hk'):
+                # 去除"-"及之后的部分，只保留中文名称
+                if '-' in name:
+                    name = name.split('-')[0].strip()
+            
             try:
-                price = f"{float(info.get('now', 0)):.2f}"
-            except (ValueError, TypeError) as e:
-                app_logger.warning(f"股票 {code} 价格数据格式错误: {e}")
-                price = "--"
+                # 不同行情源的字段可能不同
+                now = info.get('now') or info.get('price')
+                close = info.get('close') or info.get('lastPrice') or now
+                high = info.get('high', 0)
+                low = info.get('low', 0)
+                bid1 = info.get('bid1', 0)
+                bid1_vol = info.get('bid1_volume', 0) or info.get('volume_2', 0)
+                ask1 = info.get('ask1', 0)
+                ask1_vol = info.get('ask1_volume', 0) or info.get('volume_3', 0)
                 
-            try:
-                close = float(info.get('close', 0))
-                now = float(info.get('now', 0))
-                high = float(info.get('high', 0))
-                low = float(info.get('low', 0))
-                bid1 = float(info.get('bid1', 0))
-                bid1_vol = float(info.get('bid1_volume', 0))
-                ask1 = float(info.get('ask1', 0))
-                ask1_vol = float(info.get('ask1_volume', 0))
+                price = f"{float(now):.2f}" if now is not None else "--"
                 
-                percent = ((now - close) / close * 100) if close else 0
+                percent = ((float(now) - float(close)) / float(close) * 100) if close and float(close) != 0 else 0
                 # 修改颜色逻辑：超过5%的涨幅使用亮红色
                 if percent >= 5:
                     color = '#FF4500'  # 亮红色（更亮的红色）
@@ -82,6 +85,7 @@ def process_stock_data(data: Dict[str, Any], stocks_list: List[str]) -> List[Tup
                 app_logger.warning(f"股票 {code} 数据计算错误: {e}")
                 color = '#e6eaf3'
                 change_str = "--"
+                price = "--"
                 # 为后续处理设置默认值
                 now = 0
                 high = 0
@@ -118,6 +122,11 @@ def process_stock_data(data: Dict[str, Any], stocks_list: List[str]) -> List[Tup
             local_name = get_name_by_code(code)
             if local_name:
                 name = local_name
+                # 对于港股，只保留中文部分
+                if code.startswith('hk'):
+                    # 去除"-"及之后的部分，只保留中文名称
+                    if '-' in name:
+                        name = name.split('-')[0].strip()
             stocks.append((name, "--", "--", "#e6eaf3", "", ""))
             app_logger.warning(f"未获取到股票 {code} 的数据")
     app_logger.debug(f"共处理 {len(stocks)} 只股票数据")
@@ -131,7 +140,13 @@ def get_name_by_code(code: str) -> str:
             stock_data = json.load(f)
         for s in stock_data:
             if s['code'] == code:
-                return s['name']
+                name = s['name']
+                # 对于港股，只保留中文部分
+                if code.startswith('hk'):
+                    # 去除"-"及之后的部分，只保留中文名称
+                    if '-' in name:
+                        name = name.split('-')[0].strip()
+                return name
     except FileNotFoundError as e:
         app_logger.error(f"股票基础数据文件未找到: {e}")
     except json.JSONDecodeError as e:

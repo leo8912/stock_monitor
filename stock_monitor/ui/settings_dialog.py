@@ -115,6 +115,18 @@ class SettingsDialog(QtWidgets.QDialog):
         self.load_refresh_interval()
 
 
+    def _load_stock_data(self):
+        """加载股票数据"""
+        try:
+            # 使用缓存机制加载股票数据
+            from ..utils.stock_cache import global_stock_cache
+            stock_data = global_stock_cache.get_stock_data()
+            # 更新股票搜索组件的数据
+            if hasattr(self, 'stock_search') and self.stock_search:
+                self.stock_search.stock_data = stock_data
+        except Exception as e:
+            app_logger.error(f"加载股票数据失败: {e}")
+    
     def load_stock_data(self):
         """
         加载股票数据
@@ -272,7 +284,7 @@ class SettingsDialog(QtWidgets.QDialog):
         left_box.setSpacing(18)
         left_box.setContentsMargins(0, 0, 0, 0)
         
-        # 使用股票搜索组件
+        # 使用股票搜索组件，直接使用已加载的股票数据
         self.stock_search = StockSearchWidget(
             stock_data=self.stock_data, 
             stock_list=None,  # 将在后面设置
@@ -441,7 +453,16 @@ class SettingsDialog(QtWidgets.QDialog):
             name = self.get_name_by_code(stock)
             # emoji区分类型
             emoji = get_stock_emoji(stock, name)
-            display = f"{emoji}  {name} {stock}" if name else stock
+            # 对于港股，只显示中文名称部分
+            if stock.startswith('hk') and name:
+                # 去除"-"及之后的部分，只保留中文名称
+                if '-' in name:
+                    name = name.split('-')[0].strip()
+                display = f"{emoji}  {name} {stock}"
+            elif name:
+                display = f"{emoji}  {name} {stock}"
+            else:
+                display = f"{emoji}  {stock}"
             self.stock_list.addItem(display)
         self.selected_stocks = stocks[:]
 
@@ -456,7 +477,13 @@ class SettingsDialog(QtWidgets.QDialog):
             str: 股票名称
         """
         # 使用统一的获取股票名称函数
-        return get_stock_name_by_code(code)
+        name = get_stock_name_by_code(code)
+        # 对于港股，只保留中文部分
+        if code.startswith('hk') and name:
+            # 去除"-"及之后的部分，只保留中文名称
+            if '-' in name:
+                name = name.split('-')[0].strip()
+        return name
 
     def load_refresh_interval(self):
         """加载刷新间隔配置"""
@@ -494,8 +521,8 @@ class SettingsDialog(QtWidgets.QDialog):
 
     def sync_to_main(self):
         """同步配置到主界面"""
-        # 实时同步到主界面，使用节流机制避免频繁保存
-        self._throttle_save_config_params()
+        # 实时同步到主界面，不使用节流机制
+        self._save_user_config()
         # 使用QueuedConnection避免阻塞UI
         stocks = self.get_stocks_from_list()
         self.config_changed.emit(stocks, self.refresh_interval)
@@ -506,11 +533,11 @@ class SettingsDialog(QtWidgets.QDialog):
         cfg = load_config()
         cfg['user_stocks'] = stocks
         cfg['refresh_interval'] = self.refresh_interval
-        # 使用节流机制保存配置
+        # 直接保存配置，不使用节流机制
         self._throttle_save_config_params(cfg, stocks, self.refresh_interval)
 
     def _throttle_save_config_params(self, cfg=None, stocks=None, refresh_interval=None):
-        """带参数的节流配置保存"""
+        """保存配置"""
         if cfg is not None and stocks is not None and refresh_interval is not None:
             # 直接调用方式
             self._pending_save_config = (cfg, stocks, refresh_interval)
@@ -520,22 +547,19 @@ class SettingsDialog(QtWidgets.QDialog):
             cfg = load_config()
             cfg['user_stocks'] = stocks
             cfg['refresh_interval'] = self.refresh_interval
-            self._pending_save_config = (cfg, stocks, refresh_interval)
+            self._pending_save_config = (cfg, stocks, self.refresh_interval)
         
-        # 启动节流定时器，延迟1秒执行保存
+        # 直接保存配置，不使用节流定时器
         if self._save_throttle_timer.isActive():
             self._save_throttle_timer.stop()
-        self._save_throttle_timer.start(1000)  # 1秒节流延迟
+        self._throttled_save_config()
 
     def _throttled_save_config(self):
-        """节流后的配置保存"""
+        """保存配置"""
         if self._pending_save_config:
             cfg, stocks, refresh_interval = self._pending_save_config
-            # 在后台线程中保存配置以避免阻塞UI
-            save_thread = threading.Thread(target=self._save_config_and_emit_signal_wrapper, 
-                                         args=(cfg, stocks, refresh_interval))
-            save_thread.daemon = True
-            save_thread.start()
+            # 直接保存配置，不使用后台线程
+            self._save_config_and_emit_signal_wrapper(cfg, stocks, refresh_interval)
             self._pending_save_config = None
             
     def _save_config_and_emit_signal_wrapper(self, cfg, stocks, refresh_interval):
@@ -807,9 +831,33 @@ start "" "{exe_dir}\\stock_monitor.exe"
         for i in range(self.stock_list.count()):
             item = self.stock_list.item(i)
             if item is not None:
-                text = item.text()
-                # 提取最后的股票代码部分
-                parts = text.split()
-                if len(parts) >= 2:
-                    stocks.append(parts[-1])
+                text = item.text().strip()
+                # 修复港股代码保存问题
+                if text.startswith(('🇭🇰', '⭐️', '📈', '📊', '🏦', '🛡️', '⛽️', '🚗', '💻')):
+                    text = text[2:].strip()  # 移除emoji
+                
+                code = None
+                # 特殊处理港股，直接提取代码
+                if text.startswith('hk'):
+                    # 港股代码格式为hkxxxxx
+                    parts = text.split()
+                    if len(parts) >= 1:
+                        code = parts[0]  # 港股代码就是第一部分
+                else:
+                    # 提取最后的股票代码部分
+                    parts = text.split()
+                    if len(parts) >= 2:
+                        code = parts[-1]
+                
+                # 确保代码有效后再添加
+                if code:
+                    # 格式化股票代码
+                    from stock_monitor.utils.helpers import format_stock_code
+                    formatted_code = format_stock_code(code)
+                    if formatted_code:
+                        stocks.append(formatted_code)
+                    else:
+                        # 如果格式化失败，但代码以hk开头，则直接添加
+                        if code.startswith('hk') and len(code) == 7 and code[2:].isdigit():
+                            stocks.append(code)
         return stocks

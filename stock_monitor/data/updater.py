@@ -12,6 +12,121 @@ from ..utils.logger import app_logger
 from typing import Any, Union
 from ..utils.helpers import resource_path
 from ..utils.cache import global_cache
+import requests
+from openpyxl import load_workbook
+import io
+
+
+def fetch_hk_stocks() -> List[Dict[str, str]]:
+    """
+    从香港交易所获取港股列表数据
+    
+    Returns:
+        List[Dict[str, str]]: 港股列表，每个元素包含code和name字段
+    """
+    try:
+        app_logger.info("开始获取港股数据...")
+        # 首先尝试中文版URL
+        hkex_urls = [
+            "https://www.hkex.com.hk/chi/services/trading/securities/securitieslists/ListOfSecurities_c.xlsx",
+            "https://www.hkex.com.hk/eng/services/trading/securities/securitieslists/ListOfSecurities.xlsx"
+        ]
+        
+        content = None
+        for url in hkex_urls:
+            try:
+                # 添加请求头，模拟浏览器访问
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                    'Referer': 'https://www.hkex.com.hk/',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+                }
+                
+                # 下载Excel文件
+                response = requests.get(url, timeout=30, headers=headers)
+                response.raise_for_status()
+                
+                # 检查内容类型
+                content_type = response.headers.get('content-type', '')
+                app_logger.info(f"尝试URL: {url}")
+                app_logger.info(f"响应内容类型: {content_type}")
+                app_logger.info(f"响应内容大小: {len(response.content)} 字节")
+                
+                if len(response.content) > 1000:  # 确保内容足够大
+                    content = response.content
+                    break
+                else:
+                    app_logger.warning(f"URL {url} 返回的内容太小")
+            except Exception as e:
+                app_logger.warning(f"尝试URL {url} 失败: {e}")
+                continue
+        
+        if content is None:
+            app_logger.error("所有URL都尝试失败")
+            return []
+        
+        # 使用pandas读取Excel文件，因为它能更好地处理这种格式
+        import pandas as pd
+        from zhconv import convert
+        excel_file = io.BytesIO(content)
+        df = pd.read_excel(excel_file, header=1)  # 从第二行开始读取标题
+        
+        app_logger.info(f"Excel数据形状: {df.shape}")
+        app_logger.info(f"列名: {list(df.columns)}")
+        
+        hk_stocks = []
+        
+        # 打印前几行内容以调试
+        app_logger.debug(f"前5行数据:\n{df.head()}")
+        
+        # 根据实际的列结构提取数据
+        # 从pandas输出看，前几列应该是代码和名称
+        if len(df.columns) >= 2:
+            code_col = df.columns[0]  # 第一列是股份代号
+            name_col = df.columns[1]  # 第二列是股份名称
+            
+            # 遍历数据行
+            for index, row in df.iterrows():
+                code = row[code_col]
+                name = row[name_col]
+                
+                # 检查是否为有效的股票数据
+                if (code is not None and str(code) != 'nan') and (name is not None and str(name) != 'nan'):
+                    # 格式化港股代码为5位数字，不足5位前面补0
+                    if isinstance(code, (int, float)):
+                        code = str(int(code)).zfill(5)
+                    elif isinstance(code, str) and code.isdigit():
+                        code = code.zfill(5)
+                    else:
+                        continue  # 不是有效的代码格式
+                    
+                    # 确保名称是字符串
+                    if isinstance(name, str):
+                        stock_name = name.strip()
+                    else:
+                        stock_name = str(name).strip()
+                    
+                    # 繁体中文转换为简体中文
+                    stock_name = convert(stock_name, 'zh-hans')
+                    
+                    if stock_name:  # 确保名称不为空
+                        hk_stocks.append({
+                            'code': f'hk{code}',
+                            'name': stock_name
+                        })
+                        
+                        # 用于调试，显示前几条记录
+                        if len(hk_stocks) <= 5:
+                            app_logger.debug(f"找到港股: 代码={code}, 名称={stock_name}")
+        
+        app_logger.info(f"成功获取 {len(hk_stocks)} 只港股数据")
+        return hk_stocks
+        
+    except Exception as e:
+        app_logger.error(f"获取港股数据失败: {e}")
+        import traceback
+        app_logger.error(f"详细错误信息: {traceback.format_exc()}")
+        return []
 
 
 def fetch_all_stocks() -> List[Dict[str, str]]:
@@ -28,7 +143,7 @@ def fetch_all_stocks() -> List[Dict[str, str]]:
         quotation = easyquotation.use('sina')
         
         # 获取所有股票代码列表
-        stock_codes_str = quotation.stock_list
+        stock_codes_str = quotation.stock_list  # type: ignore
         # 解析股票代码字符串
         all_stock_codes = []
         for item in stock_codes_str:
@@ -46,7 +161,7 @@ def fetch_all_stocks() -> List[Dict[str, str]]:
             
             try:
                 # 获取股票详细数据
-                data = quotation.stocks(pure_codes)
+                data = quotation.stocks(pure_codes)  # type: ignore
                 if data:
                     for j, code in enumerate(batch_codes):
                         pure_code = pure_codes[j]
@@ -70,7 +185,7 @@ def fetch_all_stocks() -> List[Dict[str, str]]:
         
         # 添加主要指数数据
         try:
-            index_data: Union[Dict[str, Any], None] = quotation.stocks(['sh000001', 'sh000002', 'sh000300', 'sz399001', 'sz399006'], prefix=True)
+            index_data: Union[Dict[str, Any], None] = quotation.stocks(['sh000001', 'sh000002', 'sh000300', 'sz399001', 'sz399006'], prefix=True)  # type: ignore
             if index_data:
                 for code, info in index_data.items():
                     if info and 'name' in info:
@@ -80,6 +195,10 @@ def fetch_all_stocks() -> List[Dict[str, str]]:
                         })
         except Exception as e:
             app_logger.warning(f"获取指数数据失败: {e}")
+        
+        # 获取港股数据
+        hk_stocks = fetch_hk_stocks()
+        stocks_data.extend(hk_stocks)
         
         # 去重处理，确保每个代码只出现一次
         unique_stocks = {}
@@ -103,7 +222,7 @@ def fetch_all_stocks() -> List[Dict[str, str]]:
         
         stocks_data = list(unique_stocks.values())
         
-        app_logger.info(f"成功获取 {len(stocks_data)} 只股票数据")
+        app_logger.info(f"成功获取 {len(stocks_data)} 只股票数据（包括A股、指数和港股）")
         return stocks_data
         
     except Exception as e:
@@ -180,20 +299,26 @@ def preload_popular_stocks_data() -> None:
             'sz000002',  # 万科A
             'sz000858',  # 五粮液
             'sh600460',  # 士兰微
-            'sh603986',  # 兆易创新
+            'sh603986',  # 兆易创新',
+            'hk00700',   # 腾讯控股（示例港股）
         ]
         
         import easyquotation
-        quotation = easyquotation.use('sina')
         
         # 获取热门股票数据并存入缓存
         for stock_code in popular_stocks:
             try:
+                # 根据股票代码类型选择不同的行情引擎
+                if stock_code.startswith('hk'):
+                    quotation = easyquotation.use('hkquote')
+                else:
+                    quotation = easyquotation.use('sina')
+                
                 # 移除前缀获取纯代码
                 pure_code = stock_code[2:] if stock_code.startswith(('sh', 'sz')) else stock_code
                 
                 # 获取股票数据
-                data = quotation.real([pure_code])
+                data = quotation.real([pure_code])  # type: ignore
                 if data:
                     # 存入缓存，设置较长的TTL（1小时）
                     global_cache.set(f"stock_{stock_code}", data, ttl=3600)

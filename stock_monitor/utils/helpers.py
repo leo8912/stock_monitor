@@ -37,6 +37,8 @@ def get_stock_emoji(code, name):
     """
     if code.startswith(('sh000', 'sz399', 'sz159', 'sh510')) or (name and ('指数' in name or '板块' in name)):
         return '📈'
+    elif code.startswith('hk'):
+        return '🇭🇰'
     elif name and '银行' in name:
         return '🏦'
     elif name and '保险' in name:
@@ -94,6 +96,14 @@ def format_stock_code(code):
     if code.startswith('sh') or code.startswith('sz'):
         # 验证代码长度和数字部分
         if len(code) == 8 and code[2:].isdigit():
+            return code
+        else:
+            return None
+            
+    # 港股代码处理
+    elif code.startswith('hk'):
+        # 验证代码长度和数字部分
+        if len(code) == 7 and code[2:].isdigit():
             return code
         else:
             return None
