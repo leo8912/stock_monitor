@@ -112,6 +112,8 @@ class MainWindow(QtWidgets.QWidget):
     def _immediate_market_status_update(self):
         """立即更新市场状态的实现"""
         try:
+            # 增加延迟，确保网络连接初始化完成
+            time.sleep(2)
             # 直接调用市场状态条的更新方法
             self.market_status_bar.update_market_status()
         except Exception as e:
@@ -361,10 +363,10 @@ class MainWindow(QtWidgets.QWidget):
                             quotation_engine = easyquotation.use('hkquote')
                         else:
                             quotation_engine = easyquotation.use('sina')
-                        # 直接调用 real 方法，添加类型注释忽略检查
+                        # 直接调用 stocks 方法，添加类型注释忽略检查
                         # 对于港股，使用纯数字代码查询
                         query_code = code[2:] if code.startswith('hk') else code
-                        single = quotation_engine.stocks([query_code])
+                        single = quotation_engine.stocks([query_code])  # type: ignore
                         
                         if isinstance(single, dict):
                             # 精确使用原始 code 作为 key 获取数据，避免映射错误
@@ -436,6 +438,9 @@ class MainWindow(QtWidgets.QWidget):
         # 导入缓存管理器
         from stock_monitor.utils.cache import global_cache
         
+        # 增加启动延迟，给系统网络连接一些初始化时间
+        time.sleep(3)
+        
         while True:
             if hasattr(self, 'quotation'):
                 try:
@@ -472,7 +477,7 @@ class MainWindow(QtWidgets.QWidget):
                                     quotation_engine = easyquotation.use('sina')
                                 # 对于港股，使用纯数字代码查询
                                 query_code = code[2:] if code.startswith('hk') else code
-                                single = quotation_engine.stocks([query_code])
+                                single = quotation_engine.stocks([query_code])  # type: ignore
                                 # 精确使用完整代码作为键，避免数据混淆
                                 if isinstance(single, dict):
                                     stock_data = single.get(query_code) or next(iter(single.values()), None)
