@@ -305,16 +305,20 @@ def preload_popular_stocks_data() -> None:
         import easyquotation
         
         # 获取热门股票数据并存入缓存
+        success_count = 0
         for stock_code in popular_stocks:
             try:
                 # 根据股票代码类型选择不同的行情引擎
                 if stock_code.startswith('hk'):
                     quotation = easyquotation.use('hkquote')
+                    app_logger.debug(f"使用 hkquote 引擎预加载港股 {stock_code}")
                 else:
                     quotation = easyquotation.use('sina')
+                    app_logger.debug(f"使用 sina 引擎预加载股票 {stock_code}")
                 
                 # 移除前缀获取纯代码
                 pure_code = stock_code[2:] if stock_code.startswith(('sh', 'sz')) else stock_code
+                app_logger.debug(f"预加载请求代码: {pure_code}")
                 
                 # 获取股票数据，添加重试机制
                 max_retries = 3
@@ -324,20 +328,23 @@ def preload_popular_stocks_data() -> None:
                 while retry_count < max_retries:
                     try:
                         data = quotation.stocks([pure_code])  # type: ignore
-                        if data:
+                        if data and isinstance(data, dict) and (pure_code in data or any(data.values())):
                             break
                         retry_count += 1
-                        time.sleep(1)  # 等待1秒后重试
+                        app_logger.warning(f"预加载股票 {stock_code} 数据失败 (尝试 {retry_count}/{max_retries})")
+                        if retry_count < max_retries:
+                            time.sleep(1)  # 等待1秒后重试
                     except Exception as e:
                         retry_count += 1
-                        app_logger.warning(f"预加载股票 {stock_code} 数据失败 (尝试 {retry_count}/{max_retries}): {e}")
+                        app_logger.warning(f"预加载股票 {stock_code} 数据异常 (尝试 {retry_count}/{max_retries}): {e}")
                         if retry_count < max_retries:
                             time.sleep(1)  # 等待1秒后重试
                 
-                if data:
+                if data and isinstance(data, dict):
                     # 存入缓存，设置较长的TTL（1小时）
                     global_cache.set(f"stock_{stock_code}", data, ttl=3600)
                     app_logger.debug(f"预加载股票数据到缓存: {stock_code}")
+                    success_count += 1
                 else:
                     app_logger.warning(f"预加载股票 {stock_code} 数据失败，已达到最大重试次数")
                     
@@ -345,7 +352,7 @@ def preload_popular_stocks_data() -> None:
                 app_logger.warning(f"预加载股票 {stock_code} 数据失败: {e}")
                 continue
         
-        app_logger.info("热门股票数据预加载完成")
+        app_logger.info(f"热门股票数据预加载完成，成功加载 {success_count}/{len(popular_stocks)} 只股票")
         
     except Exception as e:
         app_logger.error(f"预加载热门股票数据时出错: {e}")

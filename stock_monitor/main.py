@@ -47,6 +47,8 @@ class MainWindow(QtWidgets.QWidget):
         self.resize(320, 160)
         self.drag_position = None
         
+        app_logger.info("主窗口初始化开始")
+        
         # 初始化股市状态条
         self.market_status_bar = MarketStatusBar(self)
         
@@ -82,6 +84,8 @@ class MainWindow(QtWidgets.QWidget):
         self.refresh_interval = cfg.get('refresh_interval', 5)
         self.current_user_stocks = self.load_user_stocks()
         
+        app_logger.info(f"初始化配置: 刷新间隔={self.refresh_interval}, 自选股={self.current_user_stocks}")
+        
         # 启动刷新线程和信号连接
         self.update_table_signal.connect(self.table.update_data)  # type: ignore
         
@@ -103,6 +107,8 @@ class MainWindow(QtWidgets.QWidget):
         # 立即更新市场状态条，提高优先级
         self._update_market_status_immediately()
         
+        app_logger.info("主窗口初始化完成")
+
     def _update_market_status_immediately(self):
         """立即更新市场状态条，提高优先级"""
         # 在新线程中立即更新市场状态，避免阻塞UI
@@ -323,6 +329,7 @@ class MainWindow(QtWidgets.QWidget):
             user_stocks (list): 用户股票列表
             refresh_interval (int): 刷新间隔
         """
+        app_logger.info(f"用户股票列表变更: {user_stocks}, 刷新间隔: {refresh_interval}")
         self.current_user_stocks = user_stocks
         self.refresh_interval = refresh_interval  # 关键：更新刷新间隔
         self.refresh_now(user_stocks)
@@ -356,23 +363,30 @@ class MainWindow(QtWidgets.QWidget):
                 # 逐个请求，避免混淆，并确保键值精确匹配
                 data_dict = {}
                 failed_stocks = []
+                app_logger.info(f"开始刷新 {len(stocks_list)} 只股票数据: {stocks_list}")
                 for code in stocks_list:
                     try:
                         # 根据股票代码类型选择不同的行情引擎
                         if code.startswith('hk'):
                             quotation_engine = easyquotation.use('hkquote')
+                            app_logger.debug(f"使用 hkquote 引擎获取港股 {code} 数据")
                         else:
                             quotation_engine = easyquotation.use('sina')
+                            app_logger.debug(f"使用 sina 引擎获取股票 {code} 数据")
                         # 直接调用 stocks 方法，添加类型注释忽略检查
                         # 对于港股，使用纯数字代码查询
                         query_code = code[2:] if code.startswith('hk') else code
+                        app_logger.debug(f"请求代码: {query_code}")
                         single = quotation_engine.stocks([query_code])  # type: ignore
                         
                         if isinstance(single, dict):
                             # 精确使用原始 code 作为 key 获取数据，避免映射错误
-                            data_dict[code] = single.get(query_code) or next(iter(single.values()), None)
+                            stock_data = single.get(query_code) or next(iter(single.values()), None)
+                            data_dict[code] = stock_data
+                            app_logger.debug(f"成功获取 {code} 数据: {stock_data}")
                         else:
                             failed_stocks.append(code)
+                            app_logger.warning(f"获取 {code} 数据失败，返回数据类型: {type(single)}")
                     except Exception as e:
                         app_logger.error(f'获取股票 {code} 数据失败: {e}')
                         print(f'获取股票 {code} 数据失败: {e}')
@@ -396,7 +410,7 @@ class MainWindow(QtWidgets.QWidget):
                 self.table.repaint()
                 QtWidgets.QApplication.processEvents()
                 self.adjust_window_height()  # 每次刷新后自适应高度
-                app_logger.debug(f"数据刷新完成，失败{len(failed_stocks)}只股票")
+                app_logger.info(f"数据刷新完成，失败{len(failed_stocks)}只股票: {failed_stocks}")
             except Exception as e:
                 app_logger.error(f'行情刷新异常: {e}')
                 print('行情刷新异常:', e)
@@ -439,6 +453,7 @@ class MainWindow(QtWidgets.QWidget):
         from stock_monitor.utils.cache import global_cache
         
         # 增加启动延迟，给系统网络连接一些初始化时间
+        app_logger.info("后台刷新线程启动，等待3秒初始化网络连接...")
         time.sleep(3)
         
         while True:
@@ -449,6 +464,7 @@ class MainWindow(QtWidgets.QWidget):
                     
                     # 检查是否有需要更新的数据
                     current_stocks = self.current_user_stocks
+                    app_logger.debug(f"当前需要刷新的股票: {current_stocks}")
                     if not current_stocks:
                         # 如果没有股票，等待下次刷新
                         sleep_time = self.refresh_interval if is_market_open() else 30
@@ -462,22 +478,46 @@ class MainWindow(QtWidgets.QWidget):
                         cached_data = global_cache.get(f"stock_{code}")
                         if cached_data is not None:
                             data_dict[code] = cached_data
+                            app_logger.debug(f"从缓存获取 {code} 数据")
                         else:
                             need_fetch.append(code)
+                            app_logger.debug(f"需要从网络获取 {code} 数据")
                     
                     # 只获取缓存中没有的股票数据
                     if need_fetch:
-                        app_logger.debug(f"需要获取 {len(need_fetch)} 只股票数据")
+                        app_logger.info(f"需要获取 {len(need_fetch)} 只股票数据: {need_fetch}")
                         for code in need_fetch:
                             try:
                                 # 根据股票代码类型选择不同的行情引擎
                                 if code.startswith('hk'):
                                     quotation_engine = easyquotation.use('hkquote')
+                                    app_logger.debug(f"使用 hkquote 引擎获取港股 {code} 数据")
                                 else:
                                     quotation_engine = easyquotation.use('sina')
+                                    app_logger.debug(f"使用 sina 引擎获取股票 {code} 数据")
                                 # 对于港股，使用纯数字代码查询
                                 query_code = code[2:] if code.startswith('hk') else code
-                                single = quotation_engine.stocks([query_code])  # type: ignore
+                                app_logger.debug(f"请求代码: {query_code}")
+                                
+                                # 添加重试机制
+                                max_retries = 3
+                                retry_count = 0
+                                single = None
+                                
+                                while retry_count < max_retries:
+                                    try:
+                                        single = quotation_engine.stocks([query_code])  # type: ignore
+                                        if isinstance(single, dict) and (query_code in single or any(single.values())):
+                                            break
+                                        retry_count += 1
+                                        app_logger.warning(f"获取 {code} 数据失败，第 {retry_count} 次重试")
+                                        time.sleep(1)
+                                    except Exception as e:
+                                        retry_count += 1
+                                        app_logger.warning(f"获取 {code} 数据异常: {e}，第 {retry_count} 次重试")
+                                        if retry_count < max_retries:
+                                            time.sleep(1)
+                                
                                 # 精确使用完整代码作为键，避免数据混淆
                                 if isinstance(single, dict):
                                     stock_data = single.get(query_code) or next(iter(single.values()), None)
@@ -486,8 +526,13 @@ class MainWindow(QtWidgets.QWidget):
                                         # 缓存数据，根据市场开市状态设置不同的TTL
                                         ttl = self.refresh_interval if is_market_open() else 60
                                         global_cache.set(f"stock_{code}", stock_data, ttl)
+                                        app_logger.debug(f"成功获取并缓存 {code} 数据")
+                                    else:
+                                        failed_count += 1
+                                        app_logger.warning(f"{code} 数据为空")
                                 else:
                                     failed_count += 1
+                                    app_logger.warning(f"获取 {code} 数据失败，返回数据类型: {type(single)}")
                             except Exception as e:
                                 app_logger.error(f'获取股票 {code} 数据失败: {e}')
                                 print(f'获取股票 {code} 数据失败: {e}')
@@ -504,7 +549,7 @@ class MainWindow(QtWidgets.QWidget):
                         self.update_table_signal.emit(stocks)
                         
                     consecutive_failures = 0  # 重置失败计数
-                    app_logger.debug(f"后台刷新完成，失败{failed_count}只股票，缓存命中{len(current_stocks) - failed_count - len(need_fetch)}只股票")
+                    app_logger.info(f"后台刷新完成，失败{failed_count}只股票，缓存命中{len(current_stocks) - failed_count - len(need_fetch)}只股票")
                 except Exception as e:
                     app_logger.error(f'行情刷新异常: {e}')
                     print('行情刷新异常:', e)
