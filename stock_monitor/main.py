@@ -507,11 +507,16 @@ class MainWindow(QtWidgets.QWidget):
                                 while retry_count < max_retries:
                                     try:
                                         single = quotation_engine.stocks([query_code])  # type: ignore
+                                        # 检查返回数据是否有效
                                         if isinstance(single, dict) and (query_code in single or any(single.values())):
-                                            break
+                                            # 确保返回的数据不是None
+                                            stock_data = single.get(query_code) or next(iter(single.values()), None)
+                                            if stock_data is not None:
+                                                break
                                         retry_count += 1
                                         app_logger.warning(f"获取 {code} 数据失败，第 {retry_count} 次重试")
-                                        time.sleep(1)
+                                        if retry_count < max_retries:
+                                            time.sleep(1)
                                     except Exception as e:
                                         retry_count += 1
                                         app_logger.warning(f"获取 {code} 数据异常: {e}，第 {retry_count} 次重试")
@@ -521,7 +526,7 @@ class MainWindow(QtWidgets.QWidget):
                                 # 精确使用完整代码作为键，避免数据混淆
                                 if isinstance(single, dict):
                                     stock_data = single.get(query_code) or next(iter(single.values()), None)
-                                    if stock_data:
+                                    if stock_data is not None:
                                         data_dict[code] = stock_data
                                         # 缓存数据，根据市场开市状态设置不同的TTL
                                         ttl = self.refresh_interval if is_market_open() else 60
@@ -575,6 +580,8 @@ class MainWindow(QtWidgets.QWidget):
         def update_database():
             try:
                 app_logger.info("应用启动时更新股票数据库...")
+                # 添加网络连接检查和延迟，确保网络就绪
+                time.sleep(5)  # 等待网络连接初始化
                 success = update_stock_database()
                 if success:
                     app_logger.info("启动时股票数据库更新完成")

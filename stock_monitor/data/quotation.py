@@ -68,6 +68,12 @@ def process_stock_data(data: Dict[str, Any], stocks_list: List[str]) -> List[Tup
                 ask1 = info.get('ask1', 0)
                 ask1_vol = info.get('ask1_volume', 0) or info.get('volume_3', 0)
                 
+                # 添加None值检查
+                if now is None or close is None:
+                    app_logger.warning(f"股票 {code} 数据不完整: now={now}, close={close}")
+                    stocks.append((name, "--", "--", "#e6eaf3", "", ""))
+                    continue
+                    
                 price = f"{float(now):.2f}" if now is not None else "--"
                 
                 percent = ((float(now) - float(close)) / float(close) * 100) if close and float(close) != 0 else 0
@@ -99,12 +105,17 @@ def process_stock_data(data: Dict[str, Any], stocks_list: List[str]) -> List[Tup
             seal_vol = ''
             seal_type = ''
             try:
-                if (is_equal(str(now), str(high)) and is_equal(str(now), str(bid1)) and 
+                # 确保所有值都不是None
+                if (now is not None and high is not None and bid1 is not None and 
+                    bid1_vol is not None and ask1 is not None and
+                    is_equal(str(now), str(high)) and is_equal(str(now), str(bid1)) and 
                     bid1_vol > 0 and is_equal(str(ask1), "0.0")):
                     # 将封单数转换为以"k"为单位，封单数/100000来算（万手转k）
                     seal_vol = f"{int(bid1_vol/100000)}k" if bid1_vol >= 100000 else f"{int(bid1_vol)}"
                     seal_type = 'up'
-                elif (is_equal(str(now), str(low)) and is_equal(str(now), str(ask1)) and 
+                elif (now is not None and low is not None and ask1 is not None and 
+                      ask1_vol is not None and bid1 is not None and
+                      is_equal(str(now), str(low)) and is_equal(str(now), str(ask1)) and 
                       ask1_vol > 0 and is_equal(str(bid1), "0.0")):
                     # 将封单数转换为以"k"为单位，封单数/100000来算（万手转k）
                     seal_vol = f"{int(ask1_vol/100000)}k" if ask1_vol >= 100000 else f"{int(ask1_vol)}"

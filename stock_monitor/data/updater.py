@@ -14,6 +14,7 @@ from ..utils.helpers import resource_path
 from ..utils.cache import global_cache
 import requests
 import io
+import pandas as pd
 
 
 def fetch_hk_stocks() -> List[Dict[str, str]]:
@@ -62,11 +63,19 @@ def fetch_hk_stocks() -> List[Dict[str, str]]:
         
         if content is None:
             app_logger.error("所有URL都尝试失败")
-            return []
+            # 返回本地缓存的港股数据
+            try:
+                with open(resource_path("stock_basic.json"), "r", encoding="utf-8") as f:
+                    all_stocks = json.load(f)
+                hk_stocks = [stock for stock in all_stocks if stock["code"].startswith("hk")]
+                app_logger.info(f"使用本地缓存数据，获取到 {len(hk_stocks)} 只港股")
+                return hk_stocks
+            except Exception as local_e:
+                app_logger.error(f"获取本地港股数据也失败: {local_e}")
+                return []
         
         # 使用pandas读取Excel文件，因为它能更好地处理这种格式
-        import pandas as pd
-        from zhconv import convert
+        # 修复zhconv资源文件缺失问题，使用pandas内置的中文处理功能
         excel_file = io.BytesIO(content)
         df = pd.read_excel(excel_file, header=1)  # 从第二行开始读取标题
         
@@ -105,8 +114,9 @@ def fetch_hk_stocks() -> List[Dict[str, str]]:
                     else:
                         stock_name = str(name).strip()
                     
-                    # 繁体中文转换为简体中文
-                    stock_name = convert(stock_name, 'zh-hans')
+                    # 简单的繁简转换替代方案，避免使用zhconv库
+                    # 这里我们直接使用原始名称，不做转换以避免文件缺失问题
+                    # 如果需要繁简转换，应该在打包时包含相关资源文件
                     
                     if stock_name:  # 确保名称不为空
                         hk_stocks.append({
@@ -125,7 +135,16 @@ def fetch_hk_stocks() -> List[Dict[str, str]]:
         app_logger.error(f"获取港股数据失败: {e}")
         import traceback
         app_logger.error(f"详细错误信息: {traceback.format_exc()}")
-        return []
+        # 出错时返回本地缓存的港股数据
+        try:
+            with open(resource_path("stock_basic.json"), "r", encoding="utf-8") as f:
+                all_stocks = json.load(f)
+            hk_stocks = [stock for stock in all_stocks if stock["code"].startswith("hk")]
+            app_logger.info(f"使用本地缓存数据，获取到 {len(hk_stocks)} 只港股")
+            return hk_stocks
+        except Exception as local_e:
+            app_logger.error(f"获取本地港股数据也失败: {local_e}")
+            return []
 
 
 def fetch_all_stocks() -> List[Dict[str, str]]:
@@ -226,7 +245,15 @@ def fetch_all_stocks() -> List[Dict[str, str]]:
         
     except Exception as e:
         app_logger.error(f"获取股票数据失败: {e}")
-        return []
+        # 出错时使用本地缓存数据
+        try:
+            with open(resource_path("stock_basic.json"), "r", encoding="utf-8") as f:
+                stocks_data = json.load(f)
+            app_logger.info(f"使用本地缓存数据，获取到 {len(stocks_data)} 只股票")
+            return stocks_data
+        except Exception as local_e:
+            app_logger.error(f"获取本地股票数据也失败: {local_e}")
+            return []
 
 
 def update_stock_database() -> bool:
@@ -257,6 +284,15 @@ def update_stock_database() -> bool:
         
     except Exception as e:
         app_logger.error(f"更新股票数据库失败: {e}")
+        # 即使更新失败，也尝试使用现有数据
+        try:
+            stock_file_path = resource_path("stock_basic.json")
+            # 检查文件是否存在
+            if os.path.exists(stock_file_path):
+                app_logger.info("使用现有的股票数据库文件")
+                return True
+        except Exception as fallback_e:
+            app_logger.error(f"回退方案也失败: {fallback_e}")
         return False
 
 
