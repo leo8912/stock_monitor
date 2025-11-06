@@ -39,6 +39,9 @@ class DataCache:
             data (Any): 要缓存的数据
             ttl (Optional[int]): 过期时间（秒），如果为None则使用默认值
         """
+        # 不再验证股票数据完整性，因为实时行情数据不应该被缓存
+        # 保留此函数以供其他非实时数据使用
+        
         if ttl is None:
             ttl = self.default_ttl
             
@@ -70,6 +73,9 @@ class DataCache:
         Returns:
             Optional[Any]: 缓存数据，如果不存在或已过期则返回None
         """
+        # 对于实时行情数据，不使用缓存
+        # 保留此函数以供其他非实时数据使用
+        
         if key not in self._cache:
             app_logger.debug(f"缓存未命中: {key}")
             return None
@@ -118,6 +124,9 @@ class DataCache:
         for key, cache_entry in self._cache.items():
             if current_time - cache_entry['timestamp'] > cache_entry['ttl']:
                 expired_keys.append(key)
+            # 同时检查股票数据是否仍然有效
+            elif key.startswith("stock_") and not self._is_stock_data_valid(cache_entry['data']):
+                expired_keys.append(key)
         
         for key in expired_keys:
             del self._cache[key]
@@ -149,7 +158,43 @@ class DataCache:
             'max_size': self.max_size,
             'usage_percentage': (total_items / self.max_size) * 100 if self.max_size > 0 else 0
         }
+    
+    def _is_stock_data_valid(self, stock_data):
+        """
+        检查股票数据是否完整有效
+        
+        Args:
+            stock_data: 股票数据字典
+            
+        Returns:
+            bool: 数据是否有效
+        """
+        if not isinstance(stock_data, dict):
+            return False
+            
+        # 检查关键字段是否存在且不为None
+        now = stock_data.get('now') or stock_data.get('price')
+        close = stock_data.get('close') or stock_data.get('lastPrice') or now
+        
+        # 如果now和close都为None，则数据不完整
+        if now is None and close is None:
+            return False
+            
+        # 检查数据是否有效（防止获取到空字符串等无效数据）
+        try:
+            if now is not None:
+                float(now)
+            if close is not None:
+                float(close)
+        except (ValueError, TypeError):
+            return False
+            
+        return True
 
 
 # 创建全局缓存实例
 global_cache = DataCache()
+
+
+
+

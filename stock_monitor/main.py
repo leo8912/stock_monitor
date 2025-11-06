@@ -449,12 +449,9 @@ class MainWindow(QtWidgets.QWidget):
         consecutive_failures = 0
         max_consecutive_failures = 3  # 最大连续失败次数
         
-        # 导入缓存管理器
-        from stock_monitor.utils.cache import global_cache
-        
         # 增加启动延迟，给系统网络连接一些初始化时间
-        app_logger.info("后台刷新线程启动，等待3秒初始化网络连接...")
-        time.sleep(3)
+        app_logger.info("后台刷新线程启动，等待5秒初始化网络连接...")
+        time.sleep(5)  # 增加到5秒以确保网络连接就绪
         
         while True:
             if hasattr(self, 'quotation'):
@@ -472,76 +469,61 @@ class MainWindow(QtWidgets.QWidget):
                         time.sleep(sleep_time)
                         continue
                     
-                    # 检查缓存中是否有所有股票的数据
-                    need_fetch = []
+                    # 直接获取所有股票数据，不使用缓存
+                    app_logger.info(f"需要获取 {len(current_stocks)} 只股票数据: {current_stocks}")
                     for code in current_stocks:
-                        cached_data = global_cache.get(f"stock_{code}")
-                        if cached_data is not None:
-                            data_dict[code] = cached_data
-                            app_logger.debug(f"从缓存获取 {code} 数据")
-                        else:
-                            need_fetch.append(code)
-                            app_logger.debug(f"需要从网络获取 {code} 数据")
-                    
-                    # 只获取缓存中没有的股票数据
-                    if need_fetch:
-                        app_logger.info(f"需要获取 {len(need_fetch)} 只股票数据: {need_fetch}")
-                        for code in need_fetch:
-                            try:
-                                # 根据股票代码类型选择不同的行情引擎
-                                if code.startswith('hk'):
-                                    quotation_engine = easyquotation.use('hkquote')
-                                    app_logger.debug(f"使用 hkquote 引擎获取港股 {code} 数据")
-                                else:
-                                    quotation_engine = easyquotation.use('sina')
-                                    app_logger.debug(f"使用 sina 引擎获取股票 {code} 数据")
-                                # 对于港股，使用纯数字代码查询
-                                query_code = code[2:] if code.startswith('hk') else code
-                                app_logger.debug(f"请求代码: {query_code}")
-                                
-                                # 添加重试机制
-                                max_retries = 3
-                                retry_count = 0
-                                single = None
-                                
-                                while retry_count < max_retries:
-                                    try:
-                                        single = quotation_engine.stocks([query_code])  # type: ignore
-                                        # 检查返回数据是否有效
-                                        if isinstance(single, dict) and (query_code in single or any(single.values())):
-                                            # 确保返回的数据不是None
-                                            stock_data = single.get(query_code) or next(iter(single.values()), None)
-                                            if stock_data is not None:
-                                                break
-                                        retry_count += 1
-                                        app_logger.warning(f"获取 {code} 数据失败，第 {retry_count} 次重试")
-                                        if retry_count < max_retries:
-                                            time.sleep(1)
-                                    except Exception as e:
-                                        retry_count += 1
-                                        app_logger.warning(f"获取 {code} 数据异常: {e}，第 {retry_count} 次重试")
-                                        if retry_count < max_retries:
-                                            time.sleep(1)
-                                
-                                # 精确使用完整代码作为键，避免数据混淆
-                                if isinstance(single, dict):
-                                    stock_data = single.get(query_code) or next(iter(single.values()), None)
-                                    if stock_data is not None:
-                                        data_dict[code] = stock_data
-                                        # 缓存数据，根据市场开市状态设置不同的TTL
-                                        ttl = self.refresh_interval if is_market_open() else 60
-                                        global_cache.set(f"stock_{code}", stock_data, ttl)
-                                        app_logger.debug(f"成功获取并缓存 {code} 数据")
-                                    else:
-                                        failed_count += 1
-                                        app_logger.warning(f"{code} 数据为空")
+                        try:
+                            # 根据股票代码类型选择不同的行情引擎
+                            if code.startswith('hk'):
+                                quotation_engine = easyquotation.use('hkquote')
+                                app_logger.debug(f"使用 hkquote 引擎获取港股 {code} 数据")
+                            else:
+                                quotation_engine = easyquotation.use('sina')
+                                app_logger.debug(f"使用 sina 引擎获取股票 {code} 数据")
+                            # 对于港股，使用纯数字代码查询
+                            query_code = code[2:] if code.startswith('hk') else code
+                            app_logger.debug(f"请求代码: {query_code}")
+                            
+                            # 添加重试机制
+                            max_retries = 5  # 增加重试次数
+                            retry_count = 0
+                            single = None
+                            
+                            while retry_count < max_retries:
+                                try:
+                                    single = quotation_engine.stocks([query_code])  # type: ignore
+                                    # 检查返回数据是否有效
+                                    if isinstance(single, dict) and (query_code in single or any(single.values())):
+                                        # 确保返回的数据不是None且是完整的
+                                        stock_data = single.get(query_code) or next(iter(single.values()), None)
+                                        if stock_data is not None and self._is_stock_data_valid(stock_data):
+                                            break
+                                    retry_count += 1
+                                    app_logger.warning(f"获取 {code} 数据失败或不完整，第 {retry_count} 次重试")
+                                    if retry_count < max_retries:
+                                        time.sleep(2)  # 增加重试间隔
+                                except Exception as e:
+                                    retry_count += 1
+                                    app_logger.warning(f"获取 {code} 数据异常: {e}，第 {retry_count} 次重试")
+                                    if retry_count < max_retries:
+                                        time.sleep(2)  # 增加重试间隔
+                            
+                            # 精确使用完整代码作为键，避免数据混淆
+                            if isinstance(single, dict):
+                                stock_data = single.get(query_code) or next(iter(single.values()), None)
+                                if stock_data is not None and self._is_stock_data_valid(stock_data):
+                                    data_dict[code] = stock_data
+                                    app_logger.debug(f"成功获取 {code} 数据")
                                 else:
                                     failed_count += 1
-                                    app_logger.warning(f"获取 {code} 数据失败，返回数据类型: {type(single)}")
-                            except Exception as e:
-                                app_logger.error(f'获取股票 {code} 数据失败: {e}')
-                                print(f'获取股票 {code} 数据失败: {e}')
+                                    app_logger.warning(f"{code} 数据为空或不完整")
+                            else:
                                 failed_count += 1
+                                app_logger.warning(f"获取 {code} 数据失败，返回数据类型: {type(single)}")
+                        except Exception as e:
+                            app_logger.error(f'获取股票 {code} 数据失败: {e}')
+                            print(f'获取股票 {code} 数据失败: {e}')
+                            failed_count += 1
                     
                     stocks = self.process_stock_data(data_dict, self.current_user_stocks)
                     
@@ -554,7 +536,7 @@ class MainWindow(QtWidgets.QWidget):
                         self.update_table_signal.emit(stocks)
                         
                     consecutive_failures = 0  # 重置失败计数
-                    app_logger.info(f"后台刷新完成，失败{failed_count}只股票，缓存命中{len(current_stocks) - failed_count - len(need_fetch)}只股票")
+                    app_logger.info(f"后台刷新完成，失败{failed_count}只股票")
                 except Exception as e:
                     app_logger.error(f'行情刷新异常: {e}')
                     print('行情刷新异常:', e)
@@ -575,13 +557,36 @@ class MainWindow(QtWidgets.QWidget):
                 sleep_time = 5  # 默认5秒
             time.sleep(sleep_time)
 
+    def _is_stock_data_valid(self, stock_data):
+        """
+        检查股票数据是否完整有效
+        
+        Args:
+            stock_data: 股票数据字典
+            
+        Returns:
+            bool: 数据是否有效
+        """
+        if not isinstance(stock_data, dict):
+            return False
+            
+        # 检查关键字段是否存在且不为None
+        now = stock_data.get('now') or stock_data.get('price')
+        close = stock_data.get('close') or stock_data.get('lastPrice') or now
+        
+        # 如果now和close都为None，则数据不完整
+        if now is None and close is None:
+            return False
+            
+        return True
+
     def _update_database_on_startup(self):
         """在启动时更新数据库"""
         def update_database():
             try:
                 app_logger.info("应用启动时更新股票数据库...")
                 # 添加网络连接检查和延迟，确保网络就绪
-                time.sleep(5)  # 等待网络连接初始化
+                time.sleep(10)  # 增加到10秒等待网络连接初始化
                 success = update_stock_database()
                 if success:
                     app_logger.info("启动时股票数据库更新完成")

@@ -68,9 +68,18 @@ def process_stock_data(data: Dict[str, Any], stocks_list: List[str]) -> List[Tup
                 ask1 = info.get('ask1', 0)
                 ask1_vol = info.get('ask1_volume', 0) or info.get('volume_3', 0)
                 
-                # 添加None值检查
+                # 添加更严格的None值检查
                 if now is None or close is None:
                     app_logger.warning(f"股票 {code} 数据不完整: now={now}, close={close}")
+                    stocks.append((name, "--", "--", "#e6eaf3", "", ""))
+                    continue
+                    
+                # 检查数据是否有效（防止获取到空字符串等无效数据）
+                try:
+                    float(now)
+                    float(close)
+                except (ValueError, TypeError):
+                    app_logger.warning(f"股票 {code} 数据无效: now={now}, close={close}")
                     stocks.append((name, "--", "--", "#e6eaf3", "", ""))
                     continue
                     
