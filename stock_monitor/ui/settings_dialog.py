@@ -18,7 +18,7 @@ from ..ui.settings_panel import SettingsPanel
 from ..utils.helpers import get_stock_emoji, resource_path
 from ..config.manager import load_config, save_config, is_market_open
 from ..network.manager import NetworkManager
-from ..version import APP_VERSION
+from ..version import __version__
 from ..data.stocks import load_stock_data, enrich_pinyin
 from ..data.quotation import get_name_by_code as get_stock_name_by_code
 
@@ -674,9 +674,9 @@ class SettingsDialog(QtWidgets.QDialog):
                 app_logger.warning("未检测到新版本信息")
                 QMessageBox.warning(self, "检查更新", "未检测到新版本信息。")
                 return
-            if version.parse(latest_ver) <= version.parse(APP_VERSION):
+            if version.parse(latest_ver) <= version.parse(__version__):
                 app_logger.info("当前已是最新版本")
-                QMessageBox.information(self, "检查更新", f"当前已是最新版本：{APP_VERSION}")
+                QMessageBox.information(self, "检查更新", f"当前已是最新版本：{__version__}")
                 return
             reply = QMessageBox.question(
                 self, "发现新版本",

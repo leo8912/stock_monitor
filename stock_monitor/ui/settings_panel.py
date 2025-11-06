@@ -6,7 +6,7 @@ from win32com.client import Dispatch
 
 from ..config.manager import load_config, save_config
 from ..utils.helpers import resource_path
-from ..version import APP_VERSION
+from ..version import __version__
 
 
 class SettingsPanel(QtWidgets.QWidget):
@@ -97,7 +97,7 @@ class SettingsPanel(QtWidgets.QWidget):
         layout.addWidget(self.startup_checkbox, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
         
         # 版本号
-        self.version_label = QtWidgets.QLabel(f"版本号：{APP_VERSION}")
+        self.version_label = QtWidgets.QLabel(f"版本号：{__version__}")
         self.version_label.setStyleSheet("color: #666666; font-size: 16px;")
         layout.addWidget(self.version_label, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
         
@@ -193,7 +193,7 @@ class SettingsPanel(QtWidgets.QWidget):
         from PyQt5 import QtGui
         from ..network.manager import NetworkManager
         from ..config.manager import CONFIG_DIR
-        from ..version import APP_VERSION
+        from ..version import __version__
         from ..utils.logger import app_logger
         GITHUB_API = "https://api.github.com/repos/leo8912/stock_monitor/releases/latest"
         GITHUB_API_BACKUP = "https://ghfast.top/https://api.github.com/repos/leo8912/stock_monitor/releases/latest"
@@ -224,9 +224,9 @@ class SettingsPanel(QtWidgets.QWidget):
                 app_logger.warning("未检测到新版本信息")
                 QMessageBox.warning(self, "检查更新", "未检测到新版本信息。")
                 return
-            if version.parse(latest_ver) <= version.parse(APP_VERSION):
+            if version.parse(latest_ver) <= version.parse(__version__):
                 app_logger.info("当前已是最新版本")
-                QMessageBox.information(self, "检查更新", f"当前已是最新版本：{APP_VERSION}")
+                QMessageBox.information(self, "检查更新", f"当前已是最新版本：{__version__}")
                 return
             reply = QMessageBox.question(
                 self, "发现新版本",
