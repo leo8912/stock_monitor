@@ -5,7 +5,7 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('.venv/Lib/site-packages/easyquotation/stock_codes.conf', 'easyquotation'), ('stock_basic.json', '.'), ('theme_config.json', '.')],
+    datas=[('.venv/Lib/site-packages/easyquotation/stock_codes.conf', 'easyquotation'), ('stock_basic.json', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

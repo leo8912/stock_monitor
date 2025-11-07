@@ -1,68 +1,15 @@
 """
-UI组件模块
-包含股票表格等UI组件的实现
+股票表格UI组件
+用于显示股票行情数据的表格组件
+
+该模块包含StockTable类，用于在GUI中展示实时股票行情数据。
 """
 
-import sys
 from PyQt5 import QtWidgets, QtGui, QtCore
-from PyQt5.QtCore import pyqtSignal, pyqtSlot
+from PyQt5.QtCore import pyqtSlot
 
 # 导入日志记录器
-from ..utils.logger import app_logger
-from ..data.quotation import get_name_by_code
-
-def resource_path(relative_path):
-    """
-    获取资源文件路径，兼容PyInstaller打包和源码运行
-    
-    Args:
-        relative_path (str): 相对路径
-        
-    Returns:
-        str: 资源文件的绝对路径
-    """
-    try:
-        # PyInstaller创建的临时文件夹
-        base_path = getattr(sys, '_MEIPASS', None)
-        if base_path is None:
-            raise AttributeError("_MEIPASS not found")
-    except Exception:
-        base_path = "."
-    return QtCore.QDir(base_path).absoluteFilePath(relative_path)
-
-def get_stock_emoji(code, name):
-    """
-    根据股票代码和名称返回对应的emoji
-    
-    Args:
-        code (str): 股票代码
-        name (str): 股票名称
-        
-    Returns:
-        str: 对应的emoji字符
-    """
-    try:
-        if code.startswith(('sh000', 'sz399', 'sz159', 'sh510')) or (name and ('指数' in name or '板块' in name)):
-            return '📈'
-        elif name and '银行' in name:
-            return '🏦'
-        elif name and '保险' in name:
-            return '🛡️'
-        elif name and '板块' in name:
-            return '📊'
-        elif name and ('能源' in name or '石油' in name or '煤' in name):
-            return '⛽️'
-        elif name and ('汽车' in name or '车' in name):
-            return '🚗'
-        elif name and ('科技' in name or '半导体' in name or '芯片' in name):
-            return '💻'
-        elif name and '银行' in name:
-            return '🏦'
-        else:
-            return '⭐️'
-    except Exception as e:
-        app_logger.debug(f"获取股票emoji时出错: {e}")
-        return '⭐️'
+from stock_monitor.utils.logger import app_logger
 
 class StockTable(QtWidgets.QTableWidget):
     """
@@ -199,7 +146,6 @@ class StockTable(QtWidgets.QTableWidget):
         except Exception as e:
             error_msg = f"更新表格数据时发生错误: {e}"
             app_logger.error(error_msg)
-            print(error_msg)
             
     # 重写wheelEvent方法以完全禁用鼠标滚轮事件
     def wheelEvent(self, a0):

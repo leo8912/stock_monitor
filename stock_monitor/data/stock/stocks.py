@@ -6,7 +6,8 @@
 import json
 import os
 from typing import List, Dict, Any, Optional
-from ..utils.logger import app_logger
+
+from stock_monitor.utils.logger import app_logger
 
 
 def load_stock_data() -> List[Dict[str, Any]]:
@@ -19,7 +20,7 @@ def load_stock_data() -> List[Dict[str, Any]]:
     Returns:
         List[Dict[str, Any]]: 股票数据列表，每个元素包含 'code' 和 'name' 字段
     """
-    from ..utils.helpers import handle_exception
+    from stock_monitor.utils.helpers import handle_exception
     
     def _load_data():
         stock_file_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
@@ -50,7 +51,7 @@ def enrich_pinyin(stock_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     Returns:
         List[Dict[str, Any]]: 添加了拼音信息的股票列表，每个元素增加 'pinyin' 和 'abbr' 字段
     """
-    from ..utils.helpers import handle_exception
+    from stock_monitor.utils.helpers import handle_exception
     
     def _enrich_pinyin():
         # 延迟导入pypinyin，减少启动时间
@@ -77,25 +78,6 @@ def enrich_pinyin(stock_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     )
 
 
-def is_equal(a: str, b: str, tol: float = 0.01) -> bool:
-    """
-    比较两个字符串数值是否近似相等
-    
-    用于比较股票价格等浮点数，避免浮点数精度问题导致的比较错误。
-    
-    Args:
-        a (str): 第一个数值字符串
-        b (str): 第二个数值字符串
-        tol (float): 容差值，默认为0.01
-        
-    Returns:
-        bool: 如果两个数值差的绝对值小于容差值则返回True，否则返回False
-    """
-    try:
-        return abs(float(a) - float(b)) < tol
-    except Exception as e:
-        app_logger.debug(f"数值比较失败 ({a}, {b}): {e}")
-        return False
 
 def format_stock_code(code: str) -> Optional[str]:
     """
@@ -110,5 +92,5 @@ def format_stock_code(code: str) -> Optional[str]:
         Optional[str]: 格式化后的股票代码，如果输入无效则返回None
     """
     # 使用工具函数处理股票代码格式化
-    from ..utils.helpers import format_stock_code as format_stock_code_util
-    return format_stock_code_util(code)
+    from stock_monitor.utils.helpers import format_stock_code
+    return format_stock_code(code)

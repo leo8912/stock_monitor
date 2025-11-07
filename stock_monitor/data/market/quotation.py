@@ -1,12 +1,10 @@
-import easyquotation
-import time
-import requests
-import json
-import datetime
-from typing import Dict, Any, List, Tuple, Optional
-from .stocks import is_equal
-from ..utils.logger import app_logger
-from ..utils.helpers import resource_path
+"""
+行情数据处理模块
+用于获取和处理股票行情数据
+
+该模块包含获取行情数据、处理行情数据等功能。
+"""
+
 
 def get_quotation_engine(market_type='sina'):
     """获取行情引擎实例"""
@@ -22,23 +20,21 @@ def get_quotation_engine(market_type='sina'):
 
 def is_market_open() -> bool:
     """检查A股是否开市"""
+    # 复用config/manager.py中的实现
+    import datetime
     now = datetime.datetime.now()
-    # 检查是否为周末
     if now.weekday() >= 5:  # 周末
-        app_logger.debug("当前为周末，市场关闭")
         return False
-    
-    # 检查是否在交易时间内
     t = now.time()
-    is_open = ((datetime.time(9,30) <= t <= datetime.time(11,30)) or 
-               (datetime.time(13,0) <= t <= datetime.time(15,0)))
-    
-    if is_open:
-        app_logger.debug("市场开市中")
-    else:
-        app_logger.debug("市场休市中")
-        
-    return is_open
+    return ((datetime.time(9,30) <= t <= datetime.time(11,30)) or 
+            (datetime.time(13,0) <= t <= datetime.time(15,0)))
+import easyquotation
+import json
+import datetime
+from typing import Dict, Any, List, Tuple, Optional
+from stock_monitor.utils.logger import app_logger
+from stock_monitor.utils.helpers import resource_path, is_equal
+
 
 def process_stock_data(data: Dict[str, Any], stocks_list: List[str]) -> List[Tuple]:
     """处理股票数据，返回格式化的股票列表"""
@@ -66,7 +62,7 @@ def process_stock_data(data: Dict[str, Any], stocks_list: List[str]) -> List[Tup
                 bid1 = info.get('bid1', 0)
                 bid1_vol = info.get('bid1_volume', 0) or info.get('volume_2', 0)
                 ask1 = info.get('ask1', 0)
-                ask1_vol = info.get('ask1_volume', 0) or info.get('volume_3', 0)
+                ask1_vol = info.get('bid1_volume', 0) or info.get('volume_3', 0)
                 
                 # 添加更严格的None值检查
                 if now is None or close is None:
@@ -174,3 +170,24 @@ def get_name_by_code(code: str) -> str:
     except Exception as e:
         app_logger.error(f"根据代码获取股票名称时发生错误: {e}")
     return ""
+
+
+def get_stock_info_by_code(code: str) -> Optional[Dict[str, str]]:
+    """根据股票代码获取股票完整信息"""
+    # 读取本地股票数据
+    try:
+        with open(resource_path("stock_basic.json"), "r", encoding="utf-8") as f:
+            stock_data = json.load(f)
+        for s in stock_data:
+            if s['code'] == code:
+                # 对于港股，只保留中文部分
+                if code.startswith('hk') and '-' in s['name']:
+                    s['name'] = s['name'].split('-')[0].strip()
+                return s
+    except FileNotFoundError as e:
+        app_logger.error(f"股票基础数据文件未找到: {e}")
+    except json.JSONDecodeError as e:
+        app_logger.error(f"股票基础数据文件格式错误: {e}")
+    except Exception as e:
+        app_logger.error(f"根据代码获取股票信息时发生错误: {e}")
+    return None

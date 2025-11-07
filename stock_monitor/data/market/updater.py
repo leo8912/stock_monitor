@@ -4,17 +4,18 @@
 """
 
 import json
-import os
 import threading
 import time
+import os
 from typing import List, Dict
-from ..utils.logger import app_logger
+from stock_monitor.utils.logger import app_logger
 from typing import Any, Union
-from ..utils.helpers import resource_path
-from ..utils.cache import global_cache
+from stock_monitor.utils.helpers import resource_path
+from stock_monitor.utils.cache import global_cache
 import requests
 import io
 import pandas as pd
+from zhconv import convert
 
 
 def fetch_hk_stocks() -> List[Dict[str, str]]:
@@ -114,14 +115,12 @@ def fetch_hk_stocks() -> List[Dict[str, str]]:
                     else:
                         stock_name = str(name).strip()
                     
-                    # 简单的繁简转换替代方案，避免使用zhconv库
-                    # 这里我们直接使用原始名称，不做转换以避免文件缺失问题
-                    # 如果需要繁简转换，应该在打包时包含相关资源文件
-                    
+                    # 繁简转换
                     if stock_name:  # 确保名称不为空
+                        simplified_name = convert(str(stock_name).strip(), 'zh-hans')
                         hk_stocks.append({
                             'code': f'hk{code}',
-                            'name': stock_name
+                            'name': simplified_name
                         })
                         
                         # 用于调试，显示前几条记录
@@ -378,6 +377,7 @@ def preload_popular_stocks_data() -> None:
                 
                 if data and isinstance(data, dict):
                     # 存入缓存，设置较长的TTL（1小时）
+                    from stock_monitor.utils.cache import global_cache
                     global_cache.set(f"stock_{stock_code}", data, ttl=3600)
                     app_logger.debug(f"预加载股票数据到缓存: {stock_code}")
                     success_count += 1

@@ -11,11 +11,17 @@ from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtCore import pyqtSignal, pyqtSlot
 import time
 import datetime
-from win32com.client import Dispatch
+
+# 条件导入win32com
+try:
+    from win32com.client import Dispatch
+    WIN32_AVAILABLE = True
+except ImportError:
+    WIN32_AVAILABLE = False
 
 from stock_monitor.utils.logger import app_logger
-from stock_monitor.data.updater import update_stock_database
-from stock_monitor.ui.market_status import MarketStatusBar
+from stock_monitor.data.market.updater import update_stock_database
+from stock_monitor.ui.widgets.market_status import MarketStatusBar
 
 from stock_monitor.config.manager import is_market_open, load_config, save_config
 
@@ -23,9 +29,9 @@ from stock_monitor.utils.helpers import resource_path, get_stock_emoji
 
 ICON_FILE = resource_path('icon.ico')  # 统一使用ICO格式图标
 
-
-from stock_monitor.ui.settings_dialog import SettingsDialog
-from stock_monitor.ui.components import StockTable
+# 修改导入语句，使用设置对话框
+from stock_monitor.ui.dialogs.new_settings_dialog import NewSettingsDialog
+from stock_monitor.ui.components.stock_table import StockTable
 
 class MainWindow(QtWidgets.QWidget):
     """
@@ -195,7 +201,7 @@ class MainWindow(QtWidgets.QWidget):
                 action = menu.exec_(QtGui.QCursor.pos())
                 if action == action_settings:
                     if not hasattr(self, 'settings_dialog') or self.settings_dialog is None:
-                        self.settings_dialog = SettingsDialog(self, main_window=self)
+                        self.settings_dialog = NewSettingsDialog(self, main_window=self)
                         # 连接信号
                         self.settings_dialog.config_changed.connect(self.on_user_stocks_changed)
                     self.settings_dialog.show()
@@ -290,7 +296,7 @@ class MainWindow(QtWidgets.QWidget):
     def open_settings(self):
         """打开设置对话框"""
         if self.settings_dialog is None:
-            self.settings_dialog = SettingsDialog(self, main_window=self)
+            self.settings_dialog = NewSettingsDialog(self, main_window=self)
         else:
             try:
                 self.settings_dialog.config_changed.disconnect(self.on_user_stocks_changed)
@@ -345,7 +351,7 @@ class MainWindow(QtWidgets.QWidget):
         Returns:
             list: 格式化后的股票数据列表
         """
-        from stock_monitor.data.quotation import process_stock_data as quotation_process_stock_data
+        from stock_monitor.data.market.quotation import process_stock_data as quotation_process_stock_data
         return quotation_process_stock_data(data, stocks_list)
 
     def refresh_now(self, stocks_list=None):
@@ -389,7 +395,6 @@ class MainWindow(QtWidgets.QWidget):
                             app_logger.warning(f"获取 {code} 数据失败，返回数据类型: {type(single)}")
                     except Exception as e:
                         app_logger.error(f'获取股票 {code} 数据失败: {e}')
-                        print(f'获取股票 {code} 数据失败: {e}')
                         failed_stocks.append(code)
                 
                 stocks = self.process_stock_data(data_dict, stocks_list)
@@ -413,7 +418,6 @@ class MainWindow(QtWidgets.QWidget):
                 app_logger.info(f"数据刷新完成，失败{len(failed_stocks)}只股票: {failed_stocks}")
             except Exception as e:
                 app_logger.error(f'行情刷新异常: {e}')
-                print('行情刷新异常:', e)
                 # 显示错误信息
                 error_stocks = [("数据加载异常", "--", "--", "#e6eaf3", "", "")] * max(3, len(stocks_list) if stocks_list else 3)
                 self.table.setRowCount(0)
@@ -522,7 +526,6 @@ class MainWindow(QtWidgets.QWidget):
                                 app_logger.warning(f"获取 {code} 数据失败，返回数据类型: {type(single)}")
                         except Exception as e:
                             app_logger.error(f'获取股票 {code} 数据失败: {e}')
-                            print(f'获取股票 {code} 数据失败: {e}')
                             failed_count += 1
                     
                     stocks = self.process_stock_data(data_dict, self.current_user_stocks)
@@ -539,7 +542,6 @@ class MainWindow(QtWidgets.QWidget):
                     app_logger.info(f"后台刷新完成，失败{failed_count}只股票")
                 except Exception as e:
                     app_logger.error(f'行情刷新异常: {e}')
-                    print('行情刷新异常:', e)
                     consecutive_failures += 1
                     
                     # 如果连续失败多次，发送错误信息到UI
@@ -605,7 +607,7 @@ class MainWindow(QtWidgets.QWidget):
         self._database_update_thread.start()
         
         # 启动缓存预加载调度器
-        from stock_monitor.data.updater import start_preload_scheduler
+        from stock_monitor.data.market.updater import start_preload_scheduler
         start_preload_scheduler()
 
     def _database_update_loop(self):

@@ -145,5 +145,4 @@ def handle_exception(
     except Exception as e:
         error_msg = f"{operation_name}时发生错误: {e}"
         logger.error(error_msg)
-        print(error_msg)
         return default_return

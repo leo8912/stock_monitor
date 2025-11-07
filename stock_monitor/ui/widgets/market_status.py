@@ -4,7 +4,7 @@
 """
 
 from PyQt5 import QtWidgets, QtGui, QtCore
-from ..utils.logger import app_logger
+from stock_monitor.utils.logger import app_logger
 
 
 class MarketStatusBar(QtWidgets.QWidget):
