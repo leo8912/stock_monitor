@@ -35,8 +35,8 @@ class ErrorHandler:
         app_logger.error(f"堆栈追踪:\n{tb_text}")
         
         # 打印到控制台
-        print(f"错误: {error_msg}")
-        print(f"堆栈追踪:\n{tb_text}")
+        app_logger.error(f"错误: {error_msg}")
+        app_logger.error(f"堆栈追踪:\n{tb_text}")
 
 def safe_call(func: Callable, *args, default_return=None, **kwargs) -> Any:
     """
@@ -57,7 +57,7 @@ def safe_call(func: Callable, *args, default_return=None, **kwargs) -> Any:
         error_msg = f"调用函数 {func.__name__} 时发生错误: {e}"
         app_logger.error(error_msg)
         app_logger.debug(f"函数参数: args={args}, kwargs={kwargs}")
-        print(error_msg)
+        app_logger.error(error_msg)
         return default_return
 
 def retry_on_failure(max_attempts: int = 3, delay: float = 1.0):

@@ -11,6 +11,15 @@ from typing import Dict, Any, Optional
 from collections import OrderedDict
 from .logger import app_logger
 
+def is_market_open():
+    """检查A股是否开市"""
+    import datetime
+    now = datetime.datetime.now()
+    if now.weekday() >= 5:  # 周末
+        return False
+    t = now.time()
+    return ((datetime.time(9,30) <= t <= datetime.time(11,30)) or 
+            (datetime.time(13,0) <= t <= datetime.time(15,0)))
 
 class DataCache:
     """数据缓存管理器，支持LRU淘汰策略"""
@@ -94,6 +103,42 @@ class DataCache:
         app_logger.debug(f"缓存命中: {key}, 剩余时间: {cache_entry['ttl'] - elapsed:.1f}秒")
         return cache_entry['data']
     
+    def get_with_market_aware_ttl(self, key: str) -> Optional[Any]:
+        """
+        获取缓存数据，根据市场状态使用不同的TTL
+        
+        开市期间使用较短的TTL，闭市期间使用较长的TTL
+        
+        Args:
+            key (str): 缓存键
+            
+        Returns:
+            Optional[Any]: 缓存数据，如果不存在或已过期则返回None
+        """
+        if key not in self._cache:
+            app_logger.debug(f"缓存未命中: {key}")
+            return None
+            
+        cache_entry = self._cache[key]
+        # 根据市场状态确定实际的TTL
+        actual_ttl = cache_entry['ttl']
+        if not is_market_open():
+            # 闭市期间，将TTL延长到10倍（但不超过1小时）
+            actual_ttl = min(cache_entry['ttl'] * 10, 3600)
+            
+        elapsed = time.time() - cache_entry['timestamp']
+        
+        if elapsed > actual_ttl:
+            # 缓存已过期，删除并返回None
+            del self._cache[key]
+            app_logger.debug(f"缓存已过期并删除: {key}")
+            return None
+            
+        # 将访问的项移到最后（表示最近使用）
+        self._cache.move_to_end(key)
+        app_logger.debug(f"缓存命中: {key}, 剩余时间: {actual_ttl - elapsed:.1f}秒")
+        return cache_entry['data']
+    
     def clear(self, key: Optional[str] = None) -> None:
         """
         清除缓存
@@ -122,7 +167,13 @@ class DataCache:
         expired_keys = []
         
         for key, cache_entry in self._cache.items():
-            if current_time - cache_entry['timestamp'] > cache_entry['ttl']:
+            # 根据市场状态确定实际的TTL
+            actual_ttl = cache_entry['ttl']
+            if not is_market_open():
+                # 闭市期间，将TTL延长到10倍（但不超过1小时）
+                actual_ttl = min(cache_entry['ttl'] * 10, 3600)
+                
+            if current_time - cache_entry['timestamp'] > actual_ttl:
                 expired_keys.append(key)
         
         for key in expired_keys:
@@ -145,7 +196,13 @@ class DataCache:
         
         expired_count = 0
         for cache_entry in self._cache.values():
-            if current_time - cache_entry['timestamp'] > cache_entry['ttl']:
+            # 根据市场状态确定实际的TTL
+            actual_ttl = cache_entry['ttl']
+            if not is_market_open():
+                # 闭市期间，将TTL延长到10倍（但不超过1小时）
+                actual_ttl = min(cache_entry['ttl'] * 10, 3600)
+                
+            if current_time - cache_entry['timestamp'] > actual_ttl:
                 expired_count += 1
                 
         return {
@@ -159,5 +216,9 @@ class DataCache:
 
 # 创建全局缓存实例
 global_cache = DataCache()
+
+
+
+
 
 

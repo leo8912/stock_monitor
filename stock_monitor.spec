@@ -2,10 +2,10 @@
 
 
 a = Analysis(
-    ['main.py'],
+    ['stock_monitor\\main.py'],
     pathex=[],
     binaries=[],
-    datas=[('.venv/Lib/site-packages/easyquotation/stock_codes.conf', 'easyquotation'), ('stock_basic.json', '.')],
+    datas=[('stock_monitor/resources/stock_basic.json', 'stock_monitor/resources'), ('stock_monitor/resources/icon.ico', 'stock_monitor/resources'), ('C:\\Users\\leo89\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\easyquotation/stock_codes.conf', 'easyquotation')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -19,27 +19,21 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
+    a.binaries,
+    a.datas,
     [],
-    exclude_binaries=True,
     name='stock_monitor',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
+    upx_exclude=[],
+    runtime_tmpdir=None,
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['icon.ico'],
-)
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name='stock_monitor',
+    icon=['stock_monitor\\resources\\icon.ico'],
 )

@@ -5,6 +5,10 @@
 
 import sys
 import os
+
+# 添加项目根目录到Python路径
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 import threading
 import easyquotation
 from PyQt5 import QtWidgets, QtGui, QtCore
@@ -26,6 +30,7 @@ from stock_monitor.ui.widgets.market_status import MarketStatusBar
 from stock_monitor.config.manager import is_market_open, load_config, save_config
 
 from stock_monitor.utils.helpers import resource_path, get_stock_emoji
+from stock_monitor.utils.log_cleaner import schedule_log_cleanup
 
 ICON_FILE = resource_path('icon.ico')  # 统一使用ICO格式图标
 
@@ -54,6 +59,9 @@ class MainWindow(QtWidgets.QWidget):
         self.drag_position = None
         
         app_logger.info("主窗口初始化开始")
+        
+        # 启动日志定期清理任务
+        schedule_log_cleanup(days_to_keep=7, interval_hours=24)
         
         # 初始化股市状态条
         self.market_status_bar = MarketStatusBar(self)
@@ -89,6 +97,23 @@ class MainWindow(QtWidgets.QWidget):
         cfg = load_config()
         self.refresh_interval = cfg.get('refresh_interval', 5)
         self.current_user_stocks = self.load_user_stocks()
+        
+        # 用于增量更新的数据缓存
+        self._last_stock_data = {}
+        
+        # 加载状态指示器
+        self.loading_label = QtWidgets.QLabel("⏳ 数据加载中...")
+        self.loading_label.setStyleSheet("""
+            QLabel {
+                color: #fff;
+                font-size: 20px;
+                background: rgba(30, 30, 30, 0.8);
+                border-radius: 10px;
+                padding: 10px;
+            }
+        """)
+        self.loading_label.hide()
+        layout.addWidget(self.loading_label)
         
         app_logger.info(f"初始化配置: 刷新间隔={self.refresh_interval}, 自选股={self.current_user_stocks}")
         
@@ -366,6 +391,11 @@ class MainWindow(QtWidgets.QWidget):
         # 使用 hasattr 检查 quotation 对象是否有 real 方法
         if hasattr(self, 'quotation'):
             try:
+                # 显示加载状态
+                self.loading_label.show()
+                self.table.hide()
+                QtWidgets.QApplication.processEvents()
+                
                 # 逐个请求，避免混淆，并确保键值精确匹配
                 data_dict = {}
                 failed_stocks = []
@@ -399,23 +429,36 @@ class MainWindow(QtWidgets.QWidget):
                 
                 stocks = self.process_stock_data(data_dict, stocks_list)
                 
-                # 如果所有股票都失败了，显示错误信息
-                if len(failed_stocks) == len(stocks_list) and len(stocks_list) > 0:
-                    app_logger.error("所有股票数据获取失败")
-                    error_stocks = [("数据加载失败", "--", "--", "#e6eaf3", "", "")] * len(stocks_list)
-                    self.table.setRowCount(0)
-                    self.table.clearContents()
-                    self.table.update_data(error_stocks)  # type: ignore
+                # 检查数据是否发生变化，只在有变化时更新UI
+                if self._has_stock_data_changed(stocks):
+                    app_logger.info("检测到股票数据变化，更新UI")
+                    # 更新缓存数据
+                    self._update_last_stock_data(stocks)
+                    
+                    # 如果所有股票都失败了，显示错误信息
+                    if len(failed_stocks) == len(stocks_list) and len(stocks_list) > 0:
+                        app_logger.error("所有股票数据获取失败")
+                        error_stocks = [("数据加载失败", "--", "--", "#e6eaf3", "", "")] * len(stocks_list)
+                        self.table.setRowCount(0)
+                        self.table.clearContents()
+                        self.table.update_data(error_stocks)  # type: ignore
+                    else:
+                        self.table.setRowCount(0)
+                        self.table.clearContents()
+                        self.table.update_data(stocks)  # type: ignore
+                    
+                    self.table.viewport().update()
+                    self.table.repaint()
+                    QtWidgets.QApplication.processEvents()
+                    self.adjust_window_height()  # 每次刷新后自适应高度
+                    app_logger.info(f"数据刷新完成，失败{len(failed_stocks)}只股票: {failed_stocks}")
                 else:
-                    self.table.setRowCount(0)
-                    self.table.clearContents()
-                    self.table.update_data(stocks)  # type: ignore
+                    app_logger.info("股票数据无变化，跳过UI更新")
                 
-                self.table.viewport().update()
-                self.table.repaint()
+                # 隐藏加载状态
+                self.loading_label.hide()
+                self.table.show()
                 QtWidgets.QApplication.processEvents()
-                self.adjust_window_height()  # 每次刷新后自适应高度
-                app_logger.info(f"数据刷新完成，失败{len(failed_stocks)}只股票: {failed_stocks}")
             except Exception as e:
                 app_logger.error(f'行情刷新异常: {e}')
                 # 显示错误信息
@@ -427,7 +470,11 @@ class MainWindow(QtWidgets.QWidget):
                 self.table.repaint()
                 QtWidgets.QApplication.processEvents()
                 self.adjust_window_height()
-
+                
+                # 隐藏加载状态
+                self.loading_label.hide()
+                self.table.show()
+                QtWidgets.QApplication.processEvents()
     def paintEvent(self, a0):  # type: ignore
         """
         绘制事件处理，用于绘制窗口背景
@@ -530,13 +577,21 @@ class MainWindow(QtWidgets.QWidget):
                     
                     stocks = self.process_stock_data(data_dict, self.current_user_stocks)
                     
-                    # 如果所有股票都失败了，且股票列表不为空，显示错误信息
-                    if failed_count == len(self.current_user_stocks) and len(self.current_user_stocks) > 0:
-                        app_logger.error("所有股票数据获取失败")
-                        error_stocks = [("数据加载失败", "--", "--", "#e6eaf3", "", "")] * len(self.current_user_stocks)
-                        self.update_table_signal.emit(error_stocks)
+                    # 检查数据是否发生变化，只在有变化时更新UI
+                    if self._has_stock_data_changed(stocks):
+                        app_logger.info("检测到股票数据变化，更新UI")
+                        # 更新缓存数据
+                        self._update_last_stock_data(stocks)
+                        
+                        # 如果所有股票都失败了，且股票列表不为空，显示错误信息
+                        if failed_count == len(self.current_user_stocks) and len(self.current_user_stocks) > 0:
+                            app_logger.error("所有股票数据获取失败")
+                            error_stocks = [("数据加载失败", "--", "--", "#e6eaf3", "", "")] * len(self.current_user_stocks)
+                            self.update_table_signal.emit(error_stocks)
+                        else:
+                            self.update_table_signal.emit(stocks)
                     else:
-                        self.update_table_signal.emit(stocks)
+                        app_logger.info("股票数据无变化，跳过UI更新")
                         
                     consecutive_failures = 0  # 重置失败计数
                     app_logger.info(f"后台刷新完成，失败{failed_count}只股票")
@@ -581,6 +636,57 @@ class MainWindow(QtWidgets.QWidget):
             return False
             
         return True
+
+    def _has_stock_data_changed(self, stocks):
+        """
+        检查股票数据是否发生变化
+        
+        Args:
+            stocks (list): 当前股票数据列表
+            
+        Returns:
+            bool: 数据是否发生变化
+        """
+        # 如果没有缓存数据，认为发生了变化
+        if not self._last_stock_data:
+            return True
+            
+        # 比较每只股票的数据
+        for stock in stocks:
+            name, price, change, color, seal_vol, seal_type = stock
+            key = f"{name}_{price}_{change}_{color}_{seal_vol}_{seal_type}"
+            
+            # 如果这只股票之前没有数据，认为发生了变化
+            if name not in self._last_stock_data:
+                return True
+                
+            # 如果数据不匹配，认为发生了变化
+            if self._last_stock_data[name] != key:
+                return True
+                
+        # 检查是否有股票被移除
+        current_names = [stock[0] for stock in stocks]
+        for name in self._last_stock_data.keys():
+            if name not in current_names:
+                return True
+                
+        # 数据没有变化
+        return False
+    
+    def _update_last_stock_data(self, stocks):
+        """
+        更新最后股票数据缓存
+        
+        Args:
+            stocks (list): 当前股票数据列表
+        """
+        self._last_stock_data.clear()
+        for stock in stocks:
+            name, price, change, color, seal_vol, seal_type = stock
+            key = f"{name}_{price}_{change}_{color}_{seal_vol}_{seal_type}"
+            self._last_stock_data[name] = key
+            
+        app_logger.debug(f"更新股票数据缓存，共{len(self._last_stock_data)}只股票")
 
     def _update_database_on_startup(self):
         """在启动时更新数据库"""
@@ -658,7 +764,7 @@ class MainWindow(QtWidgets.QWidget):
             
             # 确保stocks是一个非空列表
             if not isinstance(stocks, list) or len(stocks) == 0:
-                print("配置文件中未找到有效的用户股票列表，使用默认值")
+                app_logger.warning("配置文件中未找到有效的用户股票列表，使用默认值")
                 stocks = ['sh600460', 'sh603986', 'sh600030', 'sh000001']
             
             processed_stocks = []
@@ -695,7 +801,7 @@ class MainWindow(QtWidgets.QWidget):
                     
                     # 非字符串类型直接跳过
                 except Exception as e:
-                    print(f"处理股票 {stock} 时发生错误: {e}")
+                    app_logger.error(f"处理股票 {stock} 时发生错误: {e}")
                     continue
             
             # 去除重复项，保持原有顺序
@@ -709,7 +815,7 @@ class MainWindow(QtWidgets.QWidget):
             
             # 确保至少有3个股票
             if len(processed_stocks) < 3:
-                print(f"用户股票数量不足3个，添加默认股票")
+                app_logger.info(f"用户股票数量不足3个，添加默认股票")
                 for default_stock in default_stocks:
                     if default_stock not in processed_stocks:
                         processed_stocks.append(default_stock)
@@ -719,7 +825,7 @@ class MainWindow(QtWidgets.QWidget):
             return processed_stocks
             
         except Exception as e:
-            print(f"加载用户股票列表时发生严重错误: {e}")
+            app_logger.error(f"加载用户股票列表时发生严重错误: {e}")
             # 返回安全的默认值
             return ['sh600460', 'sh603986', 'sh600030', 'sh000001']
 

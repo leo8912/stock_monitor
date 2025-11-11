@@ -116,7 +116,7 @@ class MarketStatusBar(QtWidgets.QWidget):
             )
             
         except Exception as e:
-            print(f"获取全市场数据时出错: {e}")
+            app_logger.error(f"获取全市场数据时出错: {e}")
         
     def paintEvent(self, event):  # type: ignore
         """绘制状态条"""

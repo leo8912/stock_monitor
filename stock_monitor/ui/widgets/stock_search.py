@@ -73,37 +73,42 @@ class StockSearchWidget(QtWidgets.QWidget):
         """)
         
         layout = QtWidgets.QVBoxLayout(self) 
+        # 调整间距和边距
         layout.setSpacing(16) 
-        layout.setContentsMargins(20, 20, 20, 20) 
+        layout.setContentsMargins(16, 16, 16, 16) 
         
         # 标题 
-        title = QtWidgets.QLabel("添加自选股") 
+        title = QtWidgets.QLabel("🔍 添加自选股") 
+        # 增大字体大小并居中显示
         title.setStyleSheet("""
             QLabel {
                 color: #000000;
-                font-size: 20px;
-                font-weight: 500;
+                font-size: 30px;
+                font-weight: bold;
                 background: transparent;
                 padding: 0;
+                text-align: center;
             }
         """)
+        title.setAlignment(QtCore.Qt.AlignCenter)  # type: ignore
         layout.addWidget(title) 
         
         # 搜索框 
         self.search_input = QtWidgets.QLineEdit() 
-        self.search_input.setPlaceholderText("输入股票代码、名称或拼音...") 
+        # 增大字体大小
+        self.search_input.setPlaceholderText("📝 输入股票代码、名称或拼音...") 
         self.search_input.setStyleSheet("""
             QLineEdit {
                 background: #ffffff;
                 color: #000000;
-                font-size: 18px;
-                border-radius: 6px;
-                border: 1px solid #cccccc;
-                padding: 12px 15px;
-                min-height: 30px;
+                font-size: 20px;
+                border-radius: 8px;
+                border: 2px solid #cccccc;
+                padding: 14px 18px;
+                min-height: 32px;
             }
             QLineEdit:focus {
-                border: 1px solid #0078d4;
+                border: 2px solid #0078d4;
                 background: #ffffff;
             }
         """)
@@ -113,22 +118,23 @@ class StockSearchWidget(QtWidgets.QWidget):
         # 搜索结果列表 (创建空列表，避免初始化时加载数据)
         self.result_list = QtWidgets.QListWidget() 
         self.result_list.itemClicked.connect(self.on_item_clicked)  # type: ignore 
+        # 增大字体大小并居中显示
         self.result_list.setStyleSheet("""
             QListWidget {
                 background: #ffffff;
                 color: #000000;
-                font-size: 18px;
-                border-radius: 6px;
-                border: 1px solid #cccccc;
+                font-size: 20px;
+                border-radius: 8px;
+                border: 2px solid #cccccc;
                 outline: none;
-                padding: 8px;
+                padding: 10px;
                 min-height: 320px;
             }
             QListWidget::item {
-                height: 42px;
-                border-radius: 4px;
-                padding: 0 15px;
-                margin: 4px 8px;
+                height: 50px;
+                border-radius: 6px;
+                padding: 0 18px;
+                margin: 6px 10px;
                 text-align: center;
             }
             QListWidget::item:selected {
@@ -168,18 +174,19 @@ class StockSearchWidget(QtWidgets.QWidget):
         self.add_btn = QtWidgets.QPushButton("➕ 添加选中") 
         self.add_btn.clicked.connect(self.add_selected_stock)  # type: ignore 
         self.add_btn.setEnabled(False) 
+        # 增大字体大小和按钮尺寸
         self.add_btn.setStyleSheet("""
             QPushButton {
                 background: #0078d4;
                 color: #ffffff;
-                font-size: 18px;
-                border-radius: 6px;
-                padding: 12px 20px;
+                font-size: 20px;
+                border-radius: 8px;
+                padding: 14px 22px;
                 border: none;
-                font-weight: 400;
-                min-width: 120px;
-                min-height: 42px;
-                max-height: 42px;
+                font-weight: bold;
+                min-width: 140px;
+                min-height: 50px;
+                max-height: 50px;
             }
             QPushButton:hover {
                 background: #006cbe;
@@ -192,11 +199,11 @@ class StockSearchWidget(QtWidgets.QWidget):
                 color: #666666;
             }
         """)
-        # 设置按钮固定宽度和高度，与删除按钮保持一致
-        self.add_btn.setFixedWidth(120)
-        self.add_btn.setFixedHeight(42)
+        # 增大按钮尺寸
+        self.add_btn.setFixedWidth(140)
+        self.add_btn.setFixedHeight(50)
         layout.addWidget(self.add_btn) 
-        # 添加间距使按钮往下移
+        # 调整间距
         layout.addSpacing(10)
         layout.setAlignment(self.add_btn, QtCore.Qt.AlignmentFlag.AlignHCenter)
         

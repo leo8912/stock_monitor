@@ -31,7 +31,8 @@ stock_monitor/
 │   ├── __init__.py
 │   ├── error_handler.py   # 错误处理
 │   ├── helpers.py         # 辅助函数
-│   └── logger.py          # 日志记录
+│   ├── logger.py          # 日志记录
+│   └── log_cleaner.py     # 日志清理工具
 ├── __init__.py
 └── main.py                # 主程序入口
 
@@ -89,7 +90,7 @@ stock_monitor/
 主要文件：
 - [components.py](file:///D:/code/stock/stock_monitor/ui/components.py): UI基础组件
 - [market_status.py](file:///D:/code/stock/stock_monitor/ui/market_status.py): 市场状态条组件，可视化展示整体市场涨跌情况
-- [settings_dialog.py](file:///D:/code/stock/stock_monitor/ui/settings_dialog.py): 设置对话框，用于管理自选股、刷新频率等设置
+- [new_settings_dialog.py](file:///D:/code/stock/stock_monitor/ui/dialogs/new_settings_dialog.py): 设置对话框，用于管理自选股、刷新频率等设置
 
 ### 6. 工具模块 (utils/)
 
@@ -99,6 +100,7 @@ stock_monitor/
 - [error_handler.py](file:///D:/code/stock/stock_monitor/utils/error_handler.py): 错误处理和异常管理
 - [helpers.py](file:///D:/code/stock/stock_monitor/utils/helpers.py): 辅助函数，如资源路径获取、emoji处理等
 - [logger.py](file:///D:/code/stock/stock_monitor/utils/logger.py): 日志记录功能
+- [log_cleaner.py](file:///D:/code/stock/stock_monitor/utils/log_cleaner.py): 日志清理工具，定期删除过期日志文件
 
 ### 7. 资源文件 (resources/)
 
@@ -144,11 +146,40 @@ stock_monitor/
 ### 8. 开机自启动
 - 支持设置开机自动启动
 
+### 9. 日志自动清理
+- 自动清理7天前的日志文件，防止日志文件过大
+- 每24小时检查一次并清理过期日志
+
 ## 使用说明
 
 1. 运行 `python main.py` 启动（需安装依赖，见 requirements.txt）
 2. Windows 可用打包版，下载 release 页的 `stock_monitor.zip` 解压即用
 3. 右键点击窗口可打开设置界面，管理自选股、刷新频率、开机启动等
+
+## 测试运行
+
+### 开发环境运行
+
+```bash
+# 1. 克隆项目
+git clone <项目地址>
+cd stock_monitor
+
+# 2. 安装依赖
+pip install -r requirements.txt
+
+# 3. 运行程序
+python -m stock_monitor.main
+# 或者
+cd stock_monitor && python main.py
+```
+
+### 测试日志清理功能
+
+```bash
+# 测试清理过期日志功能
+python -c "from stock_monitor.utils.log_cleaner import clean_old_logs; print('清理过期日志...'); deleted = clean_old_logs(); print(f'已删除 {deleted} 个过期日志文件')"
+```
 
 ## 依赖环境
 

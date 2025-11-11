@@ -15,7 +15,7 @@ def get_quotation_engine(market_type='sina'):
     except Exception as e:
         error_msg = f"初始化行情引擎失败: {e}"
         app_logger.error(error_msg)
-        print(error_msg)
+        app_logger.error(error_msg)
         return None
 
 def is_market_open() -> bool:

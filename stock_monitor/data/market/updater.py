@@ -437,6 +437,6 @@ if __name__ == "__main__":
     # 测试更新功能
     success = update_stock_database()
     if success:
-        print("股票数据库更新成功")
+        app_logger.info("股票数据库更新成功")
     else:
-        print("股票数据库更新失败")
+        app_logger.error("股票数据库更新失败")
