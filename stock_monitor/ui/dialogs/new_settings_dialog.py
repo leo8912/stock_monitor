@@ -72,18 +72,17 @@ class StockListWidget(QtWidgets.QListWidget):
             QListWidget {
                 background: #ffffff;           /* 背景色为白色 */
                 color: #212529;                /* 文字颜色为深灰色 */
-                font-size: 20px;               /* 增大字体大小以符合用户偏好 */
-                border-radius: 10px;            /* 增大圆角半径 */
-                border: 2px solid #ced4da;     /* 边框颜色 */
+                font-size: 18px;               /* 字体大小 */
+                border-radius: 8px;            /* 圆角半径 */
+                border: 1px solid #ced4da;     /* 边框颜色 */
                 outline: none;                 /* 无轮廓 */
                 padding: 6px;                  /* 内边距 */
             }
             QListWidget::item {
-                height: 60px;                  /* 增大项目高度以符合用户偏好 */
-                border-radius: 6px;            /* 增大项目圆角半径 */
+                height: 45px;                  /* 项目高度 */
+                border-radius: 4px;            /* 项目圆角半径 */
                 padding: 0 12px;               /* 项目内边距 */
-                margin: 4px 0;                 /* 项目外边距 */
-                text-align: center;            /* 文字居中显示 */
+                margin: 2px 0;                 /* 项目外边距 */
             }
             QListWidget::item:selected {
                 background: #e3f2fd;           /* 选中项背景色 */
@@ -256,9 +255,9 @@ class NewSettingsDialog(QtWidgets.QDialog):
         # 设置为模态对话框 
         self.setModal(True) 
         # 设置最小尺寸 
-        self.setMinimumSize(1000, 700) 
+        self.setMinimumSize(800, 600) 
         # 设置默认尺寸 
-        self.resize(1400, 900) 
+        self.resize(1000, 700) 
         # 保存主窗口引用 
         self.main_window = main_window 
         # 初始化选中股票列表 
@@ -341,7 +340,7 @@ class NewSettingsDialog(QtWidgets.QDialog):
         # 设置整体样式
         self.setStyleSheet("""
             QDialog {
-                background: #ffffff;           /* 背景色 */
+                background: #f8f9fa;           /* 背景色 */
                 font-family: "Microsoft YaHei", "微软雅黑";
             }
         """)
@@ -351,24 +350,24 @@ class NewSettingsDialog(QtWidgets.QDialog):
         # 减小控件间距
         layout.setSpacing(15)
         # 减小边距
-        layout.setContentsMargins(15, 15, 15, 15)
+        layout.setContentsMargins(20, 20, 20, 20)
         
         # 创建主体区域（左右分栏）
         main_splitter = QtWidgets.QHBoxLayout()
         # 减小控件间距
-        main_splitter.setSpacing(15)
+        main_splitter.setSpacing(20)
         # 减小边距
         main_splitter.setContentsMargins(0, 0, 0, 0)
         
         # 创建左侧添加自选股区域
         left_widget = self._create_add_stock_widget()
-        # 减小宽度
-        left_widget.setFixedWidth(400)
+        # 设置宽度
+        left_widget.setFixedWidth(350)
         
         # 创建右侧自选股列表区域
         right_widget = self._create_stock_list_widget()
-        # 减小宽度
-        right_widget.setFixedWidth(400)
+        # 设置宽度
+        right_widget.setFixedWidth(350)
         
         # 将左右区域添加到主分栏布局中
         main_splitter.addWidget(left_widget)
@@ -412,15 +411,17 @@ class NewSettingsDialog(QtWidgets.QDialog):
         # 创建设置选项区域
         settings_widget = self._create_settings_widget()
         # 移除设置区域的边距
-        settings_widget.layout().setContentsMargins(0, 0, 0, 0)
+        settings_layout = settings_widget.layout()
+        if settings_layout:
+            settings_layout.setContentsMargins(0, 0, 0, 0)
         
         # 创建弹性空间
         spacer = QtWidgets.QSpacerItem(20, 10, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)  # type: ignore
         
         # 创建按钮区域
-        buttons_widget = self._create_buttons_widget()
-        # 移除按钮区域的边距
-        buttons_widget.layout().setContentsMargins(0, 0, 0, 0)
+        buttons_widget = QtWidgets.QWidget()
+        # 设置样式
+        buttons_widget.setStyleSheet("QWidget { background: transparent; }")
         
         # 将控件添加到布局中
         layout.addWidget(settings_widget)
@@ -437,17 +438,18 @@ class NewSettingsDialog(QtWidgets.QDialog):
         # 设置样式
         widget.setStyleSheet("""
             QWidget {
-                background: transparent;       /* 背景透明 */
-                border: none;                  /* 无边框 */
+                background: #ffffff;       /* 白色背景 */
+                border: 1px solid #dee2e6; /* 边框 */
+                border-radius: 10px;       /* 圆角 */
             }
         """)
         
         # 创建垂直布局
         layout = QtWidgets.QVBoxLayout(widget)
         # 调整间距
-        layout.setSpacing(10)
+        layout.setSpacing(15)
         # 调整边距
-        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setContentsMargins(15, 15, 15, 15)
         
         # 创建标题标签
         title_label = QtWidgets.QLabel("添加自选股")
@@ -455,7 +457,7 @@ class NewSettingsDialog(QtWidgets.QDialog):
         title_label.setStyleSheet("""
             QLabel {
                 color: #212529;                /* 文字颜色 */
-                font-size: 32px;               /* 增大字体大小 */
+                font-size: 20px;               /* 字体大小 */
                 font-weight: bold;             /* 粗体 */
                 text-align: center;            /* 居中对齐 */
             }
@@ -483,17 +485,18 @@ class NewSettingsDialog(QtWidgets.QDialog):
         # 设置样式
         widget.setStyleSheet("""
             QWidget {
-                background: transparent;       /* 背景透明 */
-                border: none;                  /* 无边框 */
+                background: #ffffff;       /* 白色背景 */
+                border: 1px solid #dee2e6; /* 边框 */
+                border-radius: 10px;       /* 圆角 */
             }
         """)
         
         # 创建垂直布局
         layout = QtWidgets.QVBoxLayout(widget)
         # 调整间距
-        layout.setSpacing(10)
+        layout.setSpacing(15)
         # 调整边距
-        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setContentsMargins(15, 15, 15, 15)
         
         # 创建标题标签
         title_label = QtWidgets.QLabel("自选股列表")
@@ -501,7 +504,7 @@ class NewSettingsDialog(QtWidgets.QDialog):
         title_label.setStyleSheet("""
             QLabel {
                 color: #212529;                /* 文字颜色 */
-                font-size: 32px;               /* 增大字体大小 */
+                font-size: 20px;               /* 字体大小 */
                 font-weight: bold;             /* 粗体 */
                 text-align: center;            /* 居中对齐 */
             }
@@ -526,21 +529,21 @@ class NewSettingsDialog(QtWidgets.QDialog):
         # 连接按钮点击信号到处理函数
         self.btn_del.clicked.connect(self.delete_selected_stocks)  # type: ignore
         # 增大按钮尺寸
-        self.btn_del.setFixedWidth(130)
-        self.btn_del.setFixedHeight(42)
+        self.btn_del.setFixedWidth(120)
+        self.btn_del.setFixedHeight(36)
         # 增大字体大小
         self.btn_del.setStyleSheet("""
             QPushButton {
                 background: #dc3545;           /* 背景色 */
                 color: #ffffff;                /* 文字颜色 */
-                font-size: 20px;               /* 增大字体 */
-                border-radius: 8px;            /* 圆角 */
+                font-size: 16px;               /* 字体大小 */
+                border-radius: 6px;            /* 圆角 */
                 padding: 8px 16px;             /* 内边距 */
                 border: none;                  /* 无边框 */
                 font-weight: 600;              /* 字体粗细 */
-                min-width: 130px;              /* 最小宽度 */
-                min-height: 42px;              /* 最小高度 */
-                max-height: 42px;              /* 固定最大高度 */
+                min-width: 120px;              /* 最小宽度 */
+                min-height: 36px;              /* 最小高度 */
+                max-height: 36px;              /* 固定最大高度 */
             }
             QPushButton:hover {
                 background: #c82333;           /* 悬停背景色 */
@@ -573,8 +576,10 @@ class NewSettingsDialog(QtWidgets.QDialog):
         # 设置样式
         widget.setStyleSheet("""
             QWidget {
-                background: transparent;       /* 背景透明 */
-                border: none;                  /* 无边框 */
+                background: #ffffff;       /* 白色背景 */
+                border: 1px solid #dee2e6; /* 边框 */
+                border-radius: 8px;        /* 圆角 */
+                padding: 12px;
             }
         """)
         
@@ -595,13 +600,13 @@ class NewSettingsDialog(QtWidgets.QDialog):
         # 创建刷新频率设置布局
         freq_layout = QtWidgets.QHBoxLayout()
         # 减小间距
-        freq_layout.setSpacing(10)
+        freq_layout.setSpacing(8)
         # 减小边距
         freq_layout.setContentsMargins(0, 0, 0, 0)
         # 创建刷新频率标签
         freq_label = QtWidgets.QLabel("🔄 刷新频率:")
         # 减小字体大小
-        freq_label.setStyleSheet("QLabel { color: #212529; font-size: 18px; font-weight: bold; }")
+        freq_label.setStyleSheet("QLabel { color: #212529; font-size: 16px; font-weight: bold; }")
         # 创建刷新频率下拉框
         self.freq_combo = QtWidgets.QComboBox()
         # 添加下拉框选项
@@ -615,13 +620,13 @@ class NewSettingsDialog(QtWidgets.QDialog):
             QComboBox {
                 background: #ffffff;           /* 背景色 */
                 color: #212529;                /* 文字颜色 */
-                font-size: 16px;               /* 减小字体大小 */
+                font-size: 14px;               /* 字体大小 */
                 border-radius: 6px;            /* 圆角 */
                 border: 1px solid #ced4da;     /* 边框 */
-                padding: 8px 12px;             /* 减小内边距 */
-                min-width: 80px;               /* 最小宽度 */
-                min-height: 36px;              /* 最小高度 */
-                max-height: 36px;              /* 固定最大高度 */
+                padding: 6px 10px;             /* 内边距 */
+                min-width: 70px;               /* 最小宽度 */
+                min-height: 32px;              /* 最小高度 */
+                max-height: 32px;              /* 固定最大高度 */
             }
             QComboBox:hover {
                 border: 1px solid #2196f3;     /* 悬停边框颜色 */
@@ -641,7 +646,7 @@ class NewSettingsDialog(QtWidgets.QDialog):
                 selection-background-color: #e3f2fd;  /* 选中项背景色 */
                 selection-color: #212529;      /* 选中项文字颜色 */
                 border: 1px solid #ced4da;     /* 下拉列表边框 */
-                font-size: 16px;               /* 字体大小 */
+                font-size: 14px;               /* 字体大小 */
             }
         """)
         # 将控件添加到刷新频率布局中
@@ -651,13 +656,13 @@ class NewSettingsDialog(QtWidgets.QDialog):
         # 创建开机启动设置布局
         startup_layout = QtWidgets.QHBoxLayout()
         # 减小间距
-        startup_layout.setSpacing(10)
+        startup_layout.setSpacing(8)
         # 减小边距
         startup_layout.setContentsMargins(0, 0, 0, 0)
         # 创建开机启动标签
         startup_label = QtWidgets.QLabel("💻 开机启动:")
         # 减小字体大小
-        startup_label.setStyleSheet("QLabel { color: #212529; font-size: 18px; font-weight: bold; }")
+        startup_label.setStyleSheet("QLabel { color: #212529; font-size: 16px; font-weight: bold; }")
         # 创建开机启动复选框
         self.startup_checkbox = QtWidgets.QCheckBox()
         # 连接复选框状态改变信号到处理函数
@@ -667,13 +672,13 @@ class NewSettingsDialog(QtWidgets.QDialog):
         # 减小字体大小和控件尺寸
         self.startup_checkbox.setStyleSheet("""
             QCheckBox {
-                spacing: 8px;                  /* 文字与复选框间距 */
-                font-size: 18px;               /* 字体大小 */
+                spacing: 6px;                  /* 文字与复选框间距 */
+                font-size: 16px;               /* 字体大小 */
                 font-weight: bold;             /* 字体粗细 */
             }
             QCheckBox::indicator {
-                width: 20px;                   /* 复选框宽度 */
-                height: 20px;                  /* 复选框高度 */
+                width: 18px;                   /* 复选框宽度 */
+                height: 18px;                  /* 复选框高度 */
             }
             QCheckBox::indicator:unchecked {
                 border: 2px solid #ced4da;     /* 未选中边框 */
@@ -688,8 +693,8 @@ class NewSettingsDialog(QtWidgets.QDialog):
             QCheckBox::indicator:checked::after {
                 content: "";
                 position: absolute;
-                left: 6px;
-                top: 2px;
+                left: 5px;
+                top: 1px;
                 width: 5px;
                 height: 8px;
                 border: solid white;
@@ -698,7 +703,7 @@ class NewSettingsDialog(QtWidgets.QDialog):
             }
         """)
         # 减小复选框固定高度
-        self.startup_checkbox.setFixedHeight(36)
+        self.startup_checkbox.setFixedHeight(32)
         # 将控件添加到开机启动布局中
         startup_layout.addWidget(startup_label)
         startup_layout.addWidget(self.startup_checkbox)
@@ -712,32 +717,32 @@ class NewSettingsDialog(QtWidgets.QDialog):
         # 创建右侧版本信息布局
         right_layout = QtWidgets.QHBoxLayout()
         # 减小间距
-        right_layout.setSpacing(15)
+        right_layout.setSpacing(12)
         # 减小边距
         right_layout.setContentsMargins(0, 0, 0, 0)
         # 创建版本标签
         version_label = QtWidgets.QLabel(f"🔖 版本: {__version__}")
         # 减小字体大小
-        version_label.setStyleSheet("QLabel { color: #6c757d; font-size: 18px; font-weight: bold; }")
+        version_label.setStyleSheet("QLabel { color: #6c757d; font-size: 16px; font-weight: bold; }")
         # 创建检查更新按钮
         self.update_btn = QtWidgets.QPushButton("🔍 检查更新")
         # 连接按钮点击信号到处理函数
         self.update_btn.clicked.connect(self.check_update)  # type: ignore
         # 减小按钮尺寸
-        self.update_btn.setFixedHeight(36)
+        self.update_btn.setFixedHeight(32)
         # 减小字体大小
         self.update_btn.setStyleSheet("""
             QPushButton {
                 background: #6c757d;           /* 背景色 */
                 color: #ffffff;                /* 文字颜色 */
-                font-size: 16px;               /* 字体大小 */
+                font-size: 14px;               /* 字体大小 */
                 border-radius: 6px;            /* 圆角 */
-                padding: 6px 16px;             /* 减小内边距 */
+                padding: 6px 14px;             /* 内边距 */
                 border: none;                  /* 无边框 */
                 font-weight: bold;             /* 粗体 */
-                min-width: 100px;              /* 最小宽度 */
-                min-height: 36px;              /* 最小高度 */
-                max-height: 36px;              /* 固定最大高度 */
+                min-width: 90px;               /* 最小宽度 */
+                min-height: 32px;              /* 最小高度 */
+                max-height: 32px;              /* 固定最大高度 */
             }
             QPushButton:hover {
                 background: #5a6268;           /* 悬停背景色 */
@@ -765,34 +770,34 @@ class NewSettingsDialog(QtWidgets.QDialog):
         widget.setStyleSheet("QWidget { background: transparent; }")
         
         # 创建水平布局
-        layout = QtWidgets.QHBoxLayout(widget)
+        btn_layout = QtWidgets.QHBoxLayout(widget)
         # 减小间距
-        layout.setSpacing(15)
+        btn_layout.setSpacing(15)
         # 减小边距
-        layout.setContentsMargins(0, 0, 0, 0)
+        btn_layout.setContentsMargins(0, 0, 0, 0)
         # 添加左侧弹性空间
-        layout.addStretch(1)
+        btn_layout.addStretch(1)
         
         # 创建确定按钮
         self.btn_ok = QtWidgets.QPushButton("✅ 确定")
         # 连接按钮点击信号到处理函数
         self.btn_ok.clicked.connect(self.accept)  # type: ignore
         # 减小按钮尺寸
-        self.btn_ok.setFixedWidth(100)
-        self.btn_ok.setFixedHeight(40)
+        self.btn_ok.setFixedWidth(90)
+        self.btn_ok.setFixedHeight(36)
         # 减小字体大小
         self.btn_ok.setStyleSheet("""
             QPushButton {
                 background: #28a745;           /* 背景色 */
                 color: #ffffff;                /* 文字颜色 */
-                font-size: 18px;               /* 字体大小 */
+                font-size: 16px;               /* 字体大小 */
                 border-radius: 6px;            /* 圆角 */
-                padding: 10px 16px;            /* 减小内边距 */
+                padding: 8px 16px;            /* 内边距 */
                 border: none;                  /* 无边框 */
                 font-weight: bold;             /* 粗体 */
-                min-width: 100px;              /* 最小宽度 */
-                min-height: 40px;              /* 最小高度 */
-                max-height: 40px;              /* 固定最大高度 */
+                min-width: 90px;              /* 最小宽度 */
+                min-height: 36px;              /* 最小高度 */
+                max-height: 36px;              /* 固定最大高度 */
             }
             QPushButton:hover {
                 background: #218838;           /* 悬停背景色 */
@@ -807,21 +812,21 @@ class NewSettingsDialog(QtWidgets.QDialog):
         # 连接按钮点击信号到处理函数
         self.btn_cancel.clicked.connect(self.reject)  # type: ignore
         # 减小按钮尺寸
-        self.btn_cancel.setFixedWidth(100)
-        self.btn_cancel.setFixedHeight(40)
+        self.btn_cancel.setFixedWidth(90)
+        self.btn_cancel.setFixedHeight(36)
         # 减小字体大小
         self.btn_cancel.setStyleSheet("""
             QPushButton {
                 background: #6c757d;           /* 背景色 */
                 color: #ffffff;                /* 文字颜色 */
-                font-size: 18px;               /* 字体大小 */
+                font-size: 16px;               /* 字体大小 */
                 border-radius: 6px;            /* 圆角 */
-                padding: 10px 16px;            /* 减小内边距 */
+                padding: 8px 16px;            /* 内边距 */
                 border: none;                  /* 无边框 */
                 font-weight: bold;             /* 粗体 */
-                min-width: 100px;              /* 最小宽度 */
-                min-height: 40px;              /* 最小高度 */
-                max-height: 40px;              /* 固定最大高度 */
+                min-width: 90px;              /* 最小宽度 */
+                min-height: 36px;              /* 最小高度 */
+                max-height: 36px;              /* 固定最大高度 */
             }
             QPushButton:hover {
                 background: #5a6268;           /* 悬停背景色 */
@@ -832,8 +837,8 @@ class NewSettingsDialog(QtWidgets.QDialog):
         """)
         
         # 将按钮添加到布局中
-        layout.addWidget(self.btn_ok)
-        layout.addWidget(self.btn_cancel)
+        btn_layout.addWidget(self.btn_ok)
+        btn_layout.addWidget(self.btn_cancel)
         
         # 返回创建的区域
         return widget
