@@ -1042,7 +1042,21 @@ class NewSettingsDialog(QtWidgets.QDialog):
             # 如果未检测到新版本信息
             if not latest_ver:
                 app_logger.warning("未检测到新版本信息")
-                QMessageBox.warning(self, "检查更新", "未检测到新版本信息。")
+                # 创建自定义对话框
+                dialog = QtWidgets.QDialog(self)
+                dialog.setWindowTitle("检查更新")
+                dialog.setFixedSize(400, 200)
+                layout = QtWidgets.QVBoxLayout(dialog)
+                
+                label = QtWidgets.QLabel("未检测到新版本信息。")
+                label.setAlignment(QtCore.Qt.AlignCenter)  # type: ignore
+                layout.addWidget(label)
+                
+                button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok)
+                button_box.accepted.connect(dialog.accept)
+                layout.addWidget(button_box)
+                
+                dialog.exec_()
                 return
                 
             # 如果当前已是最新版本
@@ -1051,35 +1065,87 @@ class NewSettingsDialog(QtWidgets.QDialog):
                 # 准备更新信息
                 published_date = data.get('published_at', '未知')[:10] if data.get('published_at') else '未知'
                 body = data.get('body', '无更新说明')
-                if body and len(body) > 100:
-                    body = body[:100] + '...'
+                if body and len(body) > 200:
+                    body = body[:200] + '...'
                 elif not body:
                     body = '无更新说明'
                 
-                QMessageBox.information(self, "检查更新", 
-                    f"当前已是最新版本\n\n"
-                    f"版本号: {__version__}\n"
-                    f"发布日期: {published_date}\n"
-                    f"更新内容: {body}")
+                # 创建自定义对话框
+                dialog = QtWidgets.QDialog(self)
+                dialog.setWindowTitle("检查更新")
+                dialog.setFixedSize(500, 300)
+                layout = QtWidgets.QVBoxLayout(dialog)
+                
+                title_label = QtWidgets.QLabel("当前已是最新版本")
+                title_label.setAlignment(QtCore.Qt.AlignCenter)  # type: ignore
+                title_label.setStyleSheet("font-size: 18px; font-weight: bold; margin: 10px;")
+                layout.addWidget(title_label)
+                
+                info_text = f"""
+版本号: {__version__}
+发布日期: {published_date}
+
+更新内容:
+{body}
+                """
+                info_label = QtWidgets.QLabel(info_text)
+                info_label.setStyleSheet("font-size: 14px; margin: 10px;")
+                info_label.setWordWrap(True)
+                layout.addWidget(info_label)
+                
+                button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok)
+                button_box.accepted.connect(dialog.accept)
+                layout.addWidget(button_box)
+                
+                dialog.exec_()
                 return
                 
             # 询问用户是否前往下载
             # 准备更新信息
             published_date = data.get('published_at', '未知')[:10] if data.get('published_at') else '未知'
             body = data.get('body', '无更新说明')
-            if body and len(body) > 100:
-                body = body[:100] + '...'
+            if body and len(body) > 200:
+                body = body[:200] + '...'
             elif not body:
                 body = '无更新说明'
                 
-            reply = QMessageBox.question(
-                self, "发现新版本",
-                f"检测到新版本 {latest_ver}，是否前往下载？\n\n"
-                f"当前版本: {__version__}\n"
-                f"发布日期: {published_date}\n"
-                f"更新内容: {body}",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)  # type: ignore
-            if reply == QMessageBox.StandardButton.Yes:
+            # 创建自定义对话框
+            dialog = QtWidgets.QDialog(self)
+            dialog.setWindowTitle("发现新版本")
+            dialog.setFixedSize(500, 350)
+            layout = QtWidgets.QVBoxLayout(dialog)
+            
+            title_label = QtWidgets.QLabel("发现新版本")
+            title_label.setAlignment(QtCore.Qt.AlignCenter)  # type: ignore
+            title_label.setStyleSheet("font-size: 18px; font-weight: bold; margin: 10px;")
+            layout.addWidget(title_label)
+            
+            info_text = f"""
+检测到新版本: {latest_ver}
+当前版本: {__version__}
+发布日期: {published_date}
+
+更新内容:
+{body}
+            """
+            info_label = QtWidgets.QLabel(info_text)
+            info_label.setStyleSheet("font-size: 14px; margin: 10px;")
+            info_label.setWordWrap(True)
+            layout.addWidget(info_label)
+            
+            button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Yes | QtWidgets.QDialogButtonBox.No)
+            yes_button = button_box.button(QtWidgets.QDialogButtonBox.Yes)
+            no_button = button_box.button(QtWidgets.QDialogButtonBox.No)
+            if yes_button:
+                yes_button.setText("前往下载")
+            if no_button:
+                no_button.setText("取消")
+            button_box.accepted.connect(dialog.accept)
+            button_box.rejected.connect(dialog.reject)
+            layout.addWidget(button_box)
+            
+            result = dialog.exec_()
+            if result == QtWidgets.QDialog.Accepted:
                 import webbrowser
                 # 打开下载页面
                 webbrowser.open("https://github.com/leo8912/stock_monitor/releases/latest")
@@ -1087,12 +1153,42 @@ class NewSettingsDialog(QtWidgets.QDialog):
         except requests.exceptions.RequestException as e:
             # 网络异常处理
             app_logger.error(f"网络异常，无法连接到GitHub: {e}")
-            QMessageBox.warning(self, "检查更新", f"网络异常，无法连接到GitHub：{e}")
+            # 创建自定义对话框
+            dialog = QtWidgets.QDialog(self)
+            dialog.setWindowTitle("检查更新")
+            dialog.setFixedSize(400, 200)
+            layout = QtWidgets.QVBoxLayout(dialog)
+            
+            label = QtWidgets.QLabel(f"网络异常，无法连接到GitHub：{e}")
+            label.setAlignment(QtCore.Qt.AlignCenter)  # type: ignore
+            label.setWordWrap(True)
+            layout.addWidget(label)
+            
+            button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok)
+            button_box.accepted.connect(dialog.accept)
+            layout.addWidget(button_box)
+            
+            dialog.exec_()
         except Exception as e:
             # 其他异常处理
             app_logger.error(f"检查更新时发生错误: {e}")
-            QMessageBox.warning(self, "检查更新", f"检查更新时发生错误：{e}")
-
+            # 创建自定义对话框
+            dialog = QtWidgets.QDialog(self)
+            dialog.setWindowTitle("检查更新")
+            dialog.setFixedSize(400, 200)
+            layout = QtWidgets.QVBoxLayout(dialog)
+            
+            label = QtWidgets.QLabel(f"检查更新时发生错误：{e}")
+            label.setAlignment(QtCore.Qt.AlignCenter)  # type: ignore
+            label.setWordWrap(True)
+            layout.addWidget(label)
+            
+            button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok)
+            button_box.accepted.connect(dialog.accept)
+            layout.addWidget(button_box)
+            
+            dialog.exec_()
+            
     def get_stocks_from_list(self):
         """
         从股票列表中提取股票代码

@@ -83,7 +83,7 @@ class StockSearchWidget(QtWidgets.QWidget):
         title.setStyleSheet("""
             QLabel {
                 color: #000000;
-                font-size: 30px;
+                font-size: 20px;
                 font-weight: bold;
                 background: transparent;
                 padding: 0;
@@ -101,7 +101,7 @@ class StockSearchWidget(QtWidgets.QWidget):
             QLineEdit {
                 background: #ffffff;
                 color: #000000;
-                font-size: 20px;
+                font-size: 18px;
                 border-radius: 8px;
                 border: 2px solid #cccccc;
                 padding: 14px 18px;
@@ -123,7 +123,7 @@ class StockSearchWidget(QtWidgets.QWidget):
             QListWidget {
                 background: #ffffff;
                 color: #000000;
-                font-size: 20px;
+                font-size: 18px;
                 border-radius: 8px;
                 border: 2px solid #cccccc;
                 outline: none;
@@ -131,7 +131,7 @@ class StockSearchWidget(QtWidgets.QWidget):
                 min-height: 320px;
             }
             QListWidget::item {
-                height: 50px;
+                height: 45px;
                 border-radius: 6px;
                 padding: 0 18px;
                 margin: 6px 10px;
@@ -179,7 +179,7 @@ class StockSearchWidget(QtWidgets.QWidget):
             QPushButton {
                 background: #0078d4;
                 color: #ffffff;
-                font-size: 20px;
+                font-size: 18px;
                 border-radius: 8px;
                 padding: 14px 22px;
                 border: none;
