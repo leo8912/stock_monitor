@@ -11,11 +11,20 @@ stock_monitor/
 ├── config/                 # 配置管理模块
 │   ├── __init__.py
 │   └── manager.py         # 配置加载和保存功能
-├── data/                  # 数据处理模块
+├── core/                  # 核心业务逻辑模块
 │   ├── __init__.py
-│   ├── quotation.py       # 行情数据处理
-│   ├── stocks.py          # 股票数据处理
-│   └── updater.py         # 股票数据库更新
+│   ├── market_manager.py  # 市场管理器
+│   ├── stock_manager.py   # 股票管理器
+│   └── stock_service.py   # 股票服务
+├── data/                  # 数据处理模块
+│   ├── market/
+│   │   ├── __init__.py
+│   │   ├── quotation.py   # 行情数据处理
+│   │   └── updater.py     # 市场数据更新
+│   ├── stock/
+│   │   ├── __init__.py
+│   │   └── stocks.py      # 股票数据处理
+│   └── __init__.py
 ├── network/               # 网络请求模块
 │   ├── __init__.py
 │   └── manager.py         # 网络请求封装
@@ -23,16 +32,25 @@ stock_monitor/
 │   ├── icon.ico           # 应用图标
 │   └── stock_basic.json   # 股票基础数据
 ├── ui/                    # 用户界面模块
-│   ├── __init__.py
-│   ├── components.py      # UI组件
-│   ├── market_status.py   # 市场状态条组件
-│   └── settings_dialog.py # 设置对话框
+│   ├── components/
+│   │   ├── __init__.py
+│   │   └── stock_table.py # 股票表格组件
+│   ├── dialogs/
+│   │   ├── __init__.py
+│   │   └── new_settings_dialog.py # 设置对话框
+│   ├── widgets/
+│   │   ├── __init__.py
+│   │   ├── market_status.py   # 市场状态条组件
+│   │   └── stock_search.py    # 股票搜索组件
+│   └── __init__.py
 ├── utils/                 # 工具模块
 │   ├── __init__.py
+│   ├── cache.py           # 数据缓存
 │   ├── error_handler.py   # 错误处理
 │   ├── helpers.py         # 辅助函数
+│   ├── log_cleaner.py     # 日志清理工具
 │   ├── logger.py          # 日志记录
-│   └── log_cleaner.py     # 日志清理工具
+│   └── stock_cache.py     # 股票缓存
 ├── __init__.py
 └── main.py                # 主程序入口
 
