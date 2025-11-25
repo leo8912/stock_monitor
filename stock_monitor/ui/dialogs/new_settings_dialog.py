@@ -1047,6 +1047,8 @@ class NewSettingsDialog(QtWidgets.QDialog):
                 dialog.setWindowTitle("检查更新")
                 dialog.setFixedSize(400, 200)
                 layout = QtWidgets.QVBoxLayout(dialog)
+                layout.setSpacing(10)
+                layout.setContentsMargins(20, 20, 20, 20)
                 
                 label = QtWidgets.QLabel("未检测到新版本信息。")
                 label.setAlignment(QtCore.Qt.AlignCenter)  # type: ignore
@@ -1056,7 +1058,7 @@ class NewSettingsDialog(QtWidgets.QDialog):
                 button_box.accepted.connect(dialog.accept)
                 layout.addWidget(button_box)
                 
-                dialog.exec_()
+                dialog.exec()
                 return
                 
             # 如果当前已是最新版本
@@ -1075,6 +1077,8 @@ class NewSettingsDialog(QtWidgets.QDialog):
                 dialog.setWindowTitle("检查更新")
                 dialog.setFixedSize(500, 300)
                 layout = QtWidgets.QVBoxLayout(dialog)
+                layout.setSpacing(10)
+                layout.setContentsMargins(20, 20, 20, 20)
                 
                 title_label = QtWidgets.QLabel("当前已是最新版本")
                 title_label.setAlignment(QtCore.Qt.AlignCenter)  # type: ignore
@@ -1097,7 +1101,7 @@ class NewSettingsDialog(QtWidgets.QDialog):
                 button_box.accepted.connect(dialog.accept)
                 layout.addWidget(button_box)
                 
-                dialog.exec_()
+                dialog.exec()
                 return
                 
             # 询问用户是否前往下载
@@ -1114,6 +1118,8 @@ class NewSettingsDialog(QtWidgets.QDialog):
             dialog.setWindowTitle("发现新版本")
             dialog.setFixedSize(500, 350)
             layout = QtWidgets.QVBoxLayout(dialog)
+            layout.setSpacing(10)
+            layout.setContentsMargins(20, 20, 20, 20)
             
             title_label = QtWidgets.QLabel("发现新版本")
             title_label.setAlignment(QtCore.Qt.AlignCenter)  # type: ignore
@@ -1144,7 +1150,7 @@ class NewSettingsDialog(QtWidgets.QDialog):
             button_box.rejected.connect(dialog.reject)
             layout.addWidget(button_box)
             
-            result = dialog.exec_()
+            result = dialog.exec()
             if result == QtWidgets.QDialog.Accepted:
                 import webbrowser
                 # 打开下载页面
@@ -1158,6 +1164,8 @@ class NewSettingsDialog(QtWidgets.QDialog):
             dialog.setWindowTitle("检查更新")
             dialog.setFixedSize(400, 200)
             layout = QtWidgets.QVBoxLayout(dialog)
+            layout.setSpacing(10)
+            layout.setContentsMargins(20, 20, 20, 20)
             
             label = QtWidgets.QLabel(f"网络异常，无法连接到GitHub：{e}")
             label.setAlignment(QtCore.Qt.AlignCenter)  # type: ignore
@@ -1168,7 +1176,7 @@ class NewSettingsDialog(QtWidgets.QDialog):
             button_box.accepted.connect(dialog.accept)
             layout.addWidget(button_box)
             
-            dialog.exec_()
+            dialog.exec()
         except Exception as e:
             # 其他异常处理
             app_logger.error(f"检查更新时发生错误: {e}")
@@ -1177,6 +1185,8 @@ class NewSettingsDialog(QtWidgets.QDialog):
             dialog.setWindowTitle("检查更新")
             dialog.setFixedSize(400, 200)
             layout = QtWidgets.QVBoxLayout(dialog)
+            layout.setSpacing(10)
+            layout.setContentsMargins(20, 20, 20, 20)
             
             label = QtWidgets.QLabel(f"检查更新时发生错误：{e}")
             label.setAlignment(QtCore.Qt.AlignCenter)  # type: ignore
@@ -1187,7 +1197,7 @@ class NewSettingsDialog(QtWidgets.QDialog):
             button_box.accepted.connect(dialog.accept)
             layout.addWidget(button_box)
             
-            dialog.exec_()
+            dialog.exec()
             
     def get_stocks_from_list(self):
         """
