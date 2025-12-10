@@ -296,7 +296,7 @@ class AppUpdater:
                 if hasattr(sys, '_MEIPASS'):
                     subprocess.Popen([sys.executable] + sys.argv[1:])
                 else:
-                    subprocess.Popen([sys.executable] + sys.argv)
+                    subprocess.Popen([sys.executable, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'main.py')] + sys.argv[1:])
                 QApplication.quit()
             except Exception as e2:
                 app_logger.error(f"使用subprocess重启应用程序时也发生错误: {e2}")

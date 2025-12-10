@@ -95,6 +95,8 @@ jobs:
         import re
         # 读取版本号
         version = "${{ steps.get_version.outputs.version }}"
+        print(f"处理版本号: {version}")
+        
         # 去掉开头的'v'字符，确保匹配
         if version.startswith('v'):
             version = version[1:]
@@ -103,21 +105,30 @@ jobs:
         with open('CHANGELOG.md', 'r', encoding='utf-8') as f:
             content = f.read()
         
+        print(f"处理后的版本号: {version}")
+        print("CHANGELOG.md 文件内容前200字符:")
+        print(content[:200])
+        
         # 构造正则表达式匹配特定版本的日志
         # 匹配 ## [v2.0.4] - 2025-12-10 或 ## [v2.0.4] 这样的格式
-        pattern = rf"## \[{re.escape('v' + version)}\](.*?)(?=## \[v|\\Z)"
+        pattern = r"## \[" + re.escape("v" + version) + r"\](.*?)(?=## \[v|\Z)"
+        print(f"使用的正则表达式: {pattern}")
         match = re.search(pattern, content, re.DOTALL)
         
         if match:
             changelog = match.group(1).strip()
+            print("成功提取日志:")
+            print(repr(changelog))
         else:
             changelog = "暂无详细更新日志"
+            print("未找到匹配的日志")
         
         # 输出到GitHub Actions
         with open('${GITHUB_OUTPUT}', 'a', encoding='utf-8') as f:
             f.write('changelog<<EOF\n')
             f.write(changelog + '\n')
             f.write('EOF\n')
+        print("日志提取完成")
 
     - name: 创建发布 # Create Release
       uses: softprops/action-gh-release@v1
