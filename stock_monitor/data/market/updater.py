@@ -23,6 +23,10 @@ except ImportError:
     app_logger.warning("无法导入zhconv库，将使用原样返回的替代函数")
     def convert(s, locale, update=None):  # type: ignore
         return s
+except Exception as e:
+    app_logger.warning(f"导入zhconv库时发生异常: {e}，将使用原样返回的替代函数")
+    def convert(s, locale, update=None):  # type: ignore
+        return s
 
 import easyquotation
 
@@ -107,10 +111,14 @@ def fetch_hk_stocks() -> List[Dict[str, str]]:
                     
                     # 繁简转换
                     if stock_name:  # 确保名称不为空
-                        simplified_name = convert(str(stock_name).strip(), 'zh-hans')
-                        # 处理港股名称中的后缀，如 -W 等，只保留中文部分
-                        if '-' in simplified_name:
-                            simplified_name = simplified_name.split('-')[0].strip()
+                        try:
+                            simplified_name = convert(str(stock_name).strip(), 'zh-hans')
+                            # 处理港股名称中的后缀，如 -W 等，只保留中文部分
+                            if '-' in simplified_name:
+                                simplified_name = simplified_name.split('-')[0].strip()
+                        except Exception as e:
+                            app_logger.warning(f"繁简转换失败: {e}，使用原始名称")
+                            simplified_name = str(stock_name).strip()
                         hk_stocks.append({
                             'code': f'hk{code}',
                             'name': simplified_name

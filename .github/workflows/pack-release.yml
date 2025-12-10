@@ -50,10 +50,18 @@ jobs:
       run: |
         python -m pytest tests/
     
+    - name: 查找zhconv的zhcdict.json文件 # Find zhconv zhcdict.json
+      id: find_zhconv
+      run: |
+        python -c "import zhconv, os; print(os.path.dirname(zhconv.__file__))" > zhconv_path.txt
+        $ZHCONVPATH = Get-Content zhconv_path.txt | Select-Object -First 1
+        echo "ZHCONVPATH=$ZHCONVPATH" | Out-File -FilePath $env:GITHUB_ENV -Append
+    
     - name: 使用PyInstaller构建 # Build with PyInstaller
       run: |
         pyinstaller -y -w -i stock_monitor/resources/icon.ico -n stock_monitor stock_monitor/main.py `
           --add-data "$env:EQPATH\stock_codes.conf;easyquotation" `
+          --add-data "$env:ZHCONVPATH\zhcdict.json;zhconv" `
           --add-data "stock_monitor/resources/stock_basic.json;stock_monitor/resources" `
           --add-data "stock_monitor/resources/icon.ico;stock_monitor/resources" `
           --hidden-import=pypinyin `

@@ -21,9 +21,22 @@ def resource_path(relative_path):
     if hasattr(sys, '_MEIPASS'):
         # PyInstaller打包环境
         base_path = getattr(sys, '_MEIPASS')
+        # 特殊处理zhconv资源文件
+        if relative_path == 'zhcdict.json':
+            return os.path.join(base_path, 'zhconv', relative_path)
         return os.path.join(base_path, 'stock_monitor', 'resources', relative_path)
     # 源码运行环境
     current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    # 特殊处理zhconv资源文件
+    if relative_path == 'zhcdict.json':
+        try:
+            import pkg_resources
+            return pkg_resources.resource_filename('zhconv', 'zhcdict.json')
+        except:
+            # Fallback方法
+            import zhconv
+            zhconv_path = os.path.dirname(zhconv.__file__)
+            return os.path.join(zhconv_path, relative_path)
     resources_dir = os.path.join(current_dir, 'resources')
     return os.path.join(resources_dir, relative_path)
 
