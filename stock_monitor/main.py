@@ -155,8 +155,8 @@ class MainWindow(QtWidgets.QWidget):
         # 启动刷新线程和信号连接
         self.update_table_signal.connect(self.table.update_data)  # type: ignore
         
-        # 立即刷新一次，确保在窗口显示前加载数据
-        self.refresh_now(self.current_user_stocks)
+        # 不再在初始化时立即刷新，避免阻塞窗口显示
+        # self.refresh_now(self.current_user_stocks)
         # 启动后台刷新线程
         self.refresh_worker.start(self.current_user_stocks, self.refresh_interval)
         self._start_database_update_thread()
@@ -179,6 +179,7 @@ class MainWindow(QtWidgets.QWidget):
         self._update_market_status_immediately()
         
         # 启动时不再自动检查更新，仅保留手动检查功能
+        # 注释掉原来的自动检查更新代码
         
         app_logger.info("主窗口初始化完成")
         app_logger.debug("主窗口UI组件初始化完成")
@@ -220,10 +221,7 @@ class MainWindow(QtWidgets.QWidget):
                                     QtWidgets.QMessageBox.Ok
                                 )
                                 # 重启应用
-                                import subprocess
-                                subprocess.Popen([sys.executable] + sys.argv)
-                                # 退出当前应用
-                                QtWidgets.QApplication.quit()
+                                app_updater.restart_application()
                             else:
                                 QtWidgets.QMessageBox.warning(
                                     self, 
@@ -521,10 +519,6 @@ class MainWindow(QtWidgets.QWidget):
         """启动数据库更新线程"""
         self._database_update_thread = threading.Thread(target=self._database_update_loop, daemon=True)
         self._database_update_thread.start()
-        
-        # 启动缓存预加载调度器
-        from stock_monitor.data.market.updater import start_preload_scheduler
-        start_preload_scheduler()
 
     def _database_update_loop(self):
         """数据库更新循环 - 每天更新一次股票数据库"""

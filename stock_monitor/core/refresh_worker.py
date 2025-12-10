@@ -81,9 +81,9 @@ class RefreshWorker:
         
     def _refresh_loop(self):
         """刷新循环"""
-        # 增加启动延迟，给系统网络连接一些初始化时间
-        app_logger.info("后台刷新线程启动，等待5秒初始化网络连接...")
-        if self._stop_event.wait(5):
+        # 减少启动延迟，给系统网络连接一些初始化时间
+        app_logger.info("后台刷新线程启动，等待1秒初始化网络连接...")
+        if self._stop_event.wait(1):
             return
             
         while not self._stop_event.is_set():
@@ -95,7 +95,7 @@ class RefreshWorker:
                 app_logger.debug(f"当前需要刷新的股票: {self.current_user_stocks}")
                 if not self.current_user_stocks:
                     # 如果没有股票，等待下次刷新
-                    sleep_time = self.refresh_interval if is_market_open() else 30
+                    sleep_time = self.refresh_interval if is_market_open() else 60
                     app_logger.debug(f"无自选股数据，下次刷新间隔: {sleep_time}秒")
                     if self._stop_event.wait(sleep_time):
                         break
@@ -103,21 +103,12 @@ class RefreshWorker:
                 
                 # 直接获取所有股票数据，不使用缓存
                 app_logger.debug(f"需要获取 {len(self.current_user_stocks)} 只股票数据")
-                for code in self.current_user_stocks:
-                    try:
-                        # 使用股票数据服务获取数据
-                        from stock_monitor.core.stock_service import stock_data_service
-                        stock_data = stock_data_service.get_stock_data(code)
-                        
-                        if stock_data is not None:
-                            data_dict[code] = stock_data
-                            app_logger.debug(f"成功获取 {code} 数据")
-                        else:
-                            failed_count += 1
-                            app_logger.warning(f"{code} 数据为空或不完整")
-                    except Exception as e:
-                        app_logger.error(f'获取股票 {code} 数据失败: {e}')
-                        failed_count += 1
+                # 使用股票数据服务批量获取数据
+                from stock_monitor.core.stock_service import stock_data_service
+                data_dict = stock_data_service.get_multiple_stocks_data(self.current_user_stocks)
+                
+                # 统计失败数量
+                failed_count = sum(1 for data in data_dict.values() if data is None)
                 
                 stocks = process_stock_data(data_dict, self.current_user_stocks)
                 
@@ -138,7 +129,7 @@ class RefreshWorker:
                 app_logger.info(f"股票数据更新完成: 成功 {success_count} 只，失败 {failed_count} 只")
                 
                 # 根据开市状态决定刷新间隔
-                sleep_time = self.refresh_interval if is_market_open() else 30
+                sleep_time = self.refresh_interval if is_market_open() else 60
                 app_logger.debug(f"下次刷新间隔: {sleep_time}秒")
                 # 确保睡眠时间非负
                 if sleep_time < 0:

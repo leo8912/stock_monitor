@@ -100,6 +100,9 @@ def fetch_hk_stocks() -> List[Dict[str, str]]:
                     # 繁简转换
                     if stock_name:  # 确保名称不为空
                         simplified_name = convert(str(stock_name).strip(), 'zh-hans')
+                        # 处理港股名称中的后缀，如 -W 等，只保留中文部分
+                        if '-' in simplified_name:
+                            simplified_name = simplified_name.split('-')[0].strip()
                         hk_stocks.append({
                             'code': f'hk{code}',
                             'name': simplified_name
@@ -147,29 +150,80 @@ def fetch_all_stocks() -> List[Dict[str, str]]:
             codes = item.split(',')
             all_stock_codes.extend(codes)
         
+        # 限制股票数量以提高性能
+        max_stocks = 10000  # 限制最多处理10000只股票
+        if len(all_stock_codes) > max_stocks:
+            app_logger.info(f"股票数量过多 ({len(all_stock_codes)})，限制处理前 {max_stocks} 只股票")
+            all_stock_codes = all_stock_codes[:max_stocks]
+        
         # 分批获取股票数据，避免一次性请求过多
         batch_size = 800
         stocks_data = []
         
         for i in range(0, len(all_stock_codes), batch_size):
             batch_codes = all_stock_codes[i:i+batch_size]
-            # 移除前缀获取纯代码用于查询
+            # 统一使用带前缀的代码查询，避免代码混淆
             pure_codes = [code[2:] if code.startswith(('sh', 'sz')) else code for code in batch_codes]
+            # 对于sh000001和sz000001，直接使用完整代码
+            query_codes = []
+            for code in batch_codes:
+                if code in ['sh000001', 'sz000001']:
+                    query_codes.append(code)
+                else:
+                    query_codes.append(code[2:] if code.startswith(('sh', 'sz')) else code)
             
             try:
                 # 获取股票详细数据
-                data = quotation.stocks(pure_codes)  # type: ignore
+                # 对于sh000001和sz000001，使用prefix=True参数确保精确匹配
+                data = {}
+                special_codes = []
+                normal_codes = []
+                
+                # 分离特殊代码和普通代码
+                for j, code in enumerate(batch_codes):
+                    if code in ['sh000001', 'sz000001']:
+                        special_codes.append(code)
+                    else:
+                        normal_codes.append((j, code))
+                
+                # 处理特殊代码
+                if special_codes:
+                    special_data = quotation.stocks(special_codes, prefix=True)  # type: ignore
+                    if isinstance(special_data, dict):
+                        data.update(special_data)
+                
+                # 处理普通代码
+                if normal_codes:
+                    normal_pure_codes = [pure_codes[j] for j, _ in normal_codes]
+                    normal_data = quotation.stocks(normal_pure_codes)  # type: ignore
+                    if isinstance(normal_data, dict):
+                        # 重新映射键值
+                        for j, code in normal_codes:
+                            pure_code = pure_codes[j]
+                            if pure_code in normal_data:
+                                data[pure_code] = normal_data[pure_code]
+                
+                # 确保data是字典类型
+                if not isinstance(data, dict):
+                    data = {}
                 if data:
                     for j, code in enumerate(batch_codes):
                         pure_code = pure_codes[j]
                         if pure_code in data and data[pure_code] and 'name' in data[pure_code]:
-                            # 特殊处理：确保上证指数正确映射
+                            # 特殊处理：确保上证指数和平安银行正确映射
                             name = data[pure_code]['name']
+                            # 根据完整代码前缀确定正确的名称
                             if pure_code == '000001':
-                                # 根据前缀确定正确的名称
                                 if code.startswith('sh'):
                                     name = '上证指数'
                                 elif code.startswith('sz'):
+                                    name = '平安银行'
+                            
+                            # 确保指数类股票正确标识
+                            if code in ['sh000001', 'sz000001']:
+                                if code == 'sh000001':
+                                    name = '上证指数'
+                                elif code == 'sz000001':
                                     name = '平安银行'
                                     
                             stocks_data.append({
@@ -330,29 +384,78 @@ def preload_popular_stocks_data() -> None:
                     quotation = easyquotation.use('sina')
                     app_logger.debug(f"使用 sina 引擎预加载股票 {stock_code}")
                 
-                # 移除前缀获取纯代码
-                pure_code = stock_code[2:] if stock_code.startswith(('sh', 'sz')) else stock_code
-                app_logger.debug(f"预加载请求代码: {pure_code}")
-                
-                # 获取股票数据，添加重试机制
-                max_retries = 3
-                retry_count = 0
-                data = None
-                
-                while retry_count < max_retries:
+                # 统一使用带前缀的代码查询，避免代码混淆
+                if stock_code.startswith(('sh', 'sz')):
+                    # 对于带前缀的代码，直接使用prefix=True参数查询
+                    max_retries = 3
+                    retry_count = 0
+                    data = None
+                    
+                    while retry_count < max_retries:
+                        try:
+                            data = quotation.stocks([stock_code], prefix=True)  # type: ignore
+                            if data and isinstance(data, dict) and (stock_code in data):
+                                break
+                            retry_count += 1
+                            app_logger.warning(f"预加载股票 {stock_code} 数据失败 (尝试 {retry_count}/{max_retries})")
+                            if retry_count < max_retries:
+                                time.sleep(1)  # 等待1秒后重试
+                        except Exception as e:
+                            retry_count += 1
+                            app_logger.warning(f"预加载股票 {stock_code} 数据异常 (尝试 {retry_count}/{max_retries}): {e}")
+                            if retry_count < max_retries:
+                                time.sleep(1)  # 等待1秒后重试
+                elif stock_code.startswith('hk'):
+                    # 对于港股代码，使用hkquote引擎
                     try:
-                        data = quotation.stocks([pure_code])  # type: ignore
-                        if data and isinstance(data, dict) and (pure_code in data or any(data.values())):
-                            break
-                        retry_count += 1
-                        app_logger.warning(f"预加载股票 {stock_code} 数据失败 (尝试 {retry_count}/{max_retries})")
-                        if retry_count < max_retries:
-                            time.sleep(1)  # 等待1秒后重试
+                        quotation_hk = easyquotation.use('hkquote')
+                        max_retries = 3
+                        retry_count = 0
+                        data = None
+                        
+                        while retry_count < max_retries:
+                            try:
+                                # 移除前缀获取纯代码
+                                pure_code = stock_code[2:] if stock_code.startswith('hk') else stock_code
+                                data = quotation_hk.stocks([pure_code])  # type: ignore
+                                if data and isinstance(data, dict) and (pure_code in data or any(data.values())):
+                                    break
+                                retry_count += 1
+                                app_logger.warning(f"预加载港股 {stock_code} 数据失败 (尝试 {retry_count}/{max_retries})")
+                                if retry_count < max_retries:
+                                    time.sleep(1)  # 等待1秒后重试
+                            except Exception as e:
+                                retry_count += 1
+                                app_logger.warning(f"预加载港股 {stock_code} 数据异常 (尝试 {retry_count}/{max_retries}): {e}")
+                                if retry_count < max_retries:
+                                    time.sleep(1)  # 等待1秒后重试
                     except Exception as e:
-                        retry_count += 1
-                        app_logger.warning(f"预加载股票 {stock_code} 数据异常 (尝试 {retry_count}/{max_retries}): {e}")
-                        if retry_count < max_retries:
-                            time.sleep(1)  # 等待1秒后重试
+                        app_logger.error(f"初始化港股行情引擎失败: {e}")
+                        data = None
+                else:
+                    # 对于不带前缀的代码，移除前缀获取纯代码
+                    pure_code = stock_code
+                    app_logger.debug(f"预加载请求代码: {pure_code}")
+                    
+                    # 获取股票数据，添加重试机制
+                    max_retries = 3
+                    retry_count = 0
+                    data = None
+                    
+                    while retry_count < max_retries:
+                        try:
+                            data = quotation.stocks([pure_code])  # type: ignore
+                            if data and isinstance(data, dict) and (pure_code in data or any(data.values())):
+                                break
+                            retry_count += 1
+                            app_logger.warning(f"预加载股票 {stock_code} 数据失败 (尝试 {retry_count}/{max_retries})")
+                            if retry_count < max_retries:
+                                time.sleep(1)  # 等待1秒后重试
+                        except Exception as e:
+                            retry_count += 1
+                            app_logger.warning(f"预加载股票 {stock_code} 数据异常 (尝试 {retry_count}/{max_retries}): {e}")
+                            if retry_count < max_retries:
+                                time.sleep(1)  # 等待1秒后重试
                 
                 if data and isinstance(data, dict):
                     # 存入缓存，设置较长的TTL（1小时）

@@ -19,6 +19,9 @@ import easyquotation
 
 # 使用新浪数据源
 quotation = easyquotation.use('sina')
+
+# 使用腾讯数据源
+quotation = easyquotation.use('tencent')  # 或 'qq'
 ```
 
 ### 2. 获取实时行情数据
@@ -54,6 +57,12 @@ snapshot = quotation.market_snapshot(prefix=True)
 ```python
 # 获取实时行情数据
 real_data = quotation.real(['000001', '000002'])
+
+# 支持直接指定前缀
+real_data = quotation.real('sh000001')
+
+# 同时获取指数和行情（prefix必须为True）
+real_data = quotation.real(['sh000001', 'sz000001'], prefix=True)
 ```
 
 ### 3. 获取股票代码列表
@@ -61,6 +70,96 @@ real_data = quotation.real(['000001', '000002'])
 ```python
 # 获取股票代码列表
 stock_list = quotation.stock_list
+```
+
+## 其他数据源
+
+### 港股日K线图
+
+```python
+import easyquotation
+quotation = easyquotation.use("daykline")
+data = quotation.real(['00001','00700'])
+print(data)
+```
+
+返回数据格式：
+```python
+{
+    '00001': [
+        ['2017-10-09', '352.00', '349.00', '353.00', '348.60', '13455864.00'],  # [日期, 今开, 今收, 最高, 最低, 成交量]
+        ['2017-10-10', '350.80', '351.20', '352.60', '349.80', '10088970.00'],
+    ],
+    '00700': [
+        # ...
+    ]
+}
+```
+
+### 腾讯港股实时行情
+
+```python
+import easyquotation
+quotation = easyquotation.use("hkquote")
+data = quotation.real(['00001','00700'])
+print(data)
+```
+
+返回数据格式：
+```python
+{
+    '00001': {
+        'stock_code': '00001',  # 股票代码
+        'lotSize': '"100',     # 每手数量
+        'name': '长和',         # 股票名称
+        'price': '97.20',       # 股票当前价格
+        'lastPrice': '97.75',   # 股票昨天收盘价格
+        'openPrice': '97.75',   # 股票今天开盘价格
+        'amount': '1641463.0',  # 股票成交量 
+        'time': '2017/11/29 15:38:58',  # 当前时间
+        'high': '98.05',        # 当天最高价格
+        'low': '97.15'          # 当天最低价格
+    }
+}
+```
+
+### 集思录(JSL)行情
+
+```python
+quotation = easyquotation.use('jsl')
+
+# 可选：设置cookie以获取更多数据
+quotation.set_cookie('从浏览器获取的集思录 Cookie')
+
+# 指数ETF查询接口
+etf_data = quotation.etfindex(index_id="", min_volume=0, max_discount=None, min_discount=None)
+```
+
+ETF数据返回格式：
+```python
+{
+    "510050": {
+        "fund_id": "510050",           # 代码
+        "fund_nm": "50ETF",            # 名称
+        "price": "2.066",              # 现价
+        "increase_rt": "0.34%",        # 涨幅
+        "volume": "71290.96",          # 成交额(万元)
+        "index_nm": "上证50",           # 指数
+        "pe": "9.038",                 # 指数PE
+        "pb": "1.151",                 # 指数PB
+        "index_increase_rt": "0.45%",  # 指数涨幅
+        "estimate_value": "2.0733",    # 估值
+        "fund_nav": "2.0730",          # 净值
+        "nav_dt": "2016-03-11",        # 净值日期
+        "discount_rt": "-0.34%",       # 溢价率
+        "creation_unit": "90",         # 最小申赎单位(万份)
+        "amount": "1315800",           # 份额
+        "unit_total": "271.84",        # 规模(亿元)
+        "index_id": "000016",          # 指数代码
+        "last_time": "15:00:00",       # 价格最后时间(未确定)
+        "last_est_time": "23:50:02",   # 估值最后时间(未确定)
+    }
+}
 ```
 
 ## 数据结构说明
@@ -192,6 +291,7 @@ def get_all_stocks_batch(stock_codes, batch_size=50):
 1. 股票代码前缀规则：
    - `sh`: 上海证券交易所
    - `sz`: 深圳证券交易所
+   - `hk`: 港股
 
 2. 对于指数和个股的区分，需要根据前缀和代码来判断
 
@@ -200,3 +300,8 @@ def get_all_stocks_batch(stock_codes, batch_size=50):
 4. 频繁请求可能触发反爬虫机制，请合理控制请求频率
 
 5. 某些字段在不同数据源中可能有所不同，请以实际返回数据为准
+
+6. 更新内置全市场股票代码：
+```python
+easyquotation.update_stock_codes()
+```

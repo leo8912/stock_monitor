@@ -92,24 +92,32 @@ jobs:
       id: extract_changelog
       shell: python
       run: |
-        import re
-        version = '${{ steps.get_version.outputs.version }}'
+        # 读取CHANGELOG.md文件并提取最新版本的更新日志
         with open('CHANGELOG.md', 'r', encoding='utf-8') as f:
             content = f.read()
         
-        # 构造正则表达式来匹配指定版本的日志
-        # 文件中使用未转义的方括号，但正则表达式中需要转义方括号
-        # 正确的方式是在正则表达式中使用转义的方括号
-        pattern_with_date = r'## \[' + re.escape(version) + r'\] - \d{4}-\d{2}-\d{2}.*?(?=\n## \[|\Z)'
-        match = re.search(pattern_with_date, content, re.DOTALL)
+        # 按行分割内容
+        lines = content.split('\n')
         
-        if not match:
-            # 如果没有匹配到，尝试匹配不带日期的版本标题
-            pattern_without_date = r'## \[' + re.escape(version) + r'\].*?(?=\n## \[|\Z)'
-            match = re.search(pattern_without_date, content, re.DOTALL)
+        # 查找第一个版本标题的位置（通常是最新版本）
+        start_index = -1
+        end_index = len(lines)
         
-        if match:
-            changelog = match.group(0).strip()
+        for i, line in enumerate(lines):
+            # 查找形如 "## [vX.X.X]" 的版本标题
+            if line.startswith('## [') and '] - ' in line or line.startswith('## [') and ']' in line:
+                if start_index == -1:
+                    # 找到第一个版本标题
+                    start_index = i
+                else:
+                    # 找到第二个版本标题，作为结束位置
+                    end_index = i
+                    break
+        
+        # 提取更新日志内容
+        if start_index != -1:
+            changelog_lines = lines[start_index:end_index]
+            changelog = '\n'.join(changelog_lines).strip()
         else:
             changelog = '暂无更新日志'
         

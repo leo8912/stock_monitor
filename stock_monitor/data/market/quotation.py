@@ -49,6 +49,39 @@ def process_stock_data(data: Dict[str, Any], stocks_list: List[str]) -> List[Tup
         if isinstance(data, dict):
             info = data.get(code)  # 精确匹配完整代码
         
+        # 如果没有精确匹配，尝试使用纯数字代码匹配
+        if not info and isinstance(data, dict):
+            # 提取纯数字代码
+            pure_code = code[2:] if code.startswith(('sh', 'sz')) else code
+            info = data.get(pure_code)
+            
+            # 特殊处理：确保上证指数和平安银行正确映射
+            if info and pure_code == '000001':
+                # 检查是否应该显示为上证指数
+                if code == 'sh000001':
+                    # 强制修正名称为上证指数
+                    info = info.copy()  # 创建副本避免修改原始数据
+                    info['name'] = '上证指数'
+                elif code == 'sz000001':
+                    # 强制修正名称为平安银行
+                    info = info.copy()  # 创建副本避免修改原始数据
+                    info['name'] = '平安银行'
+        
+        # 特殊处理：确保上证指数和平安银行正确映射（即使精确匹配也需处理）
+        if info and isinstance(data, dict):
+            # 提取纯数字代码
+            pure_code = code[2:] if code.startswith(('sh', 'sz')) else code
+            if pure_code == '000001':
+                # 检查是否应该显示为上证指数
+                if code == 'sh000001':
+                    # 强制修正名称为上证指数
+                    info = info.copy()  # 创建副本避免修改原始数据
+                    info['name'] = '上证指数'
+                elif code == 'sz000001':
+                    # 强制修正名称为平安银行
+                    info = info.copy()  # 创建副本避免修改原始数据
+                    info['name'] = '平安银行'
+        
         if info:
             name = info.get('name', code)
             # 对于港股，只保留中文部分

@@ -53,7 +53,7 @@ class AppUpdater:
                 return False
                 
             self.latest_release_info = release_info
-            latest_version = release_info.get('tag_name', '').replace('stock_monitor_v', '').replace('v', '')
+            latest_version = release_info.get('tag_name', '').replace('stock_monitor_', '').replace('v', '')
             
             app_logger.info(f"当前版本: {self.current_version}, 最新版本: {latest_version}")
             
@@ -246,7 +246,7 @@ class AppUpdater:
         if not self.latest_release_info:
             return False
             
-        latest_version = self.latest_release_info.get('tag_name', '').replace('stock_monitor_v', '').replace('v', '')
+        latest_version = self.latest_release_info.get('tag_name', '').replace('stock_monitor_', '').replace('v', '')
         release_body = self.latest_release_info.get('body', '暂无更新说明')
         
         message = f"发现新版本!\n\n当前版本: {self.current_version}\n最新版本: {latest_version}\n\n更新说明:\n{release_body}\n\n是否现在更新?"
@@ -260,6 +260,46 @@ class AppUpdater:
         )
         
         return reply == QMessageBox.Yes
+
+    def restart_application(self) -> None:
+        """
+        重启应用程序
+        """
+        try:
+            app_logger.info("正在重启应用程序...")
+            
+            # 获取当前可执行文件路径
+            if hasattr(sys, '_MEIPASS'):
+                # 打包环境
+                executable = sys.executable
+            else:
+                # 开发环境
+                executable = sys.executable
+                # 在开发环境中需要指定主模块
+                if os.path.basename(executable).lower().startswith('python'):
+                    # 如果是通过python运行的，则需要指定主模块
+                    main_module = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'main.py')
+                    if os.path.exists(main_module):
+                        args = [executable, main_module] + sys.argv[1:]
+                        app_logger.info(f"重启命令: {args}")
+                        os.execv(executable, args)
+            
+            # 重新启动应用程序
+            app_logger.info(f"重启可执行文件: {executable}")
+            os.execv(executable, [executable] + sys.argv[1:])
+            
+        except Exception as e:
+            app_logger.error(f"重启应用程序时发生错误: {e}")
+            # 如果execv失败，则尝试使用subprocess
+            import subprocess
+            try:
+                if hasattr(sys, '_MEIPASS'):
+                    subprocess.Popen([sys.executable] + sys.argv[1:])
+                else:
+                    subprocess.Popen([sys.executable] + sys.argv)
+                QApplication.quit()
+            except Exception as e2:
+                app_logger.error(f"使用subprocess重启应用程序时也发生错误: {e2}")
 
 
 # 创建全局更新器实例

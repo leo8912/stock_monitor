@@ -78,7 +78,7 @@ class StockManager:
         Returns:
             List[tuple]: 格式化后的股票数据列表
         """
-        # 获取所有股票数据
+        # 使用批量获取方式获取所有股票数据
         data_dict = stock_data_service.get_multiple_stocks_data(stock_codes)
         
         # 处理股票数据

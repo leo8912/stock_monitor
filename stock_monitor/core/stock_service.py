@@ -16,10 +16,10 @@ class StockDataService:
     def __init__(self):
         """初始化股票数据服务"""
         try:
-            self.quotation = easyquotation.use('sina')
+            self.sina_quotation = easyquotation.use('sina')
         except Exception as e:
             app_logger.error(f"初始化新浪行情引擎失败: {e}")
-            self.quotation = None
+            self.sina_quotation = None
     
     @retry_on_failure(max_attempts=3, delay=1.0)
     def get_stock_data(self, code: str) -> Optional[Dict[str, Any]]:
@@ -42,33 +42,72 @@ class StockDataService:
                     app_logger.error(f"初始化港股行情引擎失败: {e}")
                     return None
             else:
-                if self.quotation is None:
+                if self.sina_quotation is None:
                     try:
-                        self.quotation = easyquotation.use('sina')
+                        self.sina_quotation = easyquotation.use('sina')
                     except Exception as e:
                         app_logger.error(f"重新初始化新浪行情引擎失败: {e}")
                         return None
-                quotation_engine = self.quotation
+                quotation_engine = self.sina_quotation
                 app_logger.debug(f"使用 sina 引擎获取股票 {code} 数据")
             
-            # 移除前缀获取纯代码
+            # 统一使用带前缀的代码查询，避免代码混淆
+            # 特别是对于sh000001和sz000001这样的同数字代码
             query_code = code[2:] if code.startswith(('sh', 'sz', 'hk')) else code
-            app_logger.debug(f"请求代码: {query_code}")
+            
+            if code.startswith(('sh', 'sz')):
+                # 对于A股带前缀的代码，直接使用prefix=True参数查询
+                single = quotation_engine.stocks([code], prefix=True)
+                # 直接使用完整代码作为键获取数据
+                stock_data = single.get(code) if isinstance(single, dict) else None
+            elif code.startswith('hk'):
+                # 对于港股代码，移除前缀进行查询
+                single = quotation_engine.stocks([query_code])
+                # 检查返回数据是否有效
+                if isinstance(single, dict) and (query_code in single or any(single.values())):
+                    # 确保返回的数据不是None且是完整的
+                    stock_data = single.get(query_code) or next(iter(single.values()), None)
+                else:
+                    stock_data = None
+            else:
+                # 对于不带前缀的代码，使用纯代码查询
+                single = quotation_engine.stocks([query_code])
+                # 检查返回数据是否有效
+                if isinstance(single, dict) and (query_code in single or any(single.values())):
+                    # 确保返回的数据不是None且是完整的
+                    stock_data = single.get(query_code) or next(iter(single.values()), None)
+                else:
+                    stock_data = None
+            
+            if stock_data is not None:
+                return stock_data
             
             # 添加重试机制
             max_retries = 5
             retry_count = 0
-            single = None
             
             while retry_count < max_retries:
                 try:
-                    single = quotation_engine.stocks([query_code])
-                    # 检查返回数据是否有效
-                    if isinstance(single, dict) and (query_code in single or any(single.values())):
-                        # 确保返回的数据不是None且是完整的
-                        stock_data = single.get(query_code) or next(iter(single.values()), None)
-                        if stock_data is not None:
-                            return stock_data
+                    if code.startswith(('sh', 'sz')):
+                        # 对于A股带前缀的代码，直接使用prefix=True参数查询
+                        single = quotation_engine.stocks([code], prefix=True)
+                        stock_data = single.get(code) if isinstance(single, dict) else None
+                    elif code.startswith('hk'):
+                        # 对于港股代码，移除前缀进行查询
+                        single = quotation_engine.stocks([query_code])
+                        if isinstance(single, dict) and (query_code in single or any(single.values())):
+                            stock_data = single.get(query_code) or next(iter(single.values()), None)
+                        else:
+                            stock_data = None
+                    else:
+                        single = quotation_engine.stocks([query_code])
+                        if isinstance(single, dict) and (query_code in single or any(single.values())):
+                            stock_data = single.get(query_code) or next(iter(single.values()), None)
+                        else:
+                            stock_data = None
+                    
+                    if stock_data is not None:
+                        return stock_data
                     retry_count += 1
                     app_logger.debug(f"获取 {code} 数据失败或不完整，第 {retry_count} 次重试")
                     if retry_count < max_retries:
@@ -86,7 +125,7 @@ class StockDataService:
             
     def get_multiple_stocks_data(self, codes: List[str]) -> Dict[str, Optional[Dict[str, Any]]]:
         """
-        批量获取多只股票数据
+        批量获取多只股票数据，按市场类型分组处理
         
         Args:
             codes (List[str]): 股票代码列表
@@ -95,8 +134,62 @@ class StockDataService:
             Dict[str, Optional[Dict[str, Any]]]: 股票数据字典，键为股票代码，值为股票数据或None
         """
         result = {}
+        
+        # 按市场类型分组
+        sina_codes = []      # A股普通股票和指数
+        hk_codes = []        # 港股
+        
         for code in codes:
-            result[code] = self.get_stock_data(code)
+            if code.startswith('hk'):
+                hk_codes.append(code)
+            else:
+                sina_codes.append(code)
+        
+        # 批量获取A股数据（包括指数）
+        if sina_codes:
+            try:
+                if self.sina_quotation is None:
+                    self.sina_quotation = easyquotation.use('sina')
+                
+                # 使用prefix=True参数批量获取A股数据，确保sh000001和sz000001等指数正确处理
+                sina_data = self.sina_quotation.stocks(sina_codes, prefix=True)
+                if isinstance(sina_data, dict):
+                    result.update(sina_data)
+                    app_logger.debug(f"批量获取 {len(sina_codes)} 只A股数据成功")
+                else:
+                    app_logger.warning("A股批量数据获取返回格式异常")
+            except Exception as e:
+                app_logger.error(f"批量获取A股数据失败: {e}")
+                # 如果批量获取失败，逐个获取
+                for code in sina_codes:
+                    result[code] = self.get_stock_data(code)
+        
+        # 批量获取港股数据
+        if hk_codes:
+            try:
+                hk_quotation = easyquotation.use('hkquote')
+                # 港股代码需要去掉'hk'前缀
+                pure_hk_codes = [code[2:] for code in hk_codes]
+                hk_data = hk_quotation.stocks(pure_hk_codes)
+                
+                if isinstance(hk_data, dict):
+                    # 将数据映射回带'hk'前缀的代码
+                    for pure_code, data in hk_data.items():
+                        result[f"hk{pure_code}"] = data
+                    app_logger.debug(f"批量获取 {len(hk_codes)} 只港股数据成功")
+                else:
+                    app_logger.warning("港股批量数据获取返回格式异常")
+            except Exception as e:
+                app_logger.error(f"批量获取港股数据失败: {e}")
+                # 如果批量获取失败，逐个获取
+                for code in hk_codes:
+                    result[code] = self.get_stock_data(code)
+        
+        # 处理未能获取的数据
+        for code in codes:
+            if code not in result:
+                result[code] = None
+                
         return result
         
     def is_stock_data_valid(self, stock_data: Dict[str, Any]) -> bool:

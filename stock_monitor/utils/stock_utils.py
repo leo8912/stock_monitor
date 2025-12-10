@@ -33,7 +33,7 @@ class StockCodeProcessor:
             return None
             
         # 检查是否已经有正确前缀
-        if code.startswith('sh') or code.startswith('sz'):
+        if code.startswith(('sh', 'sz')):
             # 验证代码长度和数字部分
             if len(code) == 8 and code[2:].isdigit():
                 return code
@@ -52,9 +52,14 @@ class StockCodeProcessor:
                 
         # 6位纯数字代码
         elif len(code) == 6 and code.isdigit():
-            if code.startswith('6') or code.startswith('5'):
+            # 特殊处理容易混淆的代码
+            if code == '000001':
+                # 000001 不再默认处理，需要明确前缀
+                # 由调用方决定是上证指数还是平安银行
+                return code
+            elif code.startswith('6') or code.startswith('5'):
                 return 'sh' + code
-            elif code.startswith('0') or code.startswith('3') or code.startswith('2'):
+            elif code.startswith(('0', '3', '2')):
                 return 'sz' + code
             else:
                 return 'sz' + code  # 默认当作深圳股票

@@ -575,7 +575,6 @@ class NewSettingsDialog(QDialog):
         """检查更新"""
         try:
             from stock_monitor.core.updater import app_updater
-            from PyQt5.QtWidgets import QMessageBox
             
             # 检查更新
             if app_updater.check_for_updates():
@@ -587,6 +586,7 @@ class NewSettingsDialog(QDialog):
                         # 应用更新
                         if app_updater.apply_update(update_file):
                             # 重启应用
+                            from PyQt5.QtWidgets import QMessageBox
                             QMessageBox.information(
                                 self, 
                                 "更新完成", 
@@ -594,13 +594,9 @@ class NewSettingsDialog(QDialog):
                                 QMessageBox.Ok
                             )
                             # 重启应用
-                            import subprocess
-                            import sys
-                            subprocess.Popen([sys.executable] + sys.argv)
-                            # 退出当前应用
-                            from PyQt5.QtWidgets import QApplication
-                            QApplication.quit()
+                            app_updater.restart_application()
                         else:
+                            from PyQt5.QtWidgets import QMessageBox
                             QMessageBox.warning(
                                 self, 
                                 "更新失败", 
@@ -608,6 +604,7 @@ class NewSettingsDialog(QDialog):
                                 QMessageBox.Ok
                             )
                     else:
+                        from PyQt5.QtWidgets import QMessageBox
                         QMessageBox.warning(
                             self, 
                             "下载失败", 
@@ -615,6 +612,7 @@ class NewSettingsDialog(QDialog):
                             QMessageBox.Ok
                         )
             else:
+                from PyQt5.QtWidgets import QMessageBox
                 QMessageBox.information(
                     self,
                     "无更新",
@@ -624,6 +622,7 @@ class NewSettingsDialog(QDialog):
         except Exception as e:
             from stock_monitor.utils.logger import app_logger
             app_logger.error(f"检查更新时发生错误: {e}")
+            from PyQt5.QtWidgets import QMessageBox
             QMessageBox.critical(
                 self,
                 "检查更新失败",
