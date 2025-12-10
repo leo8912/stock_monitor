@@ -178,8 +178,7 @@ class MainWindow(QtWidgets.QWidget):
         # 立即更新市场状态条，提高优先级
         self._update_market_status_immediately()
         
-        # 检查更新
-        self._check_for_updates()
+        # 启动时不再自动检查更新，仅保留手动检查功能
         
         app_logger.info("主窗口初始化完成")
         app_logger.debug("主窗口UI组件初始化完成")

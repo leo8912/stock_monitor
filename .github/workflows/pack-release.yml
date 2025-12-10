@@ -3,9 +3,8 @@ name: 打包并自动发布股票监控应用 # Pack & Auto Release Stock Monito
 on:
   push:
     paths:
-      - 'stock_monitor/**'
-      - 'requirements.txt'
-      - '.github/workflows/pack-release.yml'
+      - 'stock_monitor/version.py'
+  workflow_dispatch: # 允许手动触发工作流
   workflow_dispatch: # 允许手动触发工作流
 
 permissions:
@@ -92,31 +91,33 @@ jobs:
 
     - name: 从CHANGELOG.md提取更新日志 # Extract changelog from CHANGELOG.md
       id: extract_changelog
-      shell: bash
+      shell: python
       run: |
-        VERSION="${{ steps.get_version.outputs.version }}"
-        # 使用awk提取指定版本的更新日志
-        changelog=$(awk -v ver="$VERSION" '
-        BEGIN { found=0; content="" }
-        /^## \[v[^\]]*\]/ { 
-          if (found==1) exit;
-          if (index($0, "[v" ver "]") > 0) found=1;
-          next
-        }
-        found==1 { 
-          content = content $0 "\n" 
-        }
-        END { 
-          if (length(content) > 0) {
-            printf "%s", content
-          } else {
-            printf "暂无更新日志"
-          }
-        }' CHANGELOG.md)
-        # 使用GitHub Actions语法处理多行字符串
-        echo "changelog<<EOF" >> $GITHUB_OUTPUT
-        echo "$changelog" >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
+        import re
+        version = '${{ steps.get_version.outputs.version }}'
+        with open('CHANGELOG.md', 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # 构造正则表达式来匹配指定版本的日志
+        # 首先尝试匹配带有日期的版本标题
+        pattern_with_date = '## $$v' + re.escape(version) + '$$ - .*?\n\n.*?(?=\n## $$v|\Z)'
+        match = re.search(pattern_with_date, content, re.DOTALL)
+        
+        if not match:
+            # 如果没有匹配到，尝试匹配不带日期的版本标题
+            pattern_without_date = '## $$v' + re.escape(version) + '$$\n\n.*?(?=\n## $$v|\Z)'
+            match = re.search(pattern_without_date, content, re.DOTALL)
+        
+        if match:
+            changelog = match.group(0).strip()
+        else:
+            changelog = '暂无更新日志'
+        
+        # 输出到GitHub Actions
+        with open('${GITHUB_OUTPUT}', 'a', encoding='utf-8') as f:
+            f.write('changelog<<EOF\n')
+            f.write(changelog + '\n')
+            f.write('EOF\n')
 
     - name: 创建发布 # Create Release
       uses: softprops/action-gh-release@v1
