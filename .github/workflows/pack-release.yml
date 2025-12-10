@@ -98,13 +98,14 @@ jobs:
             content = f.read()
         
         # 构造正则表达式来匹配指定版本的日志
-        # 首先尝试匹配带有日期的版本标题
-        pattern_with_date = '## $$v' + re.escape(version) + '$$ - .*?\n\n.*?(?=\n## $$v|\Z)'
+        # 文件中使用未转义的方括号，但正则表达式中需要转义方括号
+        # 正确的方式是在正则表达式中使用转义的方括号
+        pattern_with_date = r'## \[' + re.escape(version) + r'\] - \d{4}-\d{2}-\d{2}.*?(?=\n## \[|\Z)'
         match = re.search(pattern_with_date, content, re.DOTALL)
         
         if not match:
             # 如果没有匹配到，尝试匹配不带日期的版本标题
-            pattern_without_date = '## $$v' + re.escape(version) + '$$\n\n.*?(?=\n## $$v|\Z)'
+            pattern_without_date = r'## \[' + re.escape(version) + r'\].*?(?=\n## \[|\Z)'
             match = re.search(pattern_without_date, content, re.DOTALL)
         
         if match:
