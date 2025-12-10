@@ -15,7 +15,15 @@ from stock_monitor.utils.cache import global_cache
 import requests
 import io
 import pandas as pd
-from zhconv import convert
+
+# 安全导入zhconv，如果失败则提供一个空的convert函数
+try:
+    from zhconv import convert
+except ImportError:
+    app_logger.warning("无法导入zhconv库，将使用原样返回的替代函数")
+    def convert(s, locale, update=None):  # type: ignore
+        return s
+
 import easyquotation
 
 

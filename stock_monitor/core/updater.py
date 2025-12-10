@@ -112,7 +112,7 @@ class AppUpdater:
             
             # 显示进度对话框
             progress_dialog = QProgressDialog("正在下载更新...", "取消", 0, 100, parent)
-            progress_dialog.setWindowModality(Qt.WindowModal)
+            progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
             progress_dialog.setWindowTitle("下载更新")
             progress_dialog.setAutoClose(True)
             progress_dialog.setAutoReset(True)
@@ -190,23 +190,24 @@ class AppUpdater:
             if not extracted_dirs:
                 raise Exception("更新包为空")
                 
-            extracted_dir = os.path.join(temp_extract_dir, extracted_dirs[0])
-            if not os.path.exists(extracted_dir):
-                extracted_dir = temp_extract_dir
-                
+            # 确保我们获取的是正确的解压目录
+            extracted_dir = temp_extract_dir
+            if len(extracted_dirs) == 1:
+                single_path = os.path.join(temp_extract_dir, extracted_dirs[0])
+                # 如果是目录，则使用这个目录作为源
+                if os.path.isdir(single_path):
+                    extracted_dir = single_path
+                    
             app_logger.info(f"更新文件目录: {extracted_dir}")
-            
-            # 备份当前版本
-            backup_dir = current_dir + "_backup"
-            if os.path.exists(backup_dir):
-                shutil.rmtree(backup_dir)
-            shutil.copytree(current_dir, backup_dir)
-            app_logger.info(f"当前版本已备份到: {backup_dir}")
             
             # 替换文件
             for root, dirs, files in os.walk(extracted_dir):
                 relative_path = os.path.relpath(root, extracted_dir)
-                target_path = os.path.join(current_dir, relative_path)
+                # 确保相对路径正确处理根目录情况
+                if relative_path == ".":
+                    target_path = current_dir
+                else:
+                    target_path = os.path.join(current_dir, relative_path)
                 
                 # 创建目标目录
                 if not os.path.exists(target_path):
