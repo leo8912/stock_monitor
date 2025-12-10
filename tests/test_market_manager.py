@@ -14,19 +14,23 @@ class TestMarketManager(unittest.TestCase):
     def test_initialization(self):
         """测试市场管理器初始化"""
         self.assertIsInstance(self.market_manager, MarketManager)
-        self.assertIsNone(self.market_manager.last_update_time)
         
-    def test_update_database_on_startup(self):
-        """测试启动时数据库更新方法"""
+    def test_is_market_open(self):
+        """测试市场开启状态检测方法"""
         # 确保方法存在且可调用
-        self.assertTrue(hasattr(self.market_manager, 'update_database_on_startup'))
-        # 注意：实际测试需要mock网络请求和文件操作
+        self.assertTrue(hasattr(self.market_manager, 'is_market_open'))
+        # 注意：实际测试需要mock时间
         
-    def test_start_database_update_scheduler(self):
-        """测试启动数据库更新调度器"""
+    def test_get_market_status(self):
+        """测试获取市场状态方法"""
         # 确保方法存在且可调用
-        self.assertTrue(hasattr(self.market_manager, 'start_database_update_scheduler'))
-        # 注意：实际测试需要mock线程和定时器
+        self.assertTrue(hasattr(self.market_manager, 'get_market_status'))
+        # 注意：实际测试需要mock时间
+        
+    def test_get_refresh_interval(self):
+        """测试获取刷新间隔方法"""
+        # 确保方法存在且可调用
+        self.assertTrue(hasattr(self.market_manager, 'get_refresh_interval'))
 
 if __name__ == '__main__':
     unittest.main()
