@@ -92,34 +92,26 @@ jobs:
       id: extract_changelog
       shell: python
       run: |
-        # 读取CHANGELOG.md文件并提取最新版本的更新日志
+        import re
+        # 读取版本号
+        version = "${{ steps.get_version.outputs.version }}"
+        # 去掉开头的'v'字符，确保匹配
+        if version.startswith('v'):
+            version = version[1:]
+        
+        # 读取CHANGELOG.md文件并提取指定版本的更新日志
         with open('CHANGELOG.md', 'r', encoding='utf-8') as f:
             content = f.read()
         
-        # 按行分割内容
-        lines = content.split('\n')
+        # 构造正则表达式匹配特定版本的日志
+        # 匹配 ## [v2.0.4] - 2025-12-10 或 ## [v2.0.4] 这样的格式
+        pattern = rf"## \[{re.escape('v' + version)}\](.*?)(?=## \[v|\\Z)"
+        match = re.search(pattern, content, re.DOTALL)
         
-        # 查找第一个版本标题的位置（通常是最新版本）
-        start_index = -1
-        end_index = len(lines)
-        
-        for i, line in enumerate(lines):
-            # 查找形如 "## [vX.X.X]" 的版本标题
-            if line.startswith('## [') and '] - ' in line or line.startswith('## [') and ']' in line:
-                if start_index == -1:
-                    # 找到第一个版本标题
-                    start_index = i
-                else:
-                    # 找到第二个版本标题，作为结束位置
-                    end_index = i
-                    break
-        
-        # 提取更新日志内容
-        if start_index != -1:
-            changelog_lines = lines[start_index:end_index]
-            changelog = '\n'.join(changelog_lines).strip()
+        if match:
+            changelog = match.group(1).strip()
         else:
-            changelog = '暂无更新日志'
+            changelog = "暂无详细更新日志"
         
         # 输出到GitHub Actions
         with open('${GITHUB_OUTPUT}', 'a', encoding='utf-8') as f:

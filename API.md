@@ -17,7 +17,7 @@ pip install easyquotation
 ```python
 import easyquotation
 
-# 使用新浪数据源
+# 使用新浪数据源（适用于A股和指数）
 quotation = easyquotation.use('sina')
 
 # 使用腾讯数据源
@@ -285,6 +285,75 @@ def get_all_stocks_batch(stock_codes, batch_size=50):
     
     return all_data
 ```
+
+## 不同市场股票数据获取方法
+
+### A股数据获取
+
+A股包括上海证券交易所（sh）和深圳证券交易所（sz）的股票，使用sina行情引擎：
+
+```python
+# 初始化行情引擎
+quotation = easyquotation.use('sina')
+
+# 获取单只A股数据（推荐使用带前缀的代码）
+data = quotation.stocks(['sh600000'], prefix=True)  # 浦发银行
+data = quotation.stocks(['sz000001'], prefix=True)  # 平安银行
+
+# 批量获取多只A股数据
+codes = ['sh600000', 'sh600460', 'sz000001', 'sz000002']
+data = quotation.stocks(codes, prefix=True)
+
+# 获取实时行情数据
+real_data = quotation.real(['sh600000', 'sz000001'], prefix=True)
+```
+
+### 港股数据获取
+
+港股使用专门的行情引擎hkquote：
+
+```python
+# 初始化港股行情引擎
+hk_quotation = easyquotation.use('hkquote')
+
+# 获取单只港股数据（需要去掉'hk'前缀）
+data = hk_quotation.stocks(['00700'])  # 腾讯控股
+
+# 批量获取多只港股数据
+codes = ['00700', '09988']  # 腾讯控股、阿里巴巴
+data = hk_quotation.stocks(codes)
+
+# 获取实时行情数据
+real_data = hk_quotation.real(['00700', '09988'])
+```
+
+### 指数数据获取
+
+指数也是A股的一部分，同样使用A股行情引擎：
+
+```python
+# 初始化行情引擎
+quotation = easyquotation.use('sina')
+
+# 获取主要指数数据（使用带前缀的代码）
+data = quotation.stocks(['sh000001'], prefix=True)  # 上证指数
+data = quotation.stocks(['sz399001'], prefix=True)  # 深证成指
+data = quotation.stocks(['sh000300'], prefix=True)  # 沪深300
+
+# 批量获取多个指数数据
+codes = ['sh000001', 'sz399001', 'sh000300', 'sz399006']  # 上证指数、深证成指、沪深300、创业板指
+data = quotation.stocks(codes, prefix=True)
+```
+
+## 项目代码梳理
+
+在项目中，我们严格按照不同市场类型区分处理，确保数据获取的准确性：
+
+1. **A股处理**：使用sina行情引擎，所有代码均带前缀（sh/sz）
+2. **港股处理**：使用hkquote行情引擎，代码需去除'hk'前缀进行查询
+3. **指数处理**：作为A股的一部分，使用sina行情引擎，代码带前缀
+
+所有数据获取均采用批量处理方式，提高效率并减少网络请求次数。
 
 ## 注意事项
 
