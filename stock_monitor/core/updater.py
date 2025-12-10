@@ -8,6 +8,7 @@ import sys
 import json
 import tempfile
 import shutil
+import subprocess
 from typing import Optional, Dict, Any
 import requests
 from PyQt5.QtWidgets import QMessageBox, QProgressDialog, QApplication
@@ -272,6 +273,9 @@ class AppUpdater:
             if hasattr(sys, '_MEIPASS'):
                 # 打包环境
                 executable = sys.executable
+                # 使用 subprocess 启动新进程然后退出当前进程
+                subprocess.Popen([executable] + sys.argv[1:])
+                QApplication.quit()
             else:
                 # 开发环境
                 executable = sys.executable
@@ -280,27 +284,11 @@ class AppUpdater:
                     # 如果是通过python运行的，则需要指定主模块
                     main_module = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'main.py')
                     if os.path.exists(main_module):
-                        args = [executable, main_module] + sys.argv[1:]
-                        app_logger.info(f"重启命令: {args}")
-                        os.execv(executable, args)
-            
-            # 重新启动应用程序
-            app_logger.info(f"重启可执行文件: {executable}")
-            os.execv(executable, [executable] + sys.argv[1:])
+                        subprocess.Popen([executable, main_module] + sys.argv[1:])
+                        QApplication.quit()
             
         except Exception as e:
             app_logger.error(f"重启应用程序时发生错误: {e}")
-            # 如果execv失败，则尝试使用subprocess
-            import subprocess
-            try:
-                if hasattr(sys, '_MEIPASS'):
-                    subprocess.Popen([sys.executable] + sys.argv[1:])
-                else:
-                    subprocess.Popen([sys.executable, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'main.py')] + sys.argv[1:])
-                QApplication.quit()
-            except Exception as e2:
-                app_logger.error(f"使用subprocess重启应用程序时也发生错误: {e2}")
-
 
 # 创建全局更新器实例
 app_updater = AppUpdater()

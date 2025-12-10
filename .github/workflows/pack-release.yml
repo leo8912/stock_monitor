@@ -159,7 +159,7 @@ jobs:
         body: |
           🤖 stock_monitor_${{ steps.get_version.outputs.version }} 发布说明
           
-          > **本软件完全由AI自动开发，开发者零基础，所有功能均由AI智能生成。**
+          > **本软件完全由AI自动开发。**
           
           ${{ steps.extract_changelog.outputs.changelog }}
       env:
