@@ -1,8 +1,3 @@
-"""
-自动更新模块
-负责检查GitHub Releases上的最新版本并下载更新
-"""
-
 import os
 import sys
 import json
@@ -162,6 +157,7 @@ class AppUpdater:
         Returns:
             bool: 更新是否成功
         """
+        backup_dir = None
         try:
             app_logger.info("开始应用更新...")
             
@@ -184,6 +180,10 @@ class AppUpdater:
                 
             app_logger.info(f"更新包解压到: {temp_extract_dir}")
             
+            # 创建备份目录
+            backup_dir = tempfile.mkdtemp()
+            app_logger.info(f"创建备份目录: {backup_dir}")
+            
             # 替换文件
             # 获取解压后的目录
             extracted_dirs = os.listdir(temp_extract_dir)
@@ -202,6 +202,7 @@ class AppUpdater:
             
             # 替换文件
             for root, dirs, files in os.walk(extracted_dir):
+                # 修正相对路径计算
                 relative_path = os.path.relpath(root, extracted_dir)
                 # 确保相对路径正确处理根目录情况
                 if relative_path == ".":
@@ -212,27 +213,55 @@ class AppUpdater:
                 # 创建目标目录
                 if not os.path.exists(target_path):
                     os.makedirs(target_path)
-                    
+                
                 # 复制文件
                 for file in files:
                     src_file = os.path.join(root, file)
                     dst_file = os.path.join(target_path, file)
                     
-                    # 如果目标文件存在，先删除
+                    # 如果目标文件存在，先备份再替换
                     if os.path.exists(dst_file):
-                        os.remove(dst_file)
-                        
+                        # 特殊处理正在运行的可执行文件
+                        if dst_file.lower() == os.path.join(current_dir, 'stock_monitor.exe').lower():
+                            # 对于正在运行的exe文件，先重命名为临时名称
+                            temp_dst_file = dst_file + '.tmp'
+                            try:
+                                os.rename(dst_file, temp_dst_file)
+                            except OSError:
+                                # 如果重命名失败，跳过这个文件
+                                app_logger.warning(f"无法重命名正在运行的可执行文件: {dst_file}")
+                                continue
+                        else:
+                            # 对于其他文件，先备份再删除
+                            try:
+                                backup_file = os.path.join(backup_dir, os.path.relpath(dst_file, current_dir))
+                                backup_dirname = os.path.dirname(backup_file)
+                                if not os.path.exists(backup_dirname):
+                                    os.makedirs(backup_dirname)
+                                shutil.copy2(dst_file, backup_file)
+                                os.remove(dst_file)
+                            except OSError as e:
+                                app_logger.warning(f"无法备份或删除文件 {dst_file}: {e}")
+                                continue
+                    
                     shutil.copy2(src_file, dst_file)
                     
             # 清理临时文件
             shutil.rmtree(temp_extract_dir)
             os.remove(update_file_path)
+            shutil.rmtree(backup_dir)
             
             app_logger.info("更新应用完成")
             return True
             
         except Exception as e:
             app_logger.error(f"应用更新时发生错误: {e}")
+            # 如果有备份目录，尝试清理
+            if backup_dir is not None:
+                try:
+                    shutil.rmtree(backup_dir)
+                except:
+                    pass
             return False
     
     def show_update_dialog(self, parent=None) -> bool:

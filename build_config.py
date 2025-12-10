@@ -15,7 +15,8 @@ BUILD_OPTIONS = {
 # 需要添加的数据文件
 DATA_FILES = [
     'stock_monitor/resources/stock_basic.json',
-    'stock_monitor/resources/icon.ico'
+    'stock_monitor/resources/icon.ico',
+    ('zhconv/zhcdict.json', 'zhconv')
 ]
 
 # 必需的文件列表（用于构建前检查）
@@ -42,7 +43,13 @@ def get_build_command():
     
     # 添加数据文件
     for data_file in DATA_FILES:
-        cmd.extend(['--add-data', f'{data_file};stock_monitor/resources'])
+        if isinstance(data_file, tuple):
+            # 处理元组形式的文件路径 (source, dest)
+            src, dest = data_file
+            cmd.extend(['--add-data', f'{src};{dest}'])
+        else:
+            # 处理字符串形式的文件路径
+            cmd.extend(['--add-data', f'{data_file};stock_monitor/resources'])
     
     # 添加主程序
     cmd.append('stock_monitor/main.py')
