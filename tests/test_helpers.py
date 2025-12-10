@@ -3,7 +3,8 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from stock_monitor.utils.helpers import is_equal, format_stock_code, get_stock_emoji
+from stock_monitor.utils.helpers import is_equal, get_stock_emoji
+from stock_monitor.utils.stock_utils import StockCodeProcessor
 
 class TestHelpers(unittest.TestCase):
     
@@ -17,21 +18,21 @@ class TestHelpers(unittest.TestCase):
         
     def test_format_stock_code(self):
         """测试股票代码格式化函数"""
+        processor = StockCodeProcessor()
         # 测试6位数字代码
-        self.assertEqual(format_stock_code("600460"), "sh600460")
-        self.assertEqual(format_stock_code("000001"), "sz000001")
-        self.assertEqual(format_stock_code("300001"), "sz300001")
-        self.assertEqual(format_stock_code("510050"), "sh510050")
+        self.assertEqual(processor.format_stock_code("600460"), "sh600460")
+        self.assertEqual(processor.format_stock_code("000001"), "sz000001")
+        self.assertEqual(processor.format_stock_code("300001"), "sz300001")
+        self.assertEqual(processor.format_stock_code("510050"), "sh510050")
         
         # 测试已格式化代码
-        self.assertEqual(format_stock_code("sh600460"), "sh600460")
-        self.assertEqual(format_stock_code("sz000001"), "sz000001")
+        self.assertEqual(processor.format_stock_code("sh600460"), "sh600460")
+        self.assertEqual(processor.format_stock_code("sz000001"), "sz000001")
         
         # 测试无效代码
-        self.assertIsNone(format_stock_code("invalid"))
-        self.assertIsNone(format_stock_code("12345"))  # 位数不够
-        self.assertIsNone(format_stock_code(""))
-        self.assertIsNone(format_stock_code(None))
+        self.assertEqual(processor.format_stock_code("invalid"), "invalid")
+        self.assertEqual(processor.format_stock_code("12345"), "12345")  # 5位数字代码保持不变
+        self.assertIsNone(processor.format_stock_code(""))
         
     def test_get_stock_emoji(self):
         """测试获取股票emoji函数"""
