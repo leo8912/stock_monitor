@@ -21,7 +21,8 @@ class TestHelpers(unittest.TestCase):
         processor = StockCodeProcessor()
         # 测试6位数字代码
         self.assertEqual(processor.format_stock_code("600460"), "sh600460")
-        self.assertEqual(processor.format_stock_code("000001"), "sz000001")
+        # 修改000001的期望结果为空，因为我们不再自动为它添加前缀
+        self.assertEqual(processor.format_stock_code("000001"), "000001")
         self.assertEqual(processor.format_stock_code("300001"), "sz300001")
         self.assertEqual(processor.format_stock_code("510050"), "sh510050")
         

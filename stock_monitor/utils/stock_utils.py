@@ -50,7 +50,7 @@ class StockCodeProcessor:
                 # 即使格式不完全正确，也返回原始代码
                 return code
                 
-        # 6位纯数字代码
+        # 6位纯数字代码（应该避免这种情况，但在某些情况下可能需要处理）
         elif len(code) == 6 and code.isdigit():
             # 特殊处理容易混淆的代码
             if code == '000001':
