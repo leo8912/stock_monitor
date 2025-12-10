@@ -680,12 +680,12 @@ def clean_temp_files():
     try:
         from stock_monitor.utils.logger import app_logger
         
-        # 获取当前目录
+        # 获取当前目录 - 确保始终使用程序所在目录
         if hasattr(sys, '_MEIPASS'):
-            # 打包环境
+            # 打包环境 - 使用可执行文件所在目录
             current_dir = os.path.dirname(sys.executable)
         else:
-            # 开发环境
+            # 开发环境或普通生产环境 - 使用main.py所在目录
             current_dir = os.path.dirname(os.path.abspath(__file__))
         
         # 查找并删除所有的 .tmp 文件

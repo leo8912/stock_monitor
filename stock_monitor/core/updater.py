@@ -203,13 +203,13 @@ class AppUpdater:
             # 检查是否有正在运行的文件需要更新
             locked_files = []
             for root, dirs, files in os.walk(extracted_dir):
-                # 修正相对路径计算
-                relative_path = os.path.relpath(root, extracted_dir)
-                # 确保相对路径正确处理根目录情况
-                if relative_path == ".":
+                # 计算相对于extracted_dir的路径
+                rel_path = os.path.relpath(root, extracted_dir)
+                # 确保目标路径正确
+                if rel_path == ".":
                     target_path = current_dir
                 else:
-                    target_path = os.path.join(current_dir, relative_path)
+                    target_path = os.path.join(current_dir, rel_path)
                 
                 # 检查文件是否需要更新并且正在被占用
                 for file in files:
@@ -234,13 +234,13 @@ class AppUpdater:
             
             # 替换文件
             for root, dirs, files in os.walk(extracted_dir):
-                # 修正相对路径计算
-                relative_path = os.path.relpath(root, extracted_dir)
-                # 确保相对路径正确处理根目录情况
-                if relative_path == ".":
+                # 计算相对于extracted_dir的路径
+                rel_path = os.path.relpath(root, extracted_dir)
+                # 确保目标路径正确
+                if rel_path == ".":
                     target_path = current_dir
                 else:
-                    target_path = os.path.join(current_dir, relative_path)
+                    target_path = os.path.join(current_dir, rel_path)
                 
                 # 创建目标目录
                 if not os.path.exists(target_path):
