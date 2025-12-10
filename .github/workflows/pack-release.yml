@@ -99,6 +99,11 @@ jobs:
         # 设置编码
         if sys.platform == "win32":
             os.environ["PYTHONIOENCODING"] = "utf-8"
+            # 设置标准输出和错误流编码（Python 3.7+支持）
+            if hasattr(sys.stdout, 'reconfigure'):
+                sys.stdout.reconfigure(encoding='utf-8')
+            if hasattr(sys.stderr, 'reconfigure'):
+                sys.stderr.reconfigure(encoding='utf-8')
         
         # 读取版本号
         version = "${{ steps.get_version.outputs.version }}"
@@ -130,11 +135,19 @@ jobs:
             changelog = "暂无详细更新日志"
             print("未找到匹配的日志")
         
-        # 输出到GitHub Actions
-        with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as f:
-            f.write('changelog<<EOF\n')
-            f.write(changelog + '\n')
-            f.write('EOF\n')
+        # 安全地输出到GitHub Actions，避免编码问题
+        try:
+            # 输出到GitHub Actions
+            with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as f:
+                f.write('changelog<<EOF\n')
+                f.write(changelog + '\n')
+                f.write('EOF\n')
+            print("日志提取完成")
+        except Exception as e:
+            print(f"写入GITHUB_OUTPUT时出错: {e}")
+            # 即使写入失败也要确保工作流继续执行
+            with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                f.write('changelog=暂无详细更新日志\n')
         print("日志提取完成")
 
     - name: 创建发布 # Create Release
