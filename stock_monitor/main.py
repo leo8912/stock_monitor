@@ -212,7 +212,8 @@ class MainWindow(QtWidgets.QWidget):
                         update_file = app_updater.download_update(self)
                         if update_file:
                             # 应用更新
-                            if app_updater.apply_update(update_file):
+                            result = app_updater.apply_update(update_file)
+                            if result:
                                 # 重启应用
                                 QtWidgets.QMessageBox.information(
                                     self, 
@@ -674,8 +675,46 @@ class SystemTray(QtWidgets.QSystemTrayIcon):
         elif reason == QtWidgets.QSystemTrayIcon.Context:  # type: ignore
             self.contextMenu().exec_(QtGui.QCursor.pos())  # type: ignore
 
+def clean_temp_files():
+    """清理更新过程中产生的临时文件"""
+    try:
+        from stock_monitor.utils.logger import app_logger
+        
+        # 获取当前目录
+        if hasattr(sys, '_MEIPASS'):
+            # 打包环境
+            current_dir = os.path.dirname(sys.executable)
+        else:
+            # 开发环境
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        # 查找并删除所有的 .tmp 文件
+        for filename in os.listdir(current_dir):
+            if filename.endswith('.tmp'):
+                tmp_file = os.path.join(current_dir, filename)
+                try:
+                    os.remove(tmp_file)
+                    app_logger.info(f"已清理临时文件: {tmp_file}")
+                except Exception as e:
+                    app_logger.warning(f"无法删除临时文件 {tmp_file}: {e}")
+                    
+        # 检查并删除更新标记文件
+        update_marker = os.path.join(current_dir, 'update_pending')
+        if os.path.exists(update_marker):
+            try:
+                os.remove(update_marker)
+                app_logger.info("已清理更新标记文件")
+            except Exception as e:
+                app_logger.warning(f"无法删除更新标记文件: {e}")
+    except Exception as e:
+        # 这里不能使用app_logger，因为它可能还未初始化
+        print(f"清理临时文件时出错: {e}")
+
 def main():
     """主函数"""
+    # 清理更新过程中产生的临时文件
+    clean_temp_files()
+    
     app = QtWidgets.QApplication(sys.argv)
     main_window = MainWindow()
     tray = SystemTray(main_window)

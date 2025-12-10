@@ -200,6 +200,40 @@ class AppUpdater:
                     
             app_logger.info(f"更新文件目录: {extracted_dir}")
             
+            # 检查是否有正在运行的文件需要更新
+            need_restart = False
+            locked_files = []
+            for root, dirs, files in os.walk(extracted_dir):
+                # 修正相对路径计算
+                relative_path = os.path.relpath(root, extracted_dir)
+                # 确保相对路径正确处理根目录情况
+                if relative_path == ".":
+                    target_path = current_dir
+                else:
+                    target_path = os.path.join(current_dir, relative_path)
+                
+                # 检查文件是否需要更新并且正在被占用
+                for file in files:
+                    dst_file = os.path.join(target_path, file)
+                    if os.path.exists(dst_file):
+                        # 检查是否是正在运行的exe文件
+                        if dst_file.lower() == os.path.join(current_dir, 'stock_monitor.exe').lower():
+                            need_restart = True
+                            locked_files.append(dst_file)
+                        # 检查其他可能被占用的文件（DLL等）
+                        elif dst_file.lower().endswith(('.dll', '.pyd')):
+                            locked_files.append(dst_file)
+            
+            # 如果有文件被占用，需要先重启应用
+            if locked_files:
+                app_logger.info(f"检测到 {len(locked_files)} 个被占用的文件，需要先重启应用")
+                # 创建更新标记文件
+                update_marker = os.path.join(current_dir, 'update_pending')
+                with open(update_marker, 'w') as f:
+                    f.write(update_file_path)
+                app_logger.info("已创建更新标记文件，准备重启应用")
+                return True  # 返回True表示需要重启
+            
             # 替换文件
             for root, dirs, files in os.walk(extracted_dir):
                 # 修正相对路径计算
@@ -227,6 +261,7 @@ class AppUpdater:
                             temp_dst_file = dst_file + '.tmp'
                             try:
                                 os.rename(dst_file, temp_dst_file)
+                                app_logger.info(f"已将正在运行的可执行文件重命名为: {temp_dst_file}")
                             except OSError:
                                 # 如果重命名失败，跳过这个文件
                                 app_logger.warning(f"无法重命名正在运行的可执行文件: {dst_file}")
@@ -303,6 +338,21 @@ class AppUpdater:
             if hasattr(sys, '_MEIPASS'):
                 # 打包环境
                 executable = sys.executable
+                # 检查是否有待处理的更新
+                update_marker = os.path.join(os.path.dirname(executable), 'update_pending')
+                if os.path.exists(update_marker):
+                    app_logger.info("检测到待处理的更新，先处理更新")
+                    # 读取更新文件路径
+                    with open(update_marker, 'r') as f:
+                        update_file_path = f.read().strip()
+                    # 删除标记文件
+                    os.remove(update_marker)
+                    # 应用更新
+                    if self.apply_update(update_file_path):
+                        app_logger.info("更新应用完成，继续重启应用")
+                    else:
+                        app_logger.error("更新应用失败")
+                
                 # 首先尝试使用 execv 直接替换进程
                 try:
                     os.execv(executable, [executable] + sys.argv[1:])

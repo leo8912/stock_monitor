@@ -1,6 +1,7 @@
 import os
 import json
 import shutil
+import sys
 from typing import Dict, Any, Optional, Union, List
 from ..utils.logger import app_logger
 from ..utils.helpers import handle_exception
@@ -14,7 +15,8 @@ def get_config_dir():
     project_root = os.path.dirname(os.path.dirname(current_dir))
     
     # 如果在项目目录中运行（开发环境），使用项目内的配置目录
-    if os.path.exists(os.path.join(project_root, '.git')) or os.path.exists(os.path.join(project_root, 'stock_monitor')):
+    # 但如果是PyInstaller打包的应用，则始终视为生产环境
+    if (os.path.exists(os.path.join(project_root, '.git')) or os.path.exists(os.path.join(project_root, 'stock_monitor'))) and not hasattr(sys, '_MEIPASS'):
         config_dir = os.path.join(project_root, '.stock_monitor_dev')
         app_logger.info(f"开发环境: 使用配置目录 {config_dir}")
     else:
