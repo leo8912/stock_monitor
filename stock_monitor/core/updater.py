@@ -201,7 +201,6 @@ class AppUpdater:
             app_logger.info(f"更新文件目录: {extracted_dir}")
             
             # 检查是否有正在运行的文件需要更新
-            need_restart = False
             locked_files = []
             for root, dirs, files in os.walk(extracted_dir):
                 # 修正相对路径计算
@@ -218,9 +217,8 @@ class AppUpdater:
                     if os.path.exists(dst_file):
                         # 检查是否是正在运行的exe文件
                         if dst_file.lower() == os.path.join(current_dir, 'stock_monitor.exe').lower():
-                            need_restart = True
                             locked_files.append(dst_file)
-                        # 检查其他可能被占用的文件（DLL等）
+                        # 检查其他可能被占用的文件（DLL、PYD等）
                         elif dst_file.lower().endswith(('.dll', '.pyd')):
                             locked_files.append(dst_file)
             
@@ -255,16 +253,17 @@ class AppUpdater:
                     
                     # 如果目标文件存在，先备份再替换
                     if os.path.exists(dst_file):
-                        # 特殊处理正在运行的可执行文件
-                        if dst_file.lower() == os.path.join(current_dir, 'stock_monitor.exe').lower():
-                            # 对于正在运行的exe文件，先重命名为临时名称
+                        # 特殊处理正在运行的可执行文件和动态链接库文件
+                        if dst_file.lower() == os.path.join(current_dir, 'stock_monitor.exe').lower() or \
+                           dst_file.lower().endswith(('.dll', '.pyd')):
+                            # 对于正在运行的exe文件和动态链接库，先重命名为临时名称
                             temp_dst_file = dst_file + '.tmp'
                             try:
                                 os.rename(dst_file, temp_dst_file)
-                                app_logger.info(f"已将正在运行的可执行文件重命名为: {temp_dst_file}")
+                                app_logger.info(f"已将正在运行的文件重命名为: {temp_dst_file}")
                             except OSError:
                                 # 如果重命名失败，跳过这个文件
-                                app_logger.warning(f"无法重命名正在运行的可执行文件: {dst_file}")
+                                app_logger.warning(f"无法重命名正在运行的文件: {dst_file}")
                                 continue
                         else:
                             # 对于其他文件，先备份再删除
@@ -285,6 +284,9 @@ class AppUpdater:
             shutil.rmtree(temp_extract_dir)
             os.remove(update_file_path)
             shutil.rmtree(backup_dir)
+            
+            # 清理可能遗留的.tmp文件
+            self._cleanup_tmp_files(current_dir)
             
             app_logger.info("更新应用完成")
             return True
@@ -377,9 +379,28 @@ class AppUpdater:
                             # 回退到 subprocess 方式
                             subprocess.Popen([executable, main_module] + sys.argv[1:])
                             QApplication.quit()
-            
         except Exception as e:
             app_logger.error(f"重启应用程序时发生错误: {e}")
+
+    def _cleanup_tmp_files(self, directory: str) -> None:
+        """
+        清理目录中遗留的.tmp文件
+        
+        Args:
+            directory: 要清理的目录路径
+        """
+        try:
+            for root, dirs, files in os.walk(directory):
+                for file in files:
+                    if file.endswith('.tmp'):
+                        tmp_file = os.path.join(root, file)
+                        try:
+                            os.remove(tmp_file)
+                            app_logger.info(f"已清理临时文件: {tmp_file}")
+                        except Exception as e:
+                            app_logger.warning(f"无法删除临时文件 {tmp_file}: {e}")
+        except Exception as e:
+            app_logger.error(f"清理临时文件时发生错误: {e}")
 
 # 创建全局更新器实例
 app_updater = AppUpdater()

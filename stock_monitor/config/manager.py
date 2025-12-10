@@ -20,8 +20,13 @@ def get_config_dir():
         config_dir = os.path.join(project_root, '.stock_monitor_dev')
         app_logger.info(f"开发环境: 使用配置目录 {config_dir}")
     else:
-        # 生产环境：使用用户目录下的配置
-        config_dir = os.path.join(os.path.expanduser('~'), '.stock_monitor')
+        # 生产环境：使用程序目录下的配置
+        if hasattr(sys, '_MEIPASS'):
+            # PyInstaller打包环境
+            config_dir = os.path.join(os.path.dirname(sys.executable), '.stock_monitor')
+        else:
+            # 普通生产环境
+            config_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.stock_monitor')
         app_logger.info(f"生产环境: 使用配置目录 {config_dir}")
     
     # 确保配置目录存在
