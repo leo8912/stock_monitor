@@ -92,24 +92,31 @@ jobs:
 
     - name: 从CHANGELOG.md提取更新日志 # Extract changelog from CHANGELOG.md
       id: extract_changelog
+      shell: bash
       run: |
-        # 使用PowerShell提取最新的更新日志条目
-        $content = Get-Content -Path CHANGELOG.md -Raw
-        # 匹配特定版本的更新日志
-        $version = "${{ steps.get_version.outputs.version }}"
-        $pattern = "## \[v${version}\].*?(?=(\n## \[v|\Z))"
-        $match = [regex]::Match($content, $pattern, [System.Text.RegularExpressions.RegexOptions]::Singleline)
-        if ($match.Success) {
-            $changelog = $match.Groups[0].Value.Trim()
-        } else {
-            $changelog = "暂无更新日志"
+        VERSION="${{ steps.get_version.outputs.version }}"
+        # 使用awk提取指定版本的更新日志
+        changelog=$(awk -v ver="$VERSION" '
+        BEGIN { found=0; content="" }
+        /^## \[v[^\]]*\]/ { 
+          if (found==1) exit;
+          if (index($0, "[v" ver "]") > 0) found=1;
+          next
         }
-        # 正确格式化多行字符串以供GitHub Actions使用
-        $formattedChangelog = $changelog -replace '\n', "`n"
+        found==1 { 
+          content = content $0 "\n" 
+        }
+        END { 
+          if (length(content) > 0) {
+            printf "%s", content
+          } else {
+            printf "暂无更新日志"
+          }
+        }' CHANGELOG.md)
         # 使用GitHub Actions语法处理多行字符串
-        echo "changelog<<EOF" >> $env:GITHUB_OUTPUT
-        echo "$formattedChangelog" >> $env:GITHUB_OUTPUT
-        echo "EOF" >> $env:GITHUB_OUTPUT
+        echo "changelog<<EOF" >> $GITHUB_OUTPUT
+        echo "$changelog" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
 
     - name: 创建发布 # Create Release
       uses: softprops/action-gh-release@v1
