@@ -93,6 +93,13 @@ jobs:
       shell: python
       run: |
         import re
+        import os
+        import sys
+        
+        # 设置编码
+        if sys.platform == "win32":
+            os.environ["PYTHONIOENCODING"] = "utf-8"
+        
         # 读取版本号
         version = "${{ steps.get_version.outputs.version }}"
         print(f"处理版本号: {version}")
@@ -124,7 +131,7 @@ jobs:
             print("未找到匹配的日志")
         
         # 输出到GitHub Actions
-        with open('${GITHUB_OUTPUT}', 'a', encoding='utf-8') as f:
+        with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as f:
             f.write('changelog<<EOF\n')
             f.write(changelog + '\n')
             f.write('EOF\n')
