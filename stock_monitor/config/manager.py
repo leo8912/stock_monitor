@@ -163,12 +163,15 @@ class ConfigManager:
                 app_logger
             )
     
-    def save_config(self, cfg: Dict[str, Any]) -> None:
+    def save_config(self, cfg: Dict[str, Any]) -> bool:
         """
         保存配置文件
         
         Args:
             cfg: 配置字典
+            
+        Returns:
+            bool: 保存是否成功
         """
         self._config = cfg
         
@@ -176,11 +179,12 @@ class ConfigManager:
             with open(self.config_path, 'w', encoding='utf-8') as f:
                 json.dump(cfg, f, ensure_ascii=False, indent=2)
             app_logger.info("配置文件保存成功")
+            return True
         
-        handle_exception(
+        return handle_exception(
             "保存配置文件",
             _save_config,
-            None,
+            False,
             app_logger
         )
     
@@ -218,15 +222,18 @@ def load_config() -> Dict[str, Any]:
     return manager.load_config()
 
 
-def save_config(cfg: Dict[str, Any]) -> None:
+def save_config(cfg: Dict[str, Any]) -> bool:
     """
     保存配置文件
     
     Args:
         cfg: 配置字典
+        
+    Returns:
+        bool: 保存是否成功
     """
     manager = ConfigManager()
-    manager.save_config(cfg)
+    return manager.save_config(cfg)
 
 
 def is_market_open():

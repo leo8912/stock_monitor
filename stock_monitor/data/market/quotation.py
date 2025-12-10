@@ -5,6 +5,14 @@
 该模块包含获取行情数据、处理行情数据等功能。
 """
 
+import easyquotation
+import json
+import datetime
+from typing import Dict, Any, List, Tuple, Optional
+from stock_monitor.utils.logger import app_logger
+from stock_monitor.utils.helpers import resource_path, is_equal
+from stock_monitor.utils.stock_utils import StockCodeProcessor
+
 
 def get_quotation_engine(market_type='sina'):
     """获取行情引擎实例"""
@@ -15,8 +23,8 @@ def get_quotation_engine(market_type='sina'):
     except Exception as e:
         error_msg = f"初始化行情引擎失败: {e}"
         app_logger.error(error_msg)
-        app_logger.error(error_msg)
         return None
+
 
 def is_market_open() -> bool:
     """检查A股是否开市"""
@@ -28,17 +36,13 @@ def is_market_open() -> bool:
     t = now.time()
     return ((datetime.time(9,30) <= t <= datetime.time(11,30)) or 
             (datetime.time(13,0) <= t <= datetime.time(15,0)))
-import easyquotation
-import json
-import datetime
-from typing import Dict, Any, List, Tuple, Optional
-from stock_monitor.utils.logger import app_logger
-from stock_monitor.utils.helpers import resource_path, is_equal
 
 
 def process_stock_data(data: Dict[str, Any], stocks_list: List[str]) -> List[Tuple]:
     """处理股票数据，返回格式化的股票列表"""
     stocks = []
+    processor = StockCodeProcessor()
+    
     for code in stocks_list:
         info = None
         # 优先使用完整代码作为键进行精确匹配，防止 sh000001 和 000001 混淆
@@ -146,7 +150,9 @@ def process_stock_data(data: Dict[str, Any], stocks_list: List[str]) -> List[Tup
             stocks.append((name, "--", "--", "#e6eaf3", "", ""))
             app_logger.warning(f"未获取到股票 {code} 的数据")
     app_logger.debug(f"共处理 {len(stocks)} 只股票数据")
+    app_logger.info(f"股票数据处理完成: 总计 {len(stocks)} 只股票")
     return stocks
+
 
 def get_name_by_code(code: str) -> str:
     """根据股票代码获取股票名称"""

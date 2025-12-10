@@ -77,3 +77,4 @@ def schedule_log_cleanup(days_to_keep: int = 7, interval_hours: int = 24) -> Non
     cleanup_thread = threading.Thread(target=cleanup_job, daemon=True)
     cleanup_thread.start()
     app_logger.info(f"已启动日志定期清理任务，保留 {days_to_keep} 天日志，每 {interval_hours} 小时清理一次")
+    app_logger.debug("日志清理线程已启动")

@@ -10,7 +10,6 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import threading
-import easyquotation
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtCore import pyqtSignal, pyqtSlot
 import time
@@ -31,12 +30,16 @@ from stock_monitor.config.manager import is_market_open, load_config, save_confi
 
 from stock_monitor.utils.helpers import resource_path, get_stock_emoji
 from stock_monitor.utils.log_cleaner import schedule_log_cleanup
+from stock_monitor.core.updater import app_updater
 
 ICON_FILE = resource_path('icon.ico')  # 统一使用ICO格式图标
 
 # 修改导入语句，使用设置对话框
-from stock_monitor.ui.dialogs.new_settings_dialog import NewSettingsDialog
+from stock_monitor.ui.dialogs.settings_dialog import NewSettingsDialog
 from stock_monitor.ui.components.stock_table import StockTable
+
+# 导入后台刷新工作线程
+from stock_monitor.core.refresh_worker import RefreshWorker
 
 class MainWindow(QtWidgets.QWidget):
     """
@@ -59,6 +62,7 @@ class MainWindow(QtWidgets.QWidget):
         self.drag_position = None
         
         app_logger.info("主窗口初始化开始")
+        app_logger.debug(f"当前工作目录: {os.getcwd()}")
         
         # 启动日志定期清理任务
         schedule_log_cleanup(days_to_keep=7, interval_hours=24)
@@ -69,37 +73,68 @@ class MainWindow(QtWidgets.QWidget):
         # 初始化UI
         self.table = StockTable(self)
         layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(6, 2, 6, 2)  # 进一步减小边距: 左6, 上2, 右6, 下2
+        layout.setContentsMargins(0, 0, 0, 0)  # 移除边距，使表格紧贴窗口边缘
         layout.setSpacing(0)
         layout.addWidget(self.market_status_bar)  # 添加状态条
         layout.addWidget(self.table)
+
         self.setLayout(layout)
         
         # 设置样式
-        self.setMinimumHeight(80)
-        self.setMinimumWidth(280)
-        self.setMaximumWidth(600)  # 增加最大宽度以适应港股长名称
-        self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)  # type: ignore
+        self.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Preferred)  # type: ignore
+
         font = QtGui.QFont('微软雅黑', 20)
         self.setFont(font)
         self.setStyleSheet('QWidget { font-family: "微软雅黑"; font-size: 20px; color: #fff; background: transparent; border: none; }')
         
         # 初始化菜单
+        # 创建右键菜单，样式与设置界面保持一致
         self.menu = QtWidgets.QMenu(self)
+        self.menu.setStyleSheet('''
+            QMenu {
+                background-color: #2d2d2d;
+                color: white;
+                border: 1px solid #555555;
+                border-radius: 4px;
+                font-family: 'Microsoft YaHei';
+                font-size: 16px;  /* 缩小字体 */
+                padding: 2px 0;   /* 减小内边距 */
+                min-width: 100px; /* 缩小最小宽度 */
+            }
+            QMenu::item {
+                padding: 4px 16px;  /* 减小菜单项内边距 */
+                border-radius: 4px;
+            }
+            QMenu::item:selected {
+                background-color: #0078d4;
+            }
+            QMenu::separator {
+                height: 1px;
+                background: #555555;
+                margin: 2px 0;  /* 减小分隔符边距 */
+            }
+        ''')
         self.action_settings = self.menu.addAction('设置')
+        self.menu.addSeparator()
         self.action_quit = self.menu.addAction('退出')
-        self.action_settings.triggered.connect(self.open_settings)  # type: ignore
-        self.action_quit.triggered.connect(QtWidgets.QApplication.quit)  # type: ignore
+        self.action_settings.triggered.connect(self.open_settings)
+        self.action_quit.triggered.connect(QtWidgets.QApplication.quit)
+        
+        # 确保菜单项连接正确，避免功能不稳定
+        self.action_settings.setMenuRole(QtWidgets.QAction.MenuRole.NoRole)
+        self.action_quit.setMenuRole(QtWidgets.QAction.MenuRole.NoRole)
         
         # 初始化数据
         self.settings_dialog = None
-        self.quotation = easyquotation.use('sina')
         cfg = load_config()
         self.refresh_interval = cfg.get('refresh_interval', 5)
         self.current_user_stocks = self.load_user_stocks()
         
-        # 用于增量更新的数据缓存
-        self._last_stock_data = {}
+        # 初始化后台刷新工作线程
+        self.refresh_worker = RefreshWorker(
+            update_callback=self._on_refresh_update,
+            error_callback=self._on_refresh_error
+        )
         
         # 加载状态指示器
         self.loading_label = QtWidgets.QLabel("⏳ 数据加载中...")
@@ -122,7 +157,8 @@ class MainWindow(QtWidgets.QWidget):
         
         # 立即刷新一次，确保在窗口显示前加载数据
         self.refresh_now(self.current_user_stocks)
-        self._start_refresh_thread()
+        # 启动后台刷新线程
+        self.refresh_worker.start(self.current_user_stocks, self.refresh_interval)
         self._start_database_update_thread()
         
         # 启动时立即更新一次数据库
@@ -133,12 +169,20 @@ class MainWindow(QtWidgets.QWidget):
         self.load_position()
         self.raise_()
         self.activateWindow()
+        # 为自身和子控件安装事件过滤器
         self.install_event_filters(self)
+        # 但是排除菜单，避免菜单事件被拦截
+        if hasattr(self, 'menu'):
+            self.menu.removeEventFilter(self)
         
         # 立即更新市场状态条，提高优先级
         self._update_market_status_immediately()
         
+        # 检查更新
+        self._check_for_updates()
+        
         app_logger.info("主窗口初始化完成")
+        app_logger.debug("主窗口UI组件初始化完成")
 
     def _update_market_status_immediately(self):
         """立即更新市场状态条，提高优先级"""
@@ -155,6 +199,53 @@ class MainWindow(QtWidgets.QWidget):
             self.market_status_bar.update_market_status()
         except Exception as e:
             app_logger.error(f"立即更新市场状态失败: {e}")
+            
+    def _check_for_updates(self):
+        """检查应用更新"""
+        def check_and_update():
+            try:
+                # 检查是否有新版本
+                if app_updater.check_for_updates():
+                    # 显示更新对话框
+                    if app_updater.show_update_dialog(self):
+                        # 下载更新
+                        update_file = app_updater.download_update(self)
+                        if update_file:
+                            # 应用更新
+                            if app_updater.apply_update(update_file):
+                                # 重启应用
+                                QtWidgets.QMessageBox.information(
+                                    self, 
+                                    "更新完成", 
+                                    "应用更新完成，即将重启应用。",
+                                    QtWidgets.QMessageBox.Ok
+                                )
+                                # 重启应用
+                                import subprocess
+                                subprocess.Popen([sys.executable] + sys.argv)
+                                # 退出当前应用
+                                QtWidgets.QApplication.quit()
+                            else:
+                                QtWidgets.QMessageBox.warning(
+                                    self, 
+                                    "更新失败", 
+                                    "应用更新失败，请稍后重试或手动更新。",
+                                    QtWidgets.QMessageBox.Ok
+                                )
+                        else:
+                            QtWidgets.QMessageBox.warning(
+                                self, 
+                                "下载失败", 
+                                "更新包下载失败，请检查网络连接后重试。",
+                                QtWidgets.QMessageBox.Ok
+                            )
+            except Exception as e:
+                app_logger.error(f"检查更新时发生错误: {e}")
+                # 不向用户显示错误，避免干扰正常使用
+        
+        # 在单独的线程中检查更新，避免阻塞UI
+        update_thread = threading.Thread(target=check_and_update, daemon=True)
+        update_thread.start()
 
     def install_event_filters(self, widget):
         """
@@ -189,51 +280,11 @@ class MainWindow(QtWidgets.QWidget):
                 self.setCursor(QtCore.Qt.SizeAllCursor)  # type: ignore
                 event.accept()
                 return True
-            elif event.button() == QtCore.Qt.RightButton:  # type: ignore
-                menu = QtWidgets.QMenu(self)
-                menu.setStyleSheet('''
-                    QMenu {
-                        background: #23272e;
-                        color: #fff;
-                        border-radius: 8px;
-                        font-size: 20px;
-                        font-weight: bold;
-                        padding: 6px 0;
-                        min-width: 100px;
-                    }
-                    QMenu::item {
-                        height: 36px;
-                        padding: 0 24px;
-                        border-radius: 8px;
-                        margin: 2px 6px;
-                        font-size: 20px;
-                        font-weight: bold;
-                    }
-                    QMenu::item:selected {
-                        background: #4a90e2;
-                        color: #fff;
-                        border-radius: 8px;
-                    }
-                    QMenu::separator {
-                        height: 1px;
-                        background: #444;
-                        margin: 4px 0;
-                    }
-                ''')
-                action_settings = menu.addAction('设置')
-                menu.addSeparator()
-                action_quit = menu.addAction('退出')
-                action = menu.exec_(QtGui.QCursor.pos())
-                if action == action_settings:
-                    if not hasattr(self, 'settings_dialog') or self.settings_dialog is None:
-                        self.settings_dialog = NewSettingsDialog(self, main_window=self)
-                        # 连接信号
-                        self.settings_dialog.config_changed.connect(self.on_user_stocks_changed)
-                    self.settings_dialog.show()
-                    self.settings_dialog.raise_()
-                    self.settings_dialog.activateWindow()
-                elif action == action_quit:
-                    QtWidgets.QApplication.instance().quit()  # type: ignore
+            elif event.button() == QtCore.Qt.RightButton:
+                # 弹出右键菜单
+                # 使用事件位置而非光标位置，避免菜单跟随鼠标移动
+                click_pos = self.mapToGlobal(event.pos())
+                self.menu.popup(click_pos)
                 event.accept()
                 return True
         elif event.type() == QtCore.QEvent.MouseMove:  # type: ignore
@@ -258,12 +309,8 @@ class MainWindow(QtWidgets.QWidget):
         Args:
             event: 鼠标事件对象
         """
-        if event.button() == QtCore.Qt.LeftButton:  # type: ignore
-            self.drag_position = event.globalPos() - self.frameGeometry().topLeft()
-            self.setCursor(QtCore.Qt.SizeAllCursor)  # type: ignore
-            event.accept()
-        elif event.button() == QtCore.Qt.RightButton:  # type: ignore
-            self.menu.popup(QtGui.QCursor.pos())
+        # 所有鼠标按键事件都在eventFilter中统一处理，避免重复处理
+        super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):  # type: ignore
         """
@@ -294,6 +341,10 @@ class MainWindow(QtWidgets.QWidget):
         Args:
             a0: 关闭事件对象
         """
+        # 停止后台刷新线程
+        if hasattr(self, 'refresh_worker'):
+            self.refresh_worker.stop()
+            
         self.save_position()
         super().closeEvent(a0)
 
@@ -323,30 +374,13 @@ class MainWindow(QtWidgets.QWidget):
         if self.settings_dialog is None:
             self.settings_dialog = NewSettingsDialog(self, main_window=self)
         else:
+            # 断开所有可能的信号连接
             try:
-                self.settings_dialog.config_changed.disconnect(self.on_user_stocks_changed)
+                self.settings_dialog.config_changed.disconnect()
             except Exception:
                 pass
         # 使用QueuedConnection避免阻塞UI
-        self.settings_dialog.config_changed.connect(self.on_user_stocks_changed)
-        
-        # 设置弹窗位置
-        cfg = load_config()
-        pos = cfg.get('settings_dialog_pos')
-        if pos and isinstance(pos, list) and len(pos) == 2:
-            screen = QtWidgets.QApplication.primaryScreen()
-            if screen is not None:
-                available_geo = screen.availableGeometry()
-                x = max(0, min(pos[0], available_geo.width() - self.settings_dialog.width()))
-                y = max(0, min(pos[1], available_geo.height() - self.settings_dialog.height()))
-                self.settings_dialog.move(x, y)
-            else:
-                self.settings_dialog.move(pos[0], pos[1])
-        else:
-            main_geo = self.geometry()
-            x = main_geo.x() + main_geo.width() + 20
-            y = main_geo.y()
-            self.settings_dialog.move(x, y)
+        self.settings_dialog.config_changed.connect(self.on_user_stocks_changed, QtCore.Qt.QueuedConnection)
         
         self.settings_dialog.show()
         self.settings_dialog.raise_()
@@ -363,6 +397,9 @@ class MainWindow(QtWidgets.QWidget):
         app_logger.info(f"用户股票列表变更: {user_stocks}, 刷新间隔: {refresh_interval}")
         self.current_user_stocks = user_stocks
         self.refresh_interval = refresh_interval  # 关键：更新刷新间隔
+        # 更新后台刷新线程的配置
+        self.refresh_worker.update_stocks(user_stocks)
+        self.refresh_worker.update_interval(refresh_interval)
         self.refresh_now(user_stocks)
 
     def process_stock_data(self, data, stocks_list):
@@ -388,93 +425,65 @@ class MainWindow(QtWidgets.QWidget):
         """
         if stocks_list is None:
             stocks_list = self.current_user_stocks
-        # 使用 hasattr 检查 quotation 对象是否有 real 方法
-        if hasattr(self, 'quotation'):
-            try:
-                # 显示加载状态
-                self.loading_label.show()
-                self.table.hide()
-                QtWidgets.QApplication.processEvents()
-                
-                # 逐个请求，避免混淆，并确保键值精确匹配
-                data_dict = {}
-                failed_stocks = []
-                app_logger.info(f"开始刷新 {len(stocks_list)} 只股票数据: {stocks_list}")
-                for code in stocks_list:
-                    try:
-                        # 根据股票代码类型选择不同的行情引擎
-                        if code.startswith('hk'):
-                            quotation_engine = easyquotation.use('hkquote')
-                            app_logger.debug(f"使用 hkquote 引擎获取港股 {code} 数据")
-                        else:
-                            quotation_engine = easyquotation.use('sina')
-                            app_logger.debug(f"使用 sina 引擎获取股票 {code} 数据")
-                        # 直接调用 stocks 方法，添加类型注释忽略检查
-                        # 对于港股，使用纯数字代码查询
-                        query_code = code[2:] if code.startswith('hk') else code
-                        app_logger.debug(f"请求代码: {query_code}")
-                        single = quotation_engine.stocks([query_code])  # type: ignore
-                        
-                        if isinstance(single, dict):
-                            # 精确使用原始 code 作为 key 获取数据，避免映射错误
-                            stock_data = single.get(query_code) or next(iter(single.values()), None)
-                            data_dict[code] = stock_data
-                            app_logger.debug(f"成功获取 {code} 数据: {stock_data}")
-                        else:
-                            failed_stocks.append(code)
-                            app_logger.warning(f"获取 {code} 数据失败，返回数据类型: {type(single)}")
-                    except Exception as e:
-                        app_logger.error(f'获取股票 {code} 数据失败: {e}')
-                        failed_stocks.append(code)
-                
-                stocks = self.process_stock_data(data_dict, stocks_list)
-                
-                # 检查数据是否发生变化，只在有变化时更新UI
-                if self._has_stock_data_changed(stocks):
-                    app_logger.info("检测到股票数据变化，更新UI")
-                    # 更新缓存数据
-                    self._update_last_stock_data(stocks)
-                    
-                    # 如果所有股票都失败了，显示错误信息
-                    if len(failed_stocks) == len(stocks_list) and len(stocks_list) > 0:
-                        app_logger.error("所有股票数据获取失败")
-                        error_stocks = [("数据加载失败", "--", "--", "#e6eaf3", "", "")] * len(stocks_list)
-                        self.table.setRowCount(0)
-                        self.table.clearContents()
-                        self.table.update_data(error_stocks)  # type: ignore
-                    else:
-                        self.table.setRowCount(0)
-                        self.table.clearContents()
-                        self.table.update_data(stocks)  # type: ignore
-                    
-                    self.table.viewport().update()
-                    self.table.repaint()
-                    QtWidgets.QApplication.processEvents()
-                    self.adjust_window_height()  # 每次刷新后自适应高度
-                    app_logger.info(f"数据刷新完成，失败{len(failed_stocks)}只股票: {failed_stocks}")
-                else:
-                    app_logger.info("股票数据无变化，跳过UI更新")
-                
-                # 隐藏加载状态
-                self.loading_label.hide()
-                self.table.show()
-                QtWidgets.QApplication.processEvents()
-            except Exception as e:
-                app_logger.error(f'行情刷新异常: {e}')
-                # 显示错误信息
-                error_stocks = [("数据加载异常", "--", "--", "#e6eaf3", "", "")] * max(3, len(stocks_list) if stocks_list else 3)
-                self.table.setRowCount(0)
-                self.table.clearContents()
-                self.table.update_data(error_stocks)  # type: ignore
-                self.table.viewport().update()
-                self.table.repaint()
-                QtWidgets.QApplication.processEvents()
-                self.adjust_window_height()
-                
-                # 隐藏加载状态
-                self.loading_label.hide()
-                self.table.show()
-                QtWidgets.QApplication.processEvents()
+        try:
+            # 显示加载状态
+            self.loading_label.show()
+            self.table.hide()
+            QtWidgets.QApplication.processEvents()
+            
+            # 使用股票管理器获取数据
+            from stock_monitor.core.stock_manager import stock_manager
+            stocks = stock_manager.get_stock_list_data(stocks_list)
+            
+            # 显示数据
+            self.table.setRowCount(0)
+            self.table.clearContents()
+            self.table.update_data(stocks)  # type: ignore
+            
+            self.table.viewport().update()
+            self.table.repaint()
+            self.adjust_window_height()  # 每次刷新后自适应高度
+            app_logger.info(f"数据刷新完成")
+            
+            # 隐藏加载状态
+            self.loading_label.hide()
+            self.table.show()
+        except Exception as e:
+            app_logger.error(f'行情刷新异常: {e}')
+            # 显示错误信息
+            error_stocks = [("数据加载异常", "--", "--", "#e6eaf3", "", "")] * max(3, len(stocks_list) if stocks_list else 3)
+            self.table.setRowCount(0)
+            self.table.clearContents()
+            self.table.update_data(error_stocks)  # type: ignore
+            self.table.viewport().update()
+            self.table.repaint()
+            self.adjust_window_height()
+            
+            # 隐藏加载状态
+            self.loading_label.hide()
+            self.table.show()
+
+    def _on_refresh_update(self, stocks, all_failed=False):
+        """
+        刷新更新回调函数
+        
+        Args:
+            stocks: 股票数据列表
+            all_failed: 是否所有股票都获取失败
+        """
+        if all_failed:
+            app_logger.error("所有股票数据获取失败")
+            error_stocks = [("数据加载失败", "--", "--", "#e6eaf3", "", "")] * len(stocks)
+            self.update_table_signal.emit(error_stocks)
+        else:
+            self.update_table_signal.emit(stocks)
+
+    def _on_refresh_error(self):
+        """刷新错误回调函数"""
+        app_logger.error("连续多次刷新失败")
+        error_stocks = [("网络连接异常", "--", "--", "#e6eaf3", "", "")] * max(3, len(self.current_user_stocks))
+        self.update_table_signal.emit(error_stocks)
+        
     def paintEvent(self, a0):  # type: ignore
         """
         绘制事件处理，用于绘制窗口背景
@@ -489,204 +498,6 @@ class MainWindow(QtWidgets.QWidget):
         painter.setBrush(bg_color)
         painter.setPen(QtCore.Qt.NoPen)  # type: ignore
         painter.drawRect(rect)
-
-    def _start_refresh_thread(self):
-        """启动刷新线程"""
-        self._refresh_thread = threading.Thread(target=self._refresh_loop, daemon=True)
-        self._refresh_thread.start()
-
-    def _refresh_loop(self):
-        """刷新循环"""
-        consecutive_failures = 0
-        max_consecutive_failures = 3  # 最大连续失败次数
-        
-        # 增加启动延迟，给系统网络连接一些初始化时间
-        app_logger.info("后台刷新线程启动，等待5秒初始化网络连接...")
-        time.sleep(5)  # 增加到5秒以确保网络连接就绪
-        
-        while True:
-            if hasattr(self, 'quotation'):
-                try:
-                    data_dict = {}
-                    failed_count = 0
-                    
-                    # 检查是否有需要更新的数据
-                    current_stocks = self.current_user_stocks
-                    app_logger.debug(f"当前需要刷新的股票: {current_stocks}")
-                    if not current_stocks:
-                        # 如果没有股票，等待下次刷新
-                        sleep_time = self.refresh_interval if is_market_open() else 30
-                        app_logger.debug(f"无自选股数据，下次刷新间隔: {sleep_time}秒")
-                        time.sleep(sleep_time)
-                        continue
-                    
-                    # 直接获取所有股票数据，不使用缓存
-                    app_logger.info(f"需要获取 {len(current_stocks)} 只股票数据: {current_stocks}")
-                    for code in current_stocks:
-                        try:
-                            # 根据股票代码类型选择不同的行情引擎
-                            if code.startswith('hk'):
-                                quotation_engine = easyquotation.use('hkquote')
-                                app_logger.debug(f"使用 hkquote 引擎获取港股 {code} 数据")
-                            else:
-                                quotation_engine = easyquotation.use('sina')
-                                app_logger.debug(f"使用 sina 引擎获取股票 {code} 数据")
-                            # 对于港股，使用纯数字代码查询
-                            query_code = code[2:] if code.startswith('hk') else code
-                            app_logger.debug(f"请求代码: {query_code}")
-                            
-                            # 添加重试机制
-                            max_retries = 5  # 增加重试次数
-                            retry_count = 0
-                            single = None
-                            
-                            while retry_count < max_retries:
-                                try:
-                                    single = quotation_engine.stocks([query_code])  # type: ignore
-                                    # 检查返回数据是否有效
-                                    if isinstance(single, dict) and (query_code in single or any(single.values())):
-                                        # 确保返回的数据不是None且是完整的
-                                        stock_data = single.get(query_code) or next(iter(single.values()), None)
-                                        if stock_data is not None and self._is_stock_data_valid(stock_data):
-                                            break
-                                    retry_count += 1
-                                    app_logger.warning(f"获取 {code} 数据失败或不完整，第 {retry_count} 次重试")
-                                    if retry_count < max_retries:
-                                        time.sleep(2)  # 增加重试间隔
-                                except Exception as e:
-                                    retry_count += 1
-                                    app_logger.warning(f"获取 {code} 数据异常: {e}，第 {retry_count} 次重试")
-                                    if retry_count < max_retries:
-                                        time.sleep(2)  # 增加重试间隔
-                            
-                            # 精确使用完整代码作为键，避免数据混淆
-                            if isinstance(single, dict):
-                                stock_data = single.get(query_code) or next(iter(single.values()), None)
-                                if stock_data is not None and self._is_stock_data_valid(stock_data):
-                                    data_dict[code] = stock_data
-                                    app_logger.debug(f"成功获取 {code} 数据")
-                                else:
-                                    failed_count += 1
-                                    app_logger.warning(f"{code} 数据为空或不完整")
-                            else:
-                                failed_count += 1
-                                app_logger.warning(f"获取 {code} 数据失败，返回数据类型: {type(single)}")
-                        except Exception as e:
-                            app_logger.error(f'获取股票 {code} 数据失败: {e}')
-                            failed_count += 1
-                    
-                    stocks = self.process_stock_data(data_dict, self.current_user_stocks)
-                    
-                    # 检查数据是否发生变化，只在有变化时更新UI
-                    if self._has_stock_data_changed(stocks):
-                        app_logger.info("检测到股票数据变化，更新UI")
-                        # 更新缓存数据
-                        self._update_last_stock_data(stocks)
-                        
-                        # 如果所有股票都失败了，且股票列表不为空，显示错误信息
-                        if failed_count == len(self.current_user_stocks) and len(self.current_user_stocks) > 0:
-                            app_logger.error("所有股票数据获取失败")
-                            error_stocks = [("数据加载失败", "--", "--", "#e6eaf3", "", "")] * len(self.current_user_stocks)
-                            self.update_table_signal.emit(error_stocks)
-                        else:
-                            self.update_table_signal.emit(stocks)
-                    else:
-                        app_logger.info("股票数据无变化，跳过UI更新")
-                        
-                    consecutive_failures = 0  # 重置失败计数
-                    app_logger.info(f"后台刷新完成，失败{failed_count}只股票")
-                except Exception as e:
-                    app_logger.error(f'行情刷新异常: {e}')
-                    consecutive_failures += 1
-                    
-                    # 如果连续失败多次，发送错误信息到UI
-                    if consecutive_failures >= max_consecutive_failures:
-                        app_logger.error(f"连续{max_consecutive_failures}次刷新失败")
-                        error_stocks = [("网络连接异常", "--", "--", "#e6eaf3", "", "")] * max(3, len(self.current_user_stocks))
-                        self.update_table_signal.emit(error_stocks)
-                        consecutive_failures = 0  # 重置失败计数
-            
-            # 根据开市状态决定刷新间隔
-            sleep_time = self.refresh_interval if is_market_open() else 30
-            app_logger.debug(f"下次刷新间隔: {sleep_time}秒")
-            # 确保睡眠时间非负
-            if sleep_time < 0:
-                sleep_time = 5  # 默认5秒
-            time.sleep(sleep_time)
-
-    def _is_stock_data_valid(self, stock_data):
-        """
-        检查股票数据是否完整有效
-        
-        Args:
-            stock_data: 股票数据字典
-            
-        Returns:
-            bool: 数据是否有效
-        """
-        if not isinstance(stock_data, dict):
-            return False
-            
-        # 检查关键字段是否存在且不为None
-        now = stock_data.get('now') or stock_data.get('price')
-        close = stock_data.get('close') or stock_data.get('lastPrice') or now
-        
-        # 如果now和close都为None，则数据不完整
-        if now is None and close is None:
-            return False
-            
-        return True
-
-    def _has_stock_data_changed(self, stocks):
-        """
-        检查股票数据是否发生变化
-        
-        Args:
-            stocks (list): 当前股票数据列表
-            
-        Returns:
-            bool: 数据是否发生变化
-        """
-        # 如果没有缓存数据，认为发生了变化
-        if not self._last_stock_data:
-            return True
-            
-        # 比较每只股票的数据
-        for stock in stocks:
-            name, price, change, color, seal_vol, seal_type = stock
-            key = f"{name}_{price}_{change}_{color}_{seal_vol}_{seal_type}"
-            
-            # 如果这只股票之前没有数据，认为发生了变化
-            if name not in self._last_stock_data:
-                return True
-                
-            # 如果数据不匹配，认为发生了变化
-            if self._last_stock_data[name] != key:
-                return True
-                
-        # 检查是否有股票被移除
-        current_names = [stock[0] for stock in stocks]
-        for name in self._last_stock_data.keys():
-            if name not in current_names:
-                return True
-                
-        # 数据没有变化
-        return False
-    
-    def _update_last_stock_data(self, stocks):
-        """
-        更新最后股票数据缓存
-        
-        Args:
-            stocks (list): 当前股票数据列表
-        """
-        self._last_stock_data.clear()
-        for stock in stocks:
-            name, price, change, color, seal_vol, seal_type = stock
-            key = f"{name}_{price}_{change}_{color}_{seal_vol}_{seal_type}"
-            self._last_stock_data[name] = key
-            
-        app_logger.debug(f"更新股票数据缓存，共{len(self._last_stock_data)}只股票")
 
     def _update_database_on_startup(self):
         """在启动时更新数据库"""
@@ -762,72 +573,21 @@ class MainWindow(QtWidgets.QWidget):
             cfg = load_config()
             stocks = cfg.get('user_stocks', None)
             
-            # 确保stocks是一个非空列表
-            if not isinstance(stocks, list) or len(stocks) == 0:
+            # 确保stocks是一个列表
+            if not isinstance(stocks, list):
                 app_logger.warning("配置文件中未找到有效的用户股票列表，使用默认值")
-                stocks = ['sh600460', 'sh603986', 'sh600030', 'sh000001']
+                stocks = []
             
-            processed_stocks = []
-            default_stocks = ['sh600460', 'sh603986', 'sh600030', 'sh000001']
-            
-            for stock in stocks:
-                try:
-                    # 处理字符串类型的股票标识
-                    if isinstance(stock, str):
-                        # 如果包含空格，提取最后一个部分作为代码
-                        # 修复港股代码保存问题
-                        stock_text = stock.strip()
-                        if stock_text.startswith(('🇭🇰', '⭐️', '📈', '📊', '🏦', '🛡️', '⛽️', '🚗', '💻')):
-                            stock_text = stock_text[2:].strip()  # 移除emoji
-                        
-                        # 特殊处理港股
-                        if stock_text.startswith('hk'):
-                            # 港股代码格式为hkxxxxx
-                            code = stock_text.split()[0]
-                        elif ' ' in stock_text:
-                            parts = [p.strip() for p in stock_text.split() if p.strip()]
-                            if len(parts) >= 2:
-                                code = parts[-1]
-                            else:
-                                code = parts[0] if parts else ''
-                        else:
-                            code = stock_text
-                        
-                        # 格式化股票代码
-                        from stock_monitor.utils.helpers import format_stock_code
-                        formatted_code = format_stock_code(code)
-                        if formatted_code:
-                            processed_stocks.append(formatted_code)
-                    
-                    # 非字符串类型直接跳过
-                except Exception as e:
-                    app_logger.error(f"处理股票 {stock} 时发生错误: {e}")
-                    continue
-            
-            # 去除重复项，保持原有顺序
-            seen = set()
-            unique_stocks = []
-            for stock in processed_stocks:
-                if stock not in seen:
-                    seen.add(stock)
-                    unique_stocks.append(stock)
-            processed_stocks = unique_stocks
-            
-            # 确保至少有3个股票
-            if len(processed_stocks) < 3:
-                app_logger.info(f"用户股票数量不足3个，添加默认股票")
-                for default_stock in default_stocks:
-                    if default_stock not in processed_stocks:
-                        processed_stocks.append(default_stock)
-                    if len(processed_stocks) >= 3:
-                        break
+            # 使用统一的工具函数处理股票代码提取
+            from stock_monitor.utils import extract_stocks_from_list
+            processed_stocks = extract_stocks_from_list(stocks)
             
             return processed_stocks
             
         except Exception as e:
             app_logger.error(f"加载用户股票列表时发生严重错误: {e}")
-            # 返回安全的默认值
-            return ['sh600460', 'sh603986', 'sh600030', 'sh000001']
+            # 返回空列表
+            return []
 
     def _format_stock_code(self, code):
         """
@@ -840,8 +600,9 @@ class MainWindow(QtWidgets.QWidget):
             str: 格式化后的股票代码
         """
         # 使用工具函数处理股票代码格式化
-        from stock_monitor.utils.helpers import format_stock_code
-        return format_stock_code(code)
+        from stock_monitor.utils.stock_utils import StockCodeProcessor
+        processor = StockCodeProcessor()
+        return processor.format_stock_code(code)
 
     def load_theme_config(self):
         """
@@ -861,50 +622,28 @@ class MainWindow(QtWidgets.QWidget):
         """
         根据内容调整窗口高度和宽度
         """
-        # 用真实行高自适应主窗口高度，最小3行
+        # 用真实行高自适应主窗口高度
         QtWidgets.QApplication.processEvents()
         vh = self.table.verticalHeader()
         if self.table.rowCount() > 0:
             row_height = vh.sectionSize(0)
         else:
             row_height = 36  # 默认
-        min_rows = 3
-        layout_margin = 4  # 固定边距总和
-        table_height = max(self.table.rowCount(), min_rows) * row_height
+        layout_margin = 0  # 边距设为0
+        table_height = self.table.rowCount() * row_height
         # 增加表头高度（4列时略增）
-        new_height = table_height + layout_margin
+        new_height = table_height + layout_margin + self.market_status_bar.height()
         self.setFixedHeight(new_height)
-        # ====== 新增：宽度自适应内容显示 ======
-        has_seal = False
-        has_long_name = False  # 检查是否有长名称（如港股）
-        for row in range(self.table.rowCount()):
-            # 检查是否有封单
-            item = self.table.item(row, 3)
-            if item and item.text().strip():
-                has_seal = True
-                break
-                
-        # 检查是否有长名称
-        for row in range(self.table.rowCount()):
-            item = self.table.item(row, 0)  # 名称列
-            if item and len(item.text().strip()) > 8:  # 如果名称长度超过8个字符，认为是长名称
-                has_long_name = True
-                break
         
-        # 根据内容自适应宽度
-        base_width = 280  # 基础宽度
-        seal_width_addition = 80  # 有封单时的额外宽度
-        long_name_width_addition = 100  # 有长名称时的额外宽度
-        margin_adjustment = 12  # 边距调整
+        # 更精确地计算表格宽度
+        table_width = sum(self.table.columnWidth(col) for col in range(self.table.columnCount()))
+        self.setFixedWidth(table_width)
         
-        # 计算最终宽度
-        final_width = base_width - margin_adjustment
-        if has_seal:
-            final_width += seal_width_addition
-        if has_long_name:
-            final_width += long_name_width_addition
-            
-        self.setFixedWidth(final_width)
+        # 强制更新布局
+        self.layout().update()
+        
+        # 更新窗口几何形状
+        self.updateGeometry()
 
 class SystemTray(QtWidgets.QSystemTrayIcon):
     """
@@ -940,7 +679,7 @@ class SystemTray(QtWidgets.QSystemTrayIcon):
             self.main_window.raise_()
             self.main_window.activateWindow()
         elif reason == QtWidgets.QSystemTrayIcon.Context:  # type: ignore
-            self.contextMenu().popup(QtGui.QCursor.pos())  # type: ignore
+            self.contextMenu().exec_(QtGui.QCursor.pos())  # type: ignore
 
 def main():
     """主函数"""

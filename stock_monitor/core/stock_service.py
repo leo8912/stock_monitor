@@ -1,15 +1,13 @@
 """
 股票数据服务模块
-提供统一的股票数据获取和处理接口
+提供统一的股票数据获取接口
 """
 
-import easyquotation
 import time
-import threading
-from typing import Dict, Any, List, Tuple, Optional
+from typing import List, Dict, Any, Optional
+import easyquotation
 from ..utils.logger import app_logger
-from ..utils.cache import global_cache
-from ..config.manager import is_market_open
+from ..utils.error_handler import retry_on_failure
 
 
 class StockDataService:
@@ -17,36 +15,44 @@ class StockDataService:
     
     def __init__(self):
         """初始化股票数据服务"""
-        self.quotation = easyquotation.use('sina')
-        self._lock = threading.Lock()
-        
+        try:
+            self.quotation = easyquotation.use('sina')
+        except Exception as e:
+            app_logger.error(f"初始化新浪行情引擎失败: {e}")
+            self.quotation = None
+    
+    @retry_on_failure(max_attempts=3, delay=1.0)
     def get_stock_data(self, code: str) -> Optional[Dict[str, Any]]:
         """
-        获取单只股票数据
+        获取单只股票数据，带重试机制
         
         Args:
             code (str): 股票代码
             
         Returns:
-            Optional[Dict[str, Any]]: 股票数据，获取失败返回None
+            Optional[Dict[str, Any]]: 股票数据，获取失败则返回None
         """
-        # 检查缓存
-        cache_key = f"stock_{code}"
-        cached_data = global_cache.get_with_market_aware_ttl(cache_key)
-        if cached_data is not None:
-            return cached_data
-            
         try:
             # 根据股票代码类型选择不同的行情引擎
             if code.startswith('hk'):
-                quotation_engine = easyquotation.use('hkquote')
-                app_logger.debug(f"使用 hkquote 引擎获取港股 {code} 数据")
+                try:
+                    quotation_engine = easyquotation.use('hkquote')
+                    app_logger.debug(f"使用 hkquote 引擎获取港股 {code} 数据")
+                except Exception as e:
+                    app_logger.error(f"初始化港股行情引擎失败: {e}")
+                    return None
             else:
-                quotation_engine = easyquotation.use('sina')
+                if self.quotation is None:
+                    try:
+                        self.quotation = easyquotation.use('sina')
+                    except Exception as e:
+                        app_logger.error(f"重新初始化新浪行情引擎失败: {e}")
+                        return None
+                quotation_engine = self.quotation
                 app_logger.debug(f"使用 sina 引擎获取股票 {code} 数据")
-                
-            # 对于港股，使用纯数字代码查询
-            query_code = code[2:] if code.startswith('hk') else code
+            
+            # 移除前缀获取纯代码
+            query_code = code[2:] if code.startswith(('sh', 'sz', 'hk')) else code
             app_logger.debug(f"请求代码: {query_code}")
             
             # 添加重试机制
@@ -62,17 +68,14 @@ class StockDataService:
                         # 确保返回的数据不是None且是完整的
                         stock_data = single.get(query_code) or next(iter(single.values()), None)
                         if stock_data is not None:
-                            # 缓存数据
-                            ttl = 30 if is_market_open() else 300  # 开市期间30秒，闭市期间300秒
-                            global_cache.set(cache_key, stock_data, ttl=ttl)
                             return stock_data
                     retry_count += 1
-                    app_logger.warning(f"获取 {code} 数据失败或不完整，第 {retry_count} 次重试")
+                    app_logger.debug(f"获取 {code} 数据失败或不完整，第 {retry_count} 次重试")
                     if retry_count < max_retries:
                         time.sleep(2)
                 except Exception as e:
                     retry_count += 1
-                    app_logger.warning(f"获取 {code} 数据异常: {e}，第 {retry_count} 次重试")
+                    app_logger.debug(f"获取 {code} 数据异常: {e}，第 {retry_count} 次重试")
                     if retry_count < max_retries:
                         time.sleep(2)
                         
@@ -110,14 +113,18 @@ class StockDataService:
             return False
             
         # 检查关键字段是否存在且不为None
-        now = stock_data.get('now') or stock_data.get('price')
-        close = stock_data.get('close') or stock_data.get('lastPrice') or now
-        
-        # 如果now和close都为None，则数据不完整
-        if now is None and close is None:
+        required_fields = ['now', 'close']
+        for field in required_fields:
+            if field not in stock_data or stock_data[field] is None:
+                return False
+                
+        # 检查关键字段是否为有效数值
+        try:
+            float(stock_data['now'])
+            float(stock_data['close'])
+            return True
+        except (ValueError, TypeError):
             return False
-            
-        return True
 
 
 # 创建全局股票数据服务实例

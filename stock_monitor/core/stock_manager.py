@@ -3,9 +3,10 @@
 负责处理股票相关的业务逻辑
 """
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from ..utils.logger import app_logger
 from ..core.stock_service import stock_data_service
+from ..utils.stock_utils import StockCodeProcessor
 
 
 class StockManager:
@@ -14,6 +15,7 @@ class StockManager:
     def __init__(self):
         """初始化股票管理器"""
         self._last_stock_data: Dict[str, str] = {}
+        self._processor = StockCodeProcessor()
     
     def has_stock_data_changed(self, stocks: List[tuple]) -> bool:
         """

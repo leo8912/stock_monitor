@@ -16,6 +16,7 @@ import requests
 import io
 import pandas as pd
 from zhconv import convert
+import easyquotation
 
 
 def fetch_hk_stocks() -> List[Dict[str, str]]:
@@ -43,37 +44,18 @@ def fetch_hk_stocks() -> List[Dict[str, str]]:
                     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
                 }
                 
-                # 下载Excel文件
-                response = requests.get(url, timeout=30, headers=headers)
+                response = requests.get(url, headers=headers, timeout=30)
                 response.raise_for_status()
-                
-                # 检查内容类型
-                content_type = response.headers.get('content-type', '')
-                app_logger.info(f"尝试URL: {url}")
-                app_logger.info(f"响应内容类型: {content_type}")
-                app_logger.info(f"响应内容大小: {len(response.content)} 字节")
-                
-                if len(response.content) > 1000:  # 确保内容足够大
-                    content = response.content
-                    break
-                else:
-                    app_logger.warning(f"URL {url} 返回的内容太小")
+                content = response.content
+                app_logger.info(f"成功从 {url} 获取港股数据")
+                break
             except Exception as e:
-                app_logger.warning(f"尝试URL {url} 失败: {e}")
+                app_logger.warning(f"从 {url} 获取港股数据失败: {e}")
                 continue
         
         if content is None:
-            app_logger.error("所有URL都尝试失败")
-            # 返回本地缓存的港股数据
-            try:
-                with open(resource_path("stock_basic.json"), "r", encoding="utf-8") as f:
-                    all_stocks = json.load(f)
-                hk_stocks = [stock for stock in all_stocks if stock["code"].startswith("hk")]
-                app_logger.info(f"使用本地缓存数据，获取到 {len(hk_stocks)} 只港股")
-                return hk_stocks
-            except Exception as local_e:
-                app_logger.error(f"获取本地港股数据也失败: {local_e}")
-                return []
+            app_logger.error("无法从任何URL获取港股数据")
+            return []
         
         # 使用pandas读取Excel文件，因为它能更好地处理这种格式
         # 修复zhconv资源文件缺失问题，使用pandas内置的中文处理功能
@@ -154,8 +136,6 @@ def fetch_all_stocks() -> List[Dict[str, str]]:
         List[Dict[str, str]]: 股票列表，每个元素包含code和name字段
     """
     try:
-        import easyquotation
-        
         # 使用easyquotation获取股票列表
         quotation = easyquotation.use('sina')
         
@@ -168,7 +148,7 @@ def fetch_all_stocks() -> List[Dict[str, str]]:
             all_stock_codes.extend(codes)
         
         # 分批获取股票数据，避免一次性请求过多
-        batch_size = 50
+        batch_size = 800
         stocks_data = []
         
         for i in range(0, len(all_stock_codes), batch_size):
@@ -232,7 +212,8 @@ def fetch_all_stocks() -> List[Dict[str, str]]:
                    (code == 'sz000002' and current_name == '万科Ａ'):
                     unique_stocks[code] = stock
                 elif ('指数' in current_name and '指数' not in existing_name) or \
-                     ('Ａ股' in current_name and 'Ａ股' not in existing_name):
+                     (code.startswith('hk') and not existing_name.startswith('hk')):
+                    # 指数优先于个股，港股优先于旧数据
                     unique_stocks[code] = stock
             else:
                 unique_stocks[code] = stock
@@ -333,11 +314,9 @@ def preload_popular_stocks_data() -> None:
             'sz000002',  # 万科A
             'sz000858',  # 五粮液
             'sh600460',  # 士兰微
-            'sh603986',  # 兆易创新',
+            'sh603986',  # 兆易创新
             'hk00700',   # 腾讯控股（示例港股）
         ]
-        
-        import easyquotation
         
         # 获取热门股票数据并存入缓存
         success_count = 0

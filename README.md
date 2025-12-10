@@ -37,7 +37,7 @@ stock_monitor/
 │   │   └── stock_table.py # 股票表格组件
 │   ├── dialogs/
 │   │   ├── __init__.py
-│   │   └── new_settings_dialog.py # 设置对话框
+│   │   └── settings_dialog.py # 设置对话框
 │   ├── widgets/
 │   │   ├── __init__.py
 │   │   ├── market_status.py   # 市场状态条组件
@@ -108,7 +108,7 @@ stock_monitor/
 主要文件：
 - [components.py](file:///D:/code/stock/stock_monitor/ui/components.py): UI基础组件
 - [market_status.py](file:///D:/code/stock/stock_monitor/ui/market_status.py): 市场状态条组件，可视化展示整体市场涨跌情况
-- [new_settings_dialog.py](file:///D:/code/stock/stock_monitor/ui/dialogs/new_settings_dialog.py): 设置对话框，用于管理自选股、刷新频率等设置
+- [settings_dialog.py](file:///D:/code/stock/stock_monitor/ui/dialogs/settings_dialog.py): 设置对话框，用于管理自选股、刷新频率等设置
 
 ### 6. 工具模块 (utils/)
 

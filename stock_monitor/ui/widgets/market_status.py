@@ -18,6 +18,7 @@ class MarketStatusBar(QtWidgets.QWidget):
         self.total_count = 100 # 总股票数
         self.setMinimumHeight(3)
         self.setMaximumHeight(3)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Preferred)
         
     def update_status(self, up_count, down_count, flat_count, total_count):
         """更新状态条显示"""

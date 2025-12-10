@@ -10,16 +10,8 @@ import time
 from typing import Dict, Any, Optional
 from collections import OrderedDict
 from .logger import app_logger
+from stock_monitor.config.manager import is_market_open as is_market_open_func
 
-def is_market_open():
-    """检查A股是否开市"""
-    import datetime
-    now = datetime.datetime.now()
-    if now.weekday() >= 5:  # 周末
-        return False
-    t = now.time()
-    return ((datetime.time(9,30) <= t <= datetime.time(11,30)) or 
-            (datetime.time(13,0) <= t <= datetime.time(15,0)))
 
 class DataCache:
     """数据缓存管理器，支持LRU淘汰策略"""
@@ -59,6 +51,7 @@ class DataCache:
             # 删除最久未使用的项（OrderedDict的第一个元素）
             oldest_key, _ = self._cache.popitem(last=False)
             app_logger.debug(f"LRU淘汰: 删除最久未使用的缓存项 {oldest_key}")
+            app_logger.debug(f"当前缓存大小: {len(self._cache)}, 最大大小: {self.max_size}")
             
         self._cache[key] = {
             'data': data,
@@ -67,7 +60,7 @@ class DataCache:
         }
         # 将该项移到最后（表示最近使用）
         self._cache.move_to_end(key)
-        app_logger.debug(f"设置缓存: {key}, TTL: {ttl}秒")
+        app_logger.debug(f"设置缓存: {key}, TTL: {ttl}秒, 数据大小: {len(str(data)) if data else 0} 字符")
     
     def get(self, key: str) -> Optional[Any]:
         """
@@ -82,9 +75,6 @@ class DataCache:
         Returns:
             Optional[Any]: 缓存数据，如果不存在或已过期则返回None
         """
-        # 对于实时行情数据，不使用缓存
-        # 保留此函数以供其他非实时数据使用
-        
         if key not in self._cache:
             app_logger.debug(f"缓存未命中: {key}")
             return None
@@ -101,6 +91,7 @@ class DataCache:
         # 将访问的项移到最后（表示最近使用）
         self._cache.move_to_end(key)
         app_logger.debug(f"缓存命中: {key}, 剩余时间: {cache_entry['ttl'] - elapsed:.1f}秒")
+        app_logger.debug(f"缓存数据大小: {len(str(cache_entry['data'])) if cache_entry['data'] else 0} 字符")
         return cache_entry['data']
     
     def get_with_market_aware_ttl(self, key: str) -> Optional[Any]:
@@ -122,7 +113,7 @@ class DataCache:
         cache_entry = self._cache[key]
         # 根据市场状态确定实际的TTL
         actual_ttl = cache_entry['ttl']
-        if not is_market_open():
+        if not is_market_open_func():
             # 闭市期间，将TTL延长到10倍（但不超过1小时）
             actual_ttl = min(cache_entry['ttl'] * 10, 3600)
             
@@ -137,6 +128,7 @@ class DataCache:
         # 将访问的项移到最后（表示最近使用）
         self._cache.move_to_end(key)
         app_logger.debug(f"缓存命中: {key}, 剩余时间: {actual_ttl - elapsed:.1f}秒")
+        app_logger.debug(f"缓存数据大小: {len(str(cache_entry['data'])) if cache_entry['data'] else 0} 字符")
         return cache_entry['data']
     
     def clear(self, key: Optional[str] = None) -> None:
@@ -169,7 +161,7 @@ class DataCache:
         for key, cache_entry in self._cache.items():
             # 根据市场状态确定实际的TTL
             actual_ttl = cache_entry['ttl']
-            if not is_market_open():
+            if not is_market_open_func():
                 # 闭市期间，将TTL延长到10倍（但不超过1小时）
                 actual_ttl = min(cache_entry['ttl'] * 10, 3600)
                 
@@ -198,7 +190,7 @@ class DataCache:
         for cache_entry in self._cache.values():
             # 根据市场状态确定实际的TTL
             actual_ttl = cache_entry['ttl']
-            if not is_market_open():
+            if not is_market_open_func():
                 # 闭市期间，将TTL延长到10倍（但不超过1小时）
                 actual_ttl = min(cache_entry['ttl'] * 10, 3600)
                 
@@ -213,12 +205,26 @@ class DataCache:
             'usage_percentage': (total_items / self.max_size) * 100 if self.max_size > 0 else 0
         }
 
+    def force_cleanup(self) -> int:
+        """
+        强制清理缓存，删除一半最旧的缓存项
+        
+        当内存使用过高时，可以调用此方法强制清理缓存
+        
+        Returns:
+            int: 清理的缓存项数量
+        """
+        items_to_remove = len(self._cache) // 2
+        removed_count = 0
+        
+        for _ in range(items_to_remove):
+            if self._cache:
+                self._cache.popitem(last=False)
+                removed_count += 1
+                
+        app_logger.info(f"强制清理缓存，删除了 {removed_count} 个缓存项")
+        return removed_count
+
 
 # 创建全局缓存实例
 global_cache = DataCache()
-
-
-
-
-
-

@@ -1,4 +1,4 @@
-name: Pack & Auto Release Stock Monitor
+name: 打包并自动发布股票监控应用 # Pack & Auto Release Stock Monitor
 
 on:
   push:
@@ -6,48 +6,53 @@ on:
       - 'stock_monitor/**'
       - 'requirements.txt'
       - '.github/workflows/pack-release.yml'
-  workflow_dispatch:
+  workflow_dispatch: # 允许手动触发工作流
 
 permissions:
-  contents: write
-  packages: write
+  contents: write  # 写入仓库内容权限
+  packages: write  # 写入包权限
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-latest  # 在最新的Windows环境下运行
 
     steps:
-    - name: Checkout code
+    - name: 检出代码 # Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up Python
+    - name: 设置Python环境 # Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
 
-    - name: Install dependencies
+    - name: 安装依赖项 # Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
+        pip install -r requirements-dev.txt
         pip install pyinstaller
 
-    - name: Verify required files exist
+    - name: 验证所需文件是否存在 # Verify required files exist
       run: |
-        echo "Checking required files:"
+        echo "检查所需文件:"
         Get-ChildItem stock_monitor/resources/
-        echo "Icon file exists:"
+        echo "图标文件是否存在:"
         Test-Path stock_monitor/resources/icon.ico
-        echo "Stock data file exists:"
+        echo "股票数据文件是否存在:"
         Test-Path stock_monitor/resources/stock_basic.json
 
-    - name: Find easyquotation stock_codes.conf
+    - name: 查找easyquotation的stock_codes.conf文件 # Find easyquotation stock_codes.conf
       id: find_eq
       run: |
         python -c "import easyquotation, os; print(os.path.dirname(easyquotation.__file__))" > eq_path.txt
         $EQPATH = Get-Content eq_path.txt | Select-Object -First 1
         echo "EQPATH=$EQPATH" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-    - name: Build with PyInstaller
+    - name: 运行测试 # Run tests
+      run: |
+        python -m pytest tests/
+    
+    - name: 使用PyInstaller构建 # Build with PyInstaller
       run: |
         pyinstaller -y -w -i stock_monitor/resources/icon.ico -n stock_monitor stock_monitor/main.py `
           --add-data "$env:EQPATH\stock_codes.conf;easyquotation" `
@@ -56,21 +61,21 @@ jobs:
           --hidden-import=pypinyin `
           --hidden-import=pypinyin.style
 
-    - name: List dist directory
+    - name: 列出dist目录内容 # List dist directory
       run: |
         ls dist
 
-    - name: Zip artifact (entire stock_monitor folder)
+    - name: 压缩产物(整个stock_monitor文件夹) # Zip artifact (entire stock_monitor folder)
       run: |
         powershell Compress-Archive -Path dist/stock_monitor/* -DestinationPath stock_monitor.zip
 
-    - name: Upload artifact
+    - name: 上传产物 # Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: stock-monitor
         path: stock_monitor.zip
 
-    - name: Write version extract script
+    - name: 编写版本提取脚本 # Write version extract script
       shell: bash
       run: |
         echo "import re" > get_version.py
@@ -78,47 +83,35 @@ jobs:
         echo "m=re.search(r\"__version__\\s*=\\s*['\\\"]([\\d\\.]+)['\\\"]\", s)" >> get_version.py
         echo "print(f'version=v{m.group(1)}' if m else 'version=unknown')" >> get_version.py
 
-    - name: Get version from main.py
+    - name: 从main.py获取版本号 # Get version from main.py
       id: get_version
       shell: bash
       run: |
         version=$(python get_version.py)
         echo "version=${version#version=}" >> $GITHUB_OUTPUT
 
-    - name: Extract changelog from CHANGELOG.md
+    - name: 从CHANGELOG.md提取更新日志 # Extract changelog from CHANGELOG.md
       id: extract_changelog
       run: |
-        # Extract the latest changelog entry using PowerShell
+        # 使用PowerShell提取最新的更新日志条目
         $content = Get-Content -Path CHANGELOG.md -Raw
-        # Match the first version entry (most recent) without the trailing separator
-        $pattern = "(## v\d+\.\d+\.\d+.*?)(?=\n---\s*\n## v\d+\.\d+\.\d+|\n---\s*\Z)"
+        # 匹配特定版本的更新日志
+        $version = "${{ steps.get_version.outputs.version }}"
+        $pattern = "## \[v${version}\].*?(?=(\n## \[v|\Z))"
         $match = [regex]::Match($content, $pattern, [System.Text.RegularExpressions.RegexOptions]::Singleline)
         if ($match.Success) {
-            $changelog = $match.Groups[1].Value.Trim()
+            $changelog = $match.Groups[0].Value.Trim()
         } else {
-            # Fallback pattern if the above doesn't match
-            $pattern = "(## v\d+\.\d+\.\d+.*?)(?=## v\d+\.\d+\.\d+|\Z)"
-            $match = [regex]::Match($content, $pattern, [System.Text.RegularExpressions.RegexOptions]::Singleline)
-            if ($match.Success) {
-                $changelog = $match.Groups[1].Value.Trim()
-                # Remove trailing dashes if present
-                $changelog = $changelog -replace '\n---\s*$'
-                $changelog = $changelog.Trim()
-            } else {
-                $changelog = "暂无更新日志"
-            }
+            $changelog = "暂无更新日志"
         }
-        # Properly format multiline string for GitHub Actions
+        # 正确格式化多行字符串以供GitHub Actions使用
         $formattedChangelog = $changelog -replace '\n', "`n"
-        # Debug output to verify extracted content
-        echo "Extracted Changelog length: $($formattedChangelog.Length)"
-        echo "First 200 chars of changelog: $($formattedChangelog.Substring(0, [Math]::Min(200, $formattedChangelog.Length)))"
-        # Use GitHub Actions syntax for multiline strings
+        # 使用GitHub Actions语法处理多行字符串
         echo "changelog<<EOF" >> $env:GITHUB_OUTPUT
         echo "$formattedChangelog" >> $env:GITHUB_OUTPUT
         echo "EOF" >> $env:GITHUB_OUTPUT
 
-    - name: Create Release
+    - name: 创建发布 # Create Release
       uses: softprops/action-gh-release@v1
       with:
         files: stock_monitor.zip

@@ -4,7 +4,7 @@
 from .components.stock_table import StockTable
 from .widgets.market_status import MarketStatusBar
 from .widgets.stock_search import StockSearchWidget
-from .dialogs.new_settings_dialog import NewSettingsDialog
+from .dialogs.settings_dialog import NewSettingsDialog
 
 __all__ = [
     'StockTable',

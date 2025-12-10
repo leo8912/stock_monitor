@@ -28,13 +28,16 @@ class Logger:
         
         # 创建格式化器
         formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            '%(asctime)s | %(levelname)-8s | %(name)s | %(funcName)s:%(lineno)d | %(message)s'
         )
         
         # 添加控制台处理器
+        console_formatter = logging.Formatter(
+            '%(asctime)s | %(levelname)-8s | %(message)s'
+        )
         console_handler = logging.StreamHandler()
         console_handler.setLevel(log_level)
-        console_handler.setFormatter(formatter)
+        console_handler.setFormatter(console_formatter)
         self.logger.addHandler(console_handler)
         
         # 如果指定了日志文件，添加文件处理器（带轮转）
@@ -52,6 +55,7 @@ class Logger:
                 encoding='utf-8'
             )
             file_handler.setLevel(logging.DEBUG)  # 文件记录所有级别的日志
+            # 只有文件日志记录函数名和行号，控制台日志不记录以减少冗余
             file_handler.setFormatter(formatter)
             self.logger.addHandler(file_handler)
     

@@ -83,7 +83,7 @@ class StockSearchWidget(QtWidgets.QWidget):
         title.setStyleSheet("""
             QLabel {
                 color: #000000;
-                font-size: 20px;
+                font-size: 30px;
                 font-weight: bold;
                 background: transparent;
                 padding: 0;
@@ -101,7 +101,7 @@ class StockSearchWidget(QtWidgets.QWidget):
             QLineEdit {
                 background: #ffffff;
                 color: #000000;
-                font-size: 18px;
+                font-size: 20px;
                 border-radius: 8px;
                 border: 2px solid #cccccc;
                 padding: 14px 18px;
@@ -123,7 +123,7 @@ class StockSearchWidget(QtWidgets.QWidget):
             QListWidget {
                 background: #ffffff;
                 color: #000000;
-                font-size: 18px;
+                font-size: 20px;
                 border-radius: 8px;
                 border: 2px solid #cccccc;
                 outline: none;
@@ -131,7 +131,7 @@ class StockSearchWidget(QtWidgets.QWidget):
                 min-height: 320px;
             }
             QListWidget::item {
-                height: 45px;
+                height: 50px;
                 border-radius: 6px;
                 padding: 0 18px;
                 margin: 6px 10px;
@@ -179,7 +179,7 @@ class StockSearchWidget(QtWidgets.QWidget):
             QPushButton {
                 background: #0078d4;
                 color: #ffffff;
-                font-size: 18px;
+                font-size: 20px;
                 border-radius: 8px;
                 padding: 14px 22px;
                 border: none;
@@ -236,7 +236,7 @@ class StockSearchWidget(QtWidgets.QWidget):
         self.result_list.clear()
         
         if text:
-            # 根据输入文本过滤股票，并计算匹配度
+            # 根据输入文本过滤股票，并计算匹配度和优先级
             matched_stocks = []
             for stock in self.stock_data:
                 code = stock['code']
@@ -263,13 +263,22 @@ class StockSearchWidget(QtWidgets.QWidget):
                 elif text.lower() in abbr:  # 部分匹配首字母
                     score = 50
                 
+                # 计算优先级，A股优先
+                priority = 0
+                if code.startswith(('sh', 'sz')) and not code.startswith(('sh000', 'sz399')):
+                    priority = 10  # A股最高优先级
+                elif code.startswith(('sh000', 'sz399')):
+                    priority = 5   # 指数次优先级
+                elif code.startswith('hk'):
+                    priority = 1   # 港股较低优先级
+                
                 # 如果有匹配分数，则添加到结果中
                 if score > 0:
-                    matched_stocks.append((stock, score))
+                    matched_stocks.append((stock, score, priority))
             
-            # 按匹配分数排序，A股和指数优先显示
-            matched_stocks.sort(key=lambda x: (-self._stock_priority(x[0]['code']), -x[1]))
-            self.filtered_stocks = [stock for stock, score in matched_stocks]
+            # 按优先级和匹配分数排序，优先级高的在前，匹配度高的在前
+            matched_stocks.sort(key=lambda x: (-x[2], -x[1]))
+            self.filtered_stocks = [stock for stock, score, priority in matched_stocks]
             
             # 显示前30个匹配结果（增加显示数量）
             for stock in self.filtered_stocks[:30]:
@@ -282,25 +291,6 @@ class StockSearchWidget(QtWidgets.QWidget):
                 self.result_list.addItem(item)
                 
         self.add_btn.setEnabled(False)
-
-    def _stock_priority(self, code):
-        """
-        股票优先级排序，A股和指数优先显示
-        
-        Args:
-            code: 股票代码
-            
-        Returns:
-            int: 优先级分数，越高越优先
-        """
-        # A股和指数优先显示
-        if code.startswith(('sh', 'sz')) and not code.startswith(('sh000', 'sz399')):
-            return 10  # A股最高优先级
-        elif code.startswith(('sh000', 'sz399')):
-            return 5   # 指数次优先级
-        elif code.startswith('hk'):
-            return 1   # 港股最低优先级
-        return 0       # 其他类型
 
     def on_item_clicked(self, item): 
         """ 

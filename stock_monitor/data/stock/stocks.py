@@ -23,8 +23,9 @@ def load_stock_data() -> List[Dict[str, Any]]:
     from stock_monitor.utils.helpers import handle_exception
     
     def _load_data():
-        stock_file_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
-                                      'resources', 'stock_basic.json')
+        # 使用resource_path函数正确获取资源文件路径
+        from stock_monitor.utils.helpers import resource_path
+        stock_file_path = resource_path('stock_basic.json')
         with open(stock_file_path, 'r', encoding='utf-8') as f:
             data: List[Dict[str, Any]] = json.load(f)
         app_logger.debug(f"股票基础数据加载成功，共{len(data)}条记录")
