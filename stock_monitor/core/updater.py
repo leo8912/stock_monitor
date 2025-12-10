@@ -273,9 +273,14 @@ class AppUpdater:
             if hasattr(sys, '_MEIPASS'):
                 # 打包环境
                 executable = sys.executable
-                # 使用 subprocess 启动新进程然后退出当前进程
-                subprocess.Popen([executable] + sys.argv[1:])
-                QApplication.quit()
+                # 首先尝试使用 execv 直接替换进程
+                try:
+                    os.execv(executable, [executable] + sys.argv[1:])
+                except Exception as e:
+                    app_logger.warning(f"os.execv 重启失败: {e}，回退到 subprocess 方式")
+                    # 回退到 subprocess 方式
+                    subprocess.Popen([executable] + sys.argv[1:])
+                    QApplication.quit()
             else:
                 # 开发环境
                 executable = sys.executable
@@ -284,8 +289,14 @@ class AppUpdater:
                     # 如果是通过python运行的，则需要指定主模块
                     main_module = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'main.py')
                     if os.path.exists(main_module):
-                        subprocess.Popen([executable, main_module] + sys.argv[1:])
-                        QApplication.quit()
+                        # 首先尝试使用 execv 直接替换进程
+                        try:
+                            os.execv(executable, [executable, main_module] + sys.argv[1:])
+                        except Exception as e:
+                            app_logger.warning(f"os.execv 重启失败: {e}，回退到 subprocess 方式")
+                            # 回退到 subprocess 方式
+                            subprocess.Popen([executable, main_module] + sys.argv[1:])
+                            QApplication.quit()
             
         except Exception as e:
             app_logger.error(f"重启应用程序时发生错误: {e}")
