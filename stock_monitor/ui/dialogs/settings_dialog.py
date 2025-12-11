@@ -576,41 +576,9 @@ class NewSettingsDialog(QDialog):
         try:
             from stock_monitor.core.updater import app_updater
             
-            # 检查更新
+            # 使用统一的更新流程
             if app_updater.check_for_updates():
-                # 显示更新对话框
-                if app_updater.show_update_dialog(self):
-                    # 下载更新
-                    update_file = app_updater.download_update(self)
-                    if update_file:
-                        # 应用更新
-                        if app_updater.apply_update(update_file):
-                            # 重启应用
-                            from PyQt5.QtWidgets import QMessageBox
-                            QMessageBox.information(
-                                self, 
-                                "更新完成", 
-                                "应用更新完成，即将重启应用。",
-                                QMessageBox.Ok
-                            )
-                            # 重启应用
-                            app_updater.restart_application()
-                        else:
-                            from PyQt5.QtWidgets import QMessageBox
-                            QMessageBox.warning(
-                                self, 
-                                "更新失败", 
-                                "应用更新失败，请稍后重试或手动更新。",
-                                QMessageBox.Ok
-                            )
-                    else:
-                        from PyQt5.QtWidgets import QMessageBox
-                        QMessageBox.warning(
-                            self, 
-                            "下载失败", 
-                            "更新包下载失败，请检查网络连接后重试。",
-                            QMessageBox.Ok
-                        )
+                app_updater.perform_update(self)
             else:
                 from PyQt5.QtWidgets import QMessageBox
                 QMessageBox.information(

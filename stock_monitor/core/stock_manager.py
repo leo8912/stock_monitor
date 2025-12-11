@@ -7,6 +7,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from ..utils.logger import app_logger
 from ..core.stock_service import stock_data_service
 from ..utils.stock_utils import StockCodeProcessor
+from ..core.data_change_detector import DataChangeDetector
 
 
 class StockManager:
@@ -14,8 +15,8 @@ class StockManager:
     
     def __init__(self):
         """初始化股票管理器"""
-        self._last_stock_data: Dict[str, str] = {}
         self._processor = StockCodeProcessor()
+        self._data_change_detector = DataChangeDetector()
     
     def has_stock_data_changed(self, stocks: List[tuple]) -> bool:
         """
@@ -27,31 +28,7 @@ class StockManager:
         Returns:
             bool: 数据是否发生变化
         """
-        # 如果没有缓存数据，认为发生了变化
-        if not self._last_stock_data:
-            return True
-            
-        # 比较每只股票的数据
-        for stock in stocks:
-            name, price, change, color, seal_vol, seal_type = stock
-            key = f"{name}_{price}_{change}_{color}_{seal_vol}_{seal_type}"
-            
-            # 如果这只股票之前没有数据，认为发生了变化
-            if name not in self._last_stock_data:
-                return True
-                
-            # 如果数据不匹配，认为发生了变化
-            if self._last_stock_data[name] != key:
-                return True
-                
-        # 检查是否有股票被移除
-        current_names = [stock[0] for stock in stocks]
-        for name in self._last_stock_data.keys():
-            if name not in current_names:
-                return True
-                
-        # 数据没有变化
-        return False
+        return self._data_change_detector.has_stock_data_changed(stocks)
     
     def update_last_stock_data(self, stocks: List[tuple]) -> None:
         """
@@ -60,13 +37,7 @@ class StockManager:
         Args:
             stocks (List[tuple]): 当前股票数据列表
         """
-        self._last_stock_data.clear()
-        for stock in stocks:
-            name, price, change, color, seal_vol, seal_type = stock
-            key = f"{name}_{price}_{change}_{color}_{seal_vol}_{seal_type}"
-            self._last_stock_data[name] = key
-            
-        app_logger.debug(f"更新股票数据缓存，共{len(self._last_stock_data)}只股票")
+        self._data_change_detector.update_last_stock_data(stocks)
         
     def get_stock_list_data(self, stock_codes: List[str]) -> List[tuple]:
         """

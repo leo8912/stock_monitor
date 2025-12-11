@@ -4,10 +4,11 @@
 """
 
 import time
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 import easyquotation
 from ..utils.logger import app_logger
 from ..utils.error_handler import retry_on_failure
+from ..utils.helpers import is_equal
 
 
 class StockDataService:
@@ -57,25 +58,25 @@ class StockDataService:
             
             if code.startswith(('sh', 'sz')):
                 # 对于A股带前缀的代码，直接使用prefix=True参数查询
-                single = quotation_engine.stocks([code], prefix=True)
+                single = quotation_engine.stocks(code, prefix=True)
                 # 直接使用完整代码作为键获取数据
-                stock_data = single.get(code) if isinstance(single, dict) else None
+                stock_data = single if isinstance(single, dict) and code in single else None
             elif code.startswith('hk'):
                 # 对于港股代码，移除前缀进行查询
-                single = quotation_engine.stocks([query_code])
+                single = quotation_engine.stocks(query_code)
                 # 检查返回数据是否有效
-                if isinstance(single, dict) and (query_code in single or any(single.values())):
+                if isinstance(single, dict):
                     # 确保返回的数据不是None且是完整的
-                    stock_data = single.get(query_code) or next(iter(single.values()), None)
+                    stock_data = single
                 else:
                     stock_data = None
             else:
                 # 对于不带前缀的代码，使用纯代码查询
-                single = quotation_engine.stocks([query_code])
+                single = quotation_engine.stocks(query_code)
                 # 检查返回数据是否有效
-                if isinstance(single, dict) and (query_code in single or any(single.values())):
+                if isinstance(single, dict):
                     # 确保返回的数据不是None且是完整的
-                    stock_data = single.get(query_code) or next(iter(single.values()), None)
+                    stock_data = single
                 else:
                     stock_data = None
             
@@ -90,19 +91,19 @@ class StockDataService:
                 try:
                     if code.startswith(('sh', 'sz')):
                         # 对于A股带前缀的代码，直接使用prefix=True参数查询
-                        single = quotation_engine.stocks([code], prefix=True)
-                        stock_data = single.get(code) if isinstance(single, dict) else None
+                        single = quotation_engine.stocks(code, prefix=True)
+                        stock_data = single if isinstance(single, dict) and code in single else None
                     elif code.startswith('hk'):
                         # 对于港股代码，移除前缀进行查询
-                        single = quotation_engine.stocks([query_code])
-                        if isinstance(single, dict) and (query_code in single or any(single.values())):
-                            stock_data = single.get(query_code) or next(iter(single.values()), None)
+                        single = quotation_engine.stocks(query_code)
+                        if isinstance(single, dict):
+                            stock_data = single
                         else:
                             stock_data = None
                     else:
-                        single = quotation_engine.stocks([query_code])
-                        if isinstance(single, dict) and (query_code in single or any(single.values())):
-                            stock_data = single.get(query_code) or next(iter(single.values()), None)
+                        single = quotation_engine.stocks(query_code)
+                        if isinstance(single, dict):
+                            stock_data = single
                         else:
                             stock_data = None
                     
@@ -219,6 +220,163 @@ class StockDataService:
         except (ValueError, TypeError):
             return False
 
+
+    def process_stock_data(self, data: Dict[str, Any], stocks_list: List[str]) -> List[Tuple]:
+        """
+        处理股票数据，返回格式化的股票列表
+        
+        Args:
+            data: 股票数据字典
+            stocks_list: 股票代码列表
+            
+        Returns:
+            List[Tuple]: 格式化后的股票数据列表
+        """
+        from ..data.market.quotation import get_name_by_code
+        stocks = []
+        
+        for code in stocks_list:
+            info = None
+            # 优先使用完整代码作为键进行精确匹配，防止 sh000001 和 000001 混淆
+            if isinstance(data, dict):
+                info = data.get(code)  # 精确匹配完整代码
+            
+            # 如果没有精确匹配，尝试使用纯数字代码匹配
+            if not info and isinstance(data, dict):
+                # 提取纯数字代码
+                pure_code = code[2:] if code.startswith(('sh', 'sz')) else code
+                info = data.get(pure_code)
+                
+                # 特殊处理：确保上证指数和平安银行正确映射
+                if info and pure_code == '000001':
+                    # 检查是否应该显示为上证指数
+                    if code == 'sh000001':
+                        # 强制修正名称为上证指数
+                        info = info.copy()  # 创建副本避免修改原始数据
+                        info['name'] = '上证指数'
+                    elif code == 'sz000001':
+                        # 强制修正名称为平安银行
+                        info = info.copy()  # 创建副本避免修改原始数据
+                        info['name'] = '平安银行'
+            
+            # 特殊处理：确保上证指数和平安银行正确映射（即使精确匹配也需处理）
+            if info and isinstance(data, dict):
+                # 提取纯数字代码
+                pure_code = code[2:] if code.startswith(('sh', 'sz')) else code
+                if pure_code == '000001':
+                    # 检查是否应该显示为上证指数
+                    if code == 'sh000001':
+                        # 强制修正名称为上证指数
+                        info = info.copy()  # 创建副本避免修改原始数据
+                        info['name'] = '上证指数'
+                    elif code == 'sz000001':
+                        # 强制修正名称为平安银行
+                        info = info.copy()  # 创建副本避免修改原始数据
+                        info['name'] = '平安银行'
+            
+            if info:
+                name = info.get('name', code)
+                # 对于港股，只保留中文部分
+                if code.startswith('hk'):
+                    # 去除"-"及之后的部分，只保留中文名称
+                    if '-' in name:
+                        name = name.split('-')[0].strip()
+                
+                try:
+                    # 不同行情源的字段可能不同
+                    now = info.get('now') or info.get('price')
+                    close = info.get('close') or info.get('lastPrice') or now
+                    high = info.get('high', 0)
+                    low = info.get('low', 0)
+                    bid1 = info.get('bid1', 0)
+                    bid1_vol = info.get('bid1_volume', 0) or info.get('volume_2', 0)
+                    ask1 = info.get('ask1', 0)
+                    ask1_vol = info.get('bid1_volume', 0) or info.get('volume_3', 0)
+                    
+                    # 添加更严格的None值检查
+                    if now is None or close is None:
+                        app_logger.warning(f"股票 {code} 数据不完整: now={now}, close={close}")
+                        stocks.append((name, "--", "--", "#e6eaf3", "", ""))
+                        continue
+                        
+                    # 检查数据是否有效（防止获取到空字符串等无效数据）
+                    try:
+                        float(now)
+                        float(close)
+                    except (ValueError, TypeError):
+                        app_logger.warning(f"股票 {code} 数据无效: now={now}, close={close}")
+                        stocks.append((name, "--", "--", "#e6eaf3", "", ""))
+                        continue
+                        
+                    price = f"{float(now):.2f}" if now is not None else "--"
+                    
+                    percent = ((float(now) - float(close)) / float(close) * 100) if close and float(close) != 0 else 0
+                    # 修改颜色逻辑：超过5%的涨幅使用亮红色
+                    if percent >= 5:
+                        color = '#FF4500'  # 亮红色（更亮的红色）
+                    elif percent > 0:
+                        color = '#e74c3f'  # 红色
+                    elif percent < 0:
+                        color = '#27ae60'  # 绿色
+                    else:
+                        color = '#e6eaf3'  # 平盘
+                    change_str = f"{percent:+.2f}%"
+                except (ValueError, TypeError, ZeroDivisionError) as e:
+                    app_logger.warning(f"股票 {code} 数据计算错误: {e}")
+                    color = '#e6eaf3'
+                    change_str = "--"
+                    price = "--"
+                    # 为后续处理设置默认值
+                    now = 0
+                    high = 0
+                    low = 0
+                    bid1 = 0
+                    ask1 = 0
+                    bid1_vol = 0
+                    ask1_vol = 0
+                
+                # 检测涨停/跌停封单
+                seal_vol = ''
+                seal_type = ''
+                try:
+                    # 确保所有值都不是None
+                    if (now is not None and high is not None and bid1 is not None and 
+                        bid1_vol is not None and ask1 is not None and
+                        is_equal(str(now), str(high)) and is_equal(str(now), str(bid1)) and 
+                        bid1_vol > 0 and is_equal(str(ask1), "0.0")):
+                        # 将封单数转换为以"k"为单位，封单数/100000来算（万手转k）
+                        seal_vol = f"{int(bid1_vol/100000)}k" if bid1_vol >= 100000 else f"{int(bid1_vol)}"
+                        seal_type = 'up'
+                    elif (now is not None and low is not None and ask1 is not None and 
+                          ask1_vol is not None and bid1 is not None and
+                          is_equal(str(now), str(low)) and is_equal(str(now), str(ask1)) and 
+                          ask1_vol > 0 and is_equal(str(bid1), "0.0")):
+                        # 将封单数转换为以"k"为单位，封单数/100000来算（万手转k）
+                        seal_vol = f"{int(ask1_vol/100000)}k" if ask1_vol >= 100000 else f"{int(ask1_vol)}"
+                        seal_type = 'down'
+                except (ValueError, TypeError) as e:
+                    app_logger.debug(f"股票 {code} 封单计算错误: {e}")
+                    pass  # 忽略封单计算中的错误
+                    
+                stocks.append((name, price, change_str, color, seal_vol, seal_type))
+                app_logger.debug(f"股票 {code} 数据处理完成")
+            else:
+                # 如果没有获取到数据，显示默认值
+                name = code
+                # 尝试从本地数据获取股票名称
+                local_name = get_name_by_code(code)
+                if local_name:
+                    name = local_name
+                    # 对于港股，只保留中文部分
+                    if code.startswith('hk'):
+                        # 去除"-"及之后的部分，只保留中文名称
+                        if '-' in name:
+                            name = name.split('-')[0].strip()
+                stocks.append((name, "--", "--", "#e6eaf3", "", ""))
+                app_logger.warning(f"未获取到股票 {code} 的数据")
+        app_logger.debug(f"共处理 {len(stocks)} 只股票数据")
+        app_logger.info(f"股票数据处理完成: 总计 {len(stocks)} 只股票")
+        return stocks
 
 # 创建全局股票数据服务实例
 stock_data_service = StockDataService()

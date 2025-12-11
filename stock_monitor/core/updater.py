@@ -147,12 +147,13 @@ class AppUpdater:
             app_logger.error(f"下载更新时发生错误: {e}")
             return None
     
-    def apply_update(self, update_file_path: str) -> bool:
+    def apply_update(self, update_file_path: str, skip_lock_check: bool = False) -> bool:
         """
         应用更新
         
         Args:
             update_file_path: 更新包文件路径
+            skip_lock_check: 是否跳过锁定文件检查（用于重启后应用更新）
             
         Returns:
             bool: 更新是否成功
@@ -202,35 +203,36 @@ class AppUpdater:
             
             # 检查是否有正在运行的文件需要更新
             locked_files = []
-            for root, dirs, files in os.walk(extracted_dir):
-                # 计算相对于extracted_dir的路径
-                rel_path = os.path.relpath(root, extracted_dir)
-                # 确保目标路径正确
-                if rel_path == ".":
-                    target_path = current_dir
-                else:
-                    target_path = os.path.join(current_dir, rel_path)
+            if not skip_lock_check:  # 只有在不跳过锁定检查时才执行此段代码
+                for root, dirs, files in os.walk(extracted_dir):
+                    # 计算相对于extracted_dir的路径
+                    rel_path = os.path.relpath(root, extracted_dir)
+                    # 确保目标路径正确
+                    if rel_path == ".":
+                        target_path = current_dir
+                    else:
+                        target_path = os.path.join(current_dir, rel_path)
+                    
+                    # 检查文件是否需要更新并且正在被占用
+                    for file in files:
+                        dst_file = os.path.join(target_path, file)
+                        if os.path.exists(dst_file):
+                            # 检查是否是正在运行的exe文件
+                            if dst_file.lower() == os.path.join(current_dir, 'stock_monitor.exe').lower():
+                                locked_files.append(dst_file)
+                            # 检查其他可能被占用的文件（DLL、PYD等）
+                            elif dst_file.lower().endswith(('.dll', '.pyd')):
+                                locked_files.append(dst_file)
                 
-                # 检查文件是否需要更新并且正在被占用
-                for file in files:
-                    dst_file = os.path.join(target_path, file)
-                    if os.path.exists(dst_file):
-                        # 检查是否是正在运行的exe文件
-                        if dst_file.lower() == os.path.join(current_dir, 'stock_monitor.exe').lower():
-                            locked_files.append(dst_file)
-                        # 检查其他可能被占用的文件（DLL、PYD等）
-                        elif dst_file.lower().endswith(('.dll', '.pyd')):
-                            locked_files.append(dst_file)
-            
-            # 如果有文件被占用，需要先重启应用
-            if locked_files:
-                app_logger.info(f"检测到 {len(locked_files)} 个被占用的文件，需要先重启应用")
-                # 创建更新标记文件
-                update_marker = os.path.join(current_dir, 'update_pending')
-                with open(update_marker, 'w') as f:
-                    f.write(update_file_path)
-                app_logger.info("已创建更新标记文件，准备重启应用")
-                return True  # 返回True表示需要重启
+                # 如果有文件被占用，需要先重启应用
+                if locked_files:
+                    app_logger.info(f"检测到 {len(locked_files)} 个被占用的文件，需要先重启应用")
+                    # 创建更新标记文件
+                    update_marker = os.path.join(current_dir, 'update_pending')
+                    with open(update_marker, 'w') as f:
+                        f.write(update_file_path)
+                    app_logger.info("已创建更新标记文件，准备重启应用")
+                    return True  # 返回True表示需要重启
             
             # 替换文件
             for root, dirs, files in os.walk(extracted_dir):
@@ -329,6 +331,53 @@ class AppUpdater:
         
         return reply == QMessageBox.Yes
 
+    def perform_update(self, parent=None) -> bool:
+        """
+        执行完整的更新流程
+        
+        Args:
+            parent: 父窗口
+            
+        Returns:
+            bool: 更新是否成功
+        """
+        try:
+            # 显示更新对话框
+            if self.show_update_dialog(parent):
+                # 下载更新
+                update_file = self.download_update(parent)
+                if update_file:
+                    # 应用更新
+                    result = self.apply_update(update_file, skip_lock_check=True)
+                    if result:
+                        # 重启应用
+                        self.restart_application()
+                        return True
+                    else:
+                        QMessageBox.warning(
+                            parent, 
+                            "更新失败", 
+                            "应用更新失败，请稍后重试或手动更新。",
+                            QMessageBox.Ok
+                        )
+                else:
+                    QMessageBox.warning(
+                        parent, 
+                        "下载失败", 
+                        "更新包下载失败，请检查网络连接后重试。",
+                        QMessageBox.Ok
+                    )
+            return False
+        except Exception as e:
+            app_logger.error(f"执行更新时发生错误: {e}")
+            QMessageBox.critical(
+                parent,
+                "更新失败",
+                f"更新过程中发生错误: {str(e)}",
+                QMessageBox.Ok
+            )
+            return False
+
     def restart_application(self) -> None:
         """
         重启应用程序
@@ -349,8 +398,8 @@ class AppUpdater:
                         update_file_path = f.read().strip()
                     # 删除标记文件
                     os.remove(update_marker)
-                    # 应用更新
-                    if self.apply_update(update_file_path):
+                    # 应用更新，跳过锁定检查
+                    if self.apply_update(update_file_path, skip_lock_check=True):
                         app_logger.info("更新应用完成，继续重启应用")
                     else:
                         app_logger.error("更新应用失败")

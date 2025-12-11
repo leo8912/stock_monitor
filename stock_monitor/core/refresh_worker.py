@@ -8,8 +8,9 @@ import time
 from typing import List, Dict, Any, Callable
 from stock_monitor.utils.logger import app_logger
 from stock_monitor.config.manager import is_market_open
-from stock_monitor.data.market.quotation import process_stock_data
+from stock_monitor.core.stock_service import stock_data_service
 from stock_monitor.utils.stock_utils import StockCodeProcessor
+from stock_monitor.core.data_change_detector import DataChangeDetector
 
 
 class RefreshWorker:
@@ -28,11 +29,11 @@ class RefreshWorker:
         self._stop_event = threading.Event()
         self.refresh_interval = 5
         self.current_user_stocks: List[str] = []
-        self._last_stock_data: Dict[str, str] = {}
         self._thread = None
         self._consecutive_failures = 0
         self._max_consecutive_failures = 3
         self._processor = StockCodeProcessor()
+        self._data_change_detector = DataChangeDetector()
         
     def start(self, user_stocks: List[str], refresh_interval: int):
         """
@@ -110,13 +111,13 @@ class RefreshWorker:
                 # 统计失败数量
                 failed_count = sum(1 for data in data_dict.values() if data is None)
                 
-                stocks = process_stock_data(data_dict, self.current_user_stocks)
+                stocks = stock_data_service.process_stock_data(data_dict, self.current_user_stocks)
                 
                 # 检查数据是否发生变化，只在有变化时更新UI
-                if self._has_stock_data_changed(stocks):
+                if self._data_change_detector.has_stock_data_changed(stocks):
                     app_logger.debug("检测到股票数据变化，更新UI")
                     # 更新缓存数据
-                    self._update_last_stock_data(stocks)
+                    self._data_change_detector.update_last_stock_data(stocks)
                     # 调用更新回调
                     self.update_callback(stocks, failed_count == len(self.current_user_stocks) and len(self.current_user_stocks) > 0)
                 else:
@@ -151,53 +152,3 @@ class RefreshWorker:
                 if self._stop_event.wait(5):
                     break
                     
-    def _has_stock_data_changed(self, stocks: List[tuple]) -> bool:
-        """
-        检查股票数据是否发生变化
-        
-        Args:
-            stocks: 当前股票数据列表
-            
-        Returns:
-            bool: 数据是否发生变化
-        """
-        # 如果没有缓存数据，认为发生了变化
-        if not self._last_stock_data:
-            return True
-            
-        # 比较每只股票的数据
-        for stock in stocks:
-            name, price, change, color, seal_vol, seal_type = stock
-            key = f"{name}_{price}_{change}_{color}_{seal_vol}_{seal_type}"
-            
-            # 如果这只股票之前没有数据，认为发生了变化
-            if name not in self._last_stock_data:
-                return True
-                
-            # 如果数据不匹配，认为发生了变化
-            if self._last_stock_data[name] != key:
-                return True
-                
-        # 检查是否有股票被移除
-        current_names = [stock[0] for stock in stocks]
-        for name in self._last_stock_data.keys():
-            if name not in current_names:
-                return True
-                
-        # 数据没有变化
-        return False
-    
-    def _update_last_stock_data(self, stocks: List[tuple]):
-        """
-        更新最后股票数据缓存
-        
-        Args:
-            stocks: 当前股票数据列表
-        """
-        self._last_stock_data.clear()
-        for stock in stocks:
-            name, price, change, color, seal_vol, seal_type = stock
-            key = f"{name}_{price}_{change}_{color}_{seal_vol}_{seal_type}"
-            self._last_stock_data[name] = key
-            
-        app_logger.debug(f"更新股票数据缓存，共{len(self._last_stock_data)}只股票")

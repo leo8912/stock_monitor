@@ -29,6 +29,7 @@ from stock_monitor.ui.widgets.market_status import MarketStatusBar
 from stock_monitor.config.manager import is_market_open, load_config, save_config
 
 from stock_monitor.utils.helpers import resource_path, get_stock_emoji
+from stock_monitor.utils.stock_utils import StockCodeProcessor
 from stock_monitor.utils.log_cleaner import schedule_log_cleanup
 from stock_monitor.core.updater import app_updater
 
@@ -50,6 +51,14 @@ class MainWindow(QtWidgets.QWidget):
     
     def __init__(self):
         super().__init__()
+        self.setup_ui()
+        self.load_position()
+        self.current_user_stocks = []
+        self.refresh_interval = 2
+        self.setup_refresh_worker()
+        # 移除自动检查更新功能，只在设置中提供手动检查更新选项
+
+    def setup_ui(self):
         self.setWindowTitle('A股行情监控')
         self.setWindowFlags(
             QtCore.Qt.WindowStaysOnTopHint |  # type: ignore
@@ -200,51 +209,23 @@ class MainWindow(QtWidgets.QWidget):
         except Exception as e:
             app_logger.error(f"立即更新市场状态失败: {e}")
             
-    def _check_for_updates(self):
-        """检查应用更新"""
-        def check_and_update():
-            try:
-                # 检查是否有新版本
-                if app_updater.check_for_updates():
-                    # 显示更新对话框
-                    if app_updater.show_update_dialog(self):
-                        # 下载更新
-                        update_file = app_updater.download_update(self)
-                        if update_file:
-                            # 应用更新
-                            result = app_updater.apply_update(update_file)
-                            if result:
-                                # 重启应用
-                                QtWidgets.QMessageBox.information(
-                                    self, 
-                                    "更新完成", 
-                                    "应用更新完成，即将重启应用。",
-                                    QtWidgets.QMessageBox.Ok
-                                )
-                                # 重启应用
-                                app_updater.restart_application()
-                            else:
-                                QtWidgets.QMessageBox.warning(
-                                    self, 
-                                    "更新失败", 
-                                    "应用更新失败，请稍后重试或手动更新。",
-                                    QtWidgets.QMessageBox.Ok
-                                )
-                        else:
-                            QtWidgets.QMessageBox.warning(
-                                self, 
-                                "下载失败", 
-                                "更新包下载失败，请检查网络连接后重试。",
-                                QtWidgets.QMessageBox.Ok
-                            )
-            except Exception as e:
-                app_logger.error(f"检查更新时发生错误: {e}")
-                # 不向用户显示错误，避免干扰正常使用
-        
-        # 在单独的线程中检查更新，避免阻塞UI
-        update_thread = threading.Thread(target=check_and_update, daemon=True)
-        update_thread.start()
-
+    def setup_refresh_worker(self):
+        """设置刷新工作线程"""
+        from stock_monitor.core.refresh_worker import RefreshWorker
+        self.refresh_worker = RefreshWorker(self._on_refresh_update, self._handle_refresh_error)
+        self.refresh_worker.start([], self.refresh_interval)
+    
+    def _handle_refresh_error(self):
+        """处理刷新错误"""
+        try:
+            # 显示错误信息到状态栏
+            self.status_label.setText("❌ 数据刷新失败")
+            app_logger.error("行情数据刷新失败")
+        except Exception as e:
+            app_logger.error(f"立即更新市场状态失败: {e}")
+    
+    # 移除 _check_for_updates 方法，不再需要自动检查更新
+    
     def install_event_filters(self, widget):
         """
         为控件安装事件过滤器
@@ -594,7 +575,6 @@ class MainWindow(QtWidgets.QWidget):
             str: 格式化后的股票代码
         """
         # 使用工具函数处理股票代码格式化
-        from stock_monitor.utils.stock_utils import StockCodeProcessor
         processor = StockCodeProcessor()
         return processor.format_stock_code(code)
 
@@ -675,10 +655,11 @@ class SystemTray(QtWidgets.QSystemTrayIcon):
         elif reason == QtWidgets.QSystemTrayIcon.Context:  # type: ignore
             self.contextMenu().exec_(QtGui.QCursor.pos())  # type: ignore
 
-def clean_temp_files():
-    """清理更新过程中产生的临时文件"""
+def apply_pending_updates():
+    """在应用启动时应用待处理的更新"""
     try:
         from stock_monitor.utils.logger import app_logger
+        from stock_monitor.core.updater import app_updater
         
         # 获取当前目录 - 确保始终使用程序所在目录
         if hasattr(sys, '_MEIPASS'):
@@ -688,6 +669,24 @@ def clean_temp_files():
             # 开发环境或普通生产环境 - 使用main.py所在目录
             current_dir = os.path.dirname(os.path.abspath(__file__))
         
+        # 检查更新标记文件
+        update_marker = os.path.join(current_dir, 'update_pending')
+        if os.path.exists(update_marker):
+            try:
+                # 读取更新文件路径
+                with open(update_marker, 'r') as f:
+                    update_file_path = f.read().strip()
+                # 删除标记文件
+                os.remove(update_marker)
+                app_logger.info("检测到待处理的更新，正在应用...")
+                # 应用更新，跳过锁定检查
+                if app_updater.apply_update(update_file_path, skip_lock_check=True):
+                    app_logger.info("更新应用完成")
+                else:
+                    app_logger.error("更新应用失败")
+            except Exception as e:
+                app_logger.error(f"应用待处理更新时出错: {e}")
+                
         # 查找并删除所有的 .tmp 文件
         for filename in os.listdir(current_dir):
             if filename.endswith('.tmp'):
@@ -697,23 +696,14 @@ def clean_temp_files():
                     app_logger.info(f"已清理临时文件: {tmp_file}")
                 except Exception as e:
                     app_logger.warning(f"无法删除临时文件 {tmp_file}: {e}")
-                    
-        # 检查并删除更新标记文件
-        update_marker = os.path.join(current_dir, 'update_pending')
-        if os.path.exists(update_marker):
-            try:
-                os.remove(update_marker)
-                app_logger.info("已清理更新标记文件")
-            except Exception as e:
-                app_logger.warning(f"无法删除更新标记文件: {e}")
     except Exception as e:
         # 这里不能使用app_logger，因为它可能还未初始化
-        print(f"清理临时文件时出错: {e}")
+        print(f"应用待处理更新时出错: {e}")
 
 def main():
     """主函数"""
-    # 清理更新过程中产生的临时文件
-    clean_temp_files()
+    # 应用待处理的更新
+    apply_pending_updates()
     
     app = QtWidgets.QApplication(sys.argv)
     main_window = MainWindow()
