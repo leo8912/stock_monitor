@@ -548,6 +548,11 @@ class NewSettingsDialog(QDialog):
         button_layout.addWidget(self.ok_button)
         button_layout.addWidget(self.cancel_button)
         
+        # 添加应用按钮
+        self.apply_button = QPushButton("应用")
+        self.apply_button.clicked.connect(self.apply_settings)
+        button_layout.insertWidget(1, self.apply_button)
+        
         # 创建底部布局，包含系统设置和按钮
         bottom_layout = QHBoxLayout()
         bottom_layout.setContentsMargins(0, 0, 0, 8)  # 增加底部边距3px，从5px到8px
@@ -844,6 +849,20 @@ class NewSettingsDialog(QDialog):
             self.config_changed.emit(stocks, refresh_interval)
             
         super().accept()
+        
+    def apply_settings(self):
+        """应用设置但不关闭对话框"""
+        self.save_settings()
+        self.save_position()  # 保存位置
+        
+        # 确保配置更改信号发出
+        if self.main_window:
+            stocks = self.get_stocks_from_list()
+            refresh_interval = self._map_refresh_text_to_value(self.refresh_combo.currentText())
+            # 添加调试信息
+            from stock_monitor.utils.logger import app_logger
+            app_logger.info(f"应用设置并发送配置更改信号: 股票列表={stocks}, 刷新间隔={refresh_interval}")
+            self.config_changed.emit(stocks, refresh_interval)
         
     def reject(self):
         """点击取消按钮时恢复原始设置"""
