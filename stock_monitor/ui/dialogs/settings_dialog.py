@@ -7,8 +7,7 @@ from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
                              QComboBox, QAbstractItemView, QGroupBox, QFormLayout,
                              QSpinBox, QSlider, QGridLayout, QRadioButton, QButtonGroup,
                              QApplication)
-from PyQt5.QtCore import Qt, QSize, pyqtSignal
-from PyQt5.QtCore import QSettings, QPoint
+from PyQt5.QtCore import Qt, QSize, pyqtSignal, QPoint
 from PyQt5.QtGui import QDragEnterEvent, QDropEvent, QFont, QIcon, QColor
 import easyquotation
 import os
@@ -45,7 +44,7 @@ class DraggableListWidget(QListWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
-        self.setDefaultDropAction(Qt.MoveAction)
+        self.setDefaultDropAction(Qt.DropAction.MoveAction)
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
         self.setDropIndicatorShown(True)
@@ -64,10 +63,6 @@ class NewSettingsDialog(QDialog):
         super().__init__(parent)
         # 保存主窗口引用
         self.main_window = main_window
-        # 设置配置文件路径为相对路径
-        settings_path = resource_path("settings.ini")
-        
-        self.settings = QSettings(settings_path, QSettings.IniFormat)
         
         # 设置窗口图标
         icon_path = resource_path('icon.ico')
@@ -75,7 +70,9 @@ class NewSettingsDialog(QDialog):
             self.setWindowIcon(QIcon(icon_path))
         
         # 移除右上角的问号帮助按钮，只保留关闭按钮
-        self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+        flags = self.windowFlags()
+        flags &= ~Qt.WindowType.WindowContextHelpButtonHint
+        self.setWindowFlags(Qt.WindowFlags(flags))  # type: ignore
         
         # 设置窗口样式以匹配暗色主题
         self.setStyleSheet("QDialog { background-color: #1e1e1e; } ")
@@ -378,10 +375,11 @@ class NewSettingsDialog(QDialog):
         
         # 搜索框
         search_label = QLabel("搜索股票")
-        search_label.setAlignment(Qt.AlignCenter)
+        search_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("输入股票代码或名称...")
         self.search_input.textChanged.connect(self.on_search_text_changed)
+        self.search_input.returnPressed.connect(self._on_search_return_pressed)
         
         left_layout.addWidget(search_label)
         left_layout.addWidget(self.search_input)
@@ -391,7 +389,7 @@ class NewSettingsDialog(QDialog):
         # 样式已在全局样式表中定义
         self.search_results.itemDoubleClicked.connect(self.add_to_watchlist)
         search_results_label = QLabel("搜索结果 (双击添加)")
-        search_results_label.setAlignment(Qt.AlignLeft)
+        search_results_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
         left_layout.addWidget(search_results_label)
         left_layout.addWidget(self.search_results)
         
@@ -406,7 +404,7 @@ class NewSettingsDialog(QDialog):
         watchlist_header_layout.setSpacing(4)
         
         watchlist_label = QLabel("自选股列表 (拖拽排序)")
-        watchlist_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        watchlist_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)  # type: ignore
         
         # 添加删除按钮
         self.remove_button = QPushButton("删除选中")
@@ -470,7 +468,7 @@ class NewSettingsDialog(QDialog):
         # 透明度设置
         transparency_layout = QHBoxLayout()
         transparency_layout.setSpacing(4)
-        self.transparency_slider = QSlider(Qt.Horizontal)
+        self.transparency_slider = QSlider(Qt.Orientation.Horizontal)
         self.transparency_slider.setRange(0, 100)
         self.transparency_slider.setValue(80)
         self.transparency_slider.setFixedWidth(130)  # 缩小宽度
@@ -495,7 +493,7 @@ class NewSettingsDialog(QDialog):
         system_layout = QHBoxLayout()
         system_layout.setContentsMargins(0, 0, 0, 0)  # 移除边距
         system_layout.setSpacing(6)  # 调整为6px间距
-        system_layout.setAlignment(Qt.AlignVCenter)  # 垂直居中对齐，确保与按钮视觉齐平
+        system_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)  # 垂直居中对齐，确保与按钮视觉齐平
         
         # 开机启动
         self.auto_start_checkbox = QCheckBox()
@@ -539,7 +537,7 @@ class NewSettingsDialog(QDialog):
         button_layout = QHBoxLayout()
         button_layout.setContentsMargins(0, 0, 0, 0)  # 移除边距
         button_layout.setSpacing(10)
-        button_layout.setAlignment(Qt.AlignVCenter)  # 垂直居中对齐
+        button_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)  # 垂直居中对齐
         
         # 确定和取消按钮
         self.ok_button = QPushButton("确定")
@@ -558,7 +556,7 @@ class NewSettingsDialog(QDialog):
         bottom_layout.addLayout(button_layout)
         
         # 调整底部布局的对齐方式，使文字和按钮视觉上更齐平
-        bottom_layout.setAlignment(Qt.AlignVCenter)
+        bottom_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         
         # 添加所有组件到主布局，调整顺序：自选股管理组、显示设置组、底部布局
         main_layout.addWidget(watchlist_group)
@@ -644,12 +642,27 @@ class NewSettingsDialog(QDialog):
             from stock_monitor.utils.error_handler import app_logger
             app_logger.error(f"搜索股票时出错: {e}")
             
+    def _on_search_return_pressed(self):
+        """处理搜索框回车键按下事件"""
+        # 如果有搜索结果，添加第一个结果
+        if self.search_results.count() > 0:
+            item = self.search_results.item(0)
+            self.add_to_watchlist(item)
+            # 清空搜索框
+            self.search_input.clear()
+            self.search_results.clear()
+            
     def add_to_watchlist(self, item):
         """将股票添加到自选股列表"""
         # 检查是否已经存在于自选股列表中
         for i in range(self.watch_list.count()):
-            if self.watch_list.item(i).text() == item.text():
-                return  # 已存在，不重复添加
+            watch_item = self.watch_list.item(i)
+            if watch_item is not None and item is not None:
+                if watch_item.text() == item.text():
+                    # 已存在，不重复添加，给出提示
+                    from PyQt5.QtWidgets import QMessageBox
+                    QMessageBox.information(self, "提示", "股票已在自选股列表中")
+                    return
                 
         # 添加到自选股列表
         self.watch_list.addItem(item.text())
@@ -670,122 +683,156 @@ class NewSettingsDialog(QDialog):
         
     def load_settings(self):
         """加载设置"""
-        # 加载自选股列表
-        watch_list = self.settings.value("watch_list", [])
-        if isinstance(watch_list, str):
-            # 处理单个字符串的情况
-            watch_list = [watch_list] if watch_list else []
-        elif not isinstance(watch_list, list):
-            # 处理无效值
-            watch_list = []
-        
-        # 从主配置文件中加载自选股列表作为备用
-        if not watch_list:
-            try:
-                from stock_monitor.config.manager import load_config
-                cfg = load_config()
-                user_stocks = cfg.get('user_stocks', [])
-                if user_stocks:
-                    watch_list = user_stocks
-            except Exception:
-                pass  # 忽略配置加载错误
+        # 完全从主配置文件加载设置，不再使用本地ini配置
+        try:
+            from stock_monitor.config.manager import ConfigManager
+            config_manager = ConfigManager()
             
+            # 加载自选股列表
+            watch_list = config_manager.get('user_stocks', [])
+            
+            # 转换为显示格式
+            formatted_watch_list = []
+            from stock_monitor.utils import extract_stocks_from_list
+            from stock_monitor.data.stock.stocks import load_stock_data
+            
+            # 加载股票数据以便获取名称
+            all_stocks = {stock['code']: stock for stock in load_stock_data()}
+            
+            for code in watch_list:
+                if code in all_stocks:
+                    stock_info = all_stocks[code]
+                    formatted_watch_list.append(f"{code} {stock_info['name']}")
+                else:
+                    formatted_watch_list.append(code)
+        except Exception as e:
+            # 出错时使用空列表
+            formatted_watch_list = []
+            from stock_monitor.utils.logger import app_logger
+            app_logger.error(f"加载自选股列表时出错: {e}")
+                
         self.watch_list.clear()
-        for item in watch_list:
+        for item in formatted_watch_list:
             if isinstance(item, str):
                 self.watch_list.addItem(item)
             
         # 加载开机启动设置
-        auto_start = self.settings.value("auto_start", False)
-        self.auto_start_checkbox.setChecked(_safe_bool_conversion(auto_start))
+        try:
+            from stock_monitor.config.manager import ConfigManager
+            config_manager = ConfigManager()
+            auto_start = config_manager.get("auto_start", False)
+            self.auto_start_checkbox.setChecked(_safe_bool_conversion(auto_start))
+        except Exception as e:
+            self.auto_start_checkbox.setChecked(False)
         
         # 加载刷新频率设置
-        refresh_interval = self.settings.value("refresh_interval", 2)
-        refresh_interval = _safe_int_conversion(refresh_interval, 2)
-        self.refresh_combo.setCurrentText(self._map_refresh_value_to_text(refresh_interval))
+        try:
+            from stock_monitor.config.manager import ConfigManager
+            config_manager = ConfigManager()
+            refresh_interval = config_manager.get("refresh_interval", 5)
+            refresh_interval = _safe_int_conversion(refresh_interval, 5)
+            self.refresh_combo.setCurrentText(self._map_refresh_value_to_text(refresh_interval))
+        except Exception as e:
+            self.refresh_combo.setCurrentText(self._map_refresh_value_to_text(5))
             
         # 加载字体设置
-        font_family = self.settings.value("display/font_family", "Microsoft YaHei")
-        if isinstance(font_family, str):
-            font_index = self.font_combo.findText(font_family)
-            if font_index >= 0:
-                self.font_combo.setCurrentIndex(font_index)
+        try:
+            from stock_monitor.config.manager import ConfigManager
+            config_manager = ConfigManager()
+            font_family = config_manager.get("font_family", "Microsoft YaHei")
+            if isinstance(font_family, str):
+                font_index = self.font_combo.findText(font_family)
+                if font_index >= 0:
+                    self.font_combo.setCurrentIndex(font_index)
+        except Exception as e:
+            pass
             
-        font_size = self.settings.value("display/font_size", 12)
-        font_size = _safe_int_conversion(font_size, 12)
-        self.font_size_spinbox.setValue(font_size)
+        try:
+            from stock_monitor.config.manager import ConfigManager
+            config_manager = ConfigManager()
+            font_size = config_manager.get("font_size", 12)
+            font_size = _safe_int_conversion(font_size, 12)
+            self.font_size_spinbox.setValue(font_size)
+        except Exception as e:
+            self.font_size_spinbox.setValue(12)
         
         # 加载主题设置
-        theme = self.settings.value("display/theme", "dark")
-        if isinstance(theme, str) and theme == "light":
-            self.light_theme_radio.setChecked(True)
-        else:
+        try:
+            from stock_monitor.config.manager import ConfigManager
+            config_manager = ConfigManager()
+            theme = config_manager.get("theme", "dark")
+            if isinstance(theme, str) and theme == "light":
+                self.light_theme_radio.setChecked(True)
+            else:
+                self.dark_theme_radio.setChecked(True)
+        except Exception as e:
             self.dark_theme_radio.setChecked(True)
             
         # 加载透明度设置
-        transparency = self.settings.value("display/transparency", 80)
-        transparency = _safe_int_conversion(transparency, 80)
-        self.transparency_slider.setValue(transparency)
+        try:
+            from stock_monitor.config.manager import ConfigManager
+            config_manager = ConfigManager()
+            transparency = config_manager.get("transparency", 80)
+            transparency = _safe_int_conversion(transparency, 80)
+            self.transparency_slider.setValue(transparency)
+        except Exception as e:
+            self.transparency_slider.setValue(80)
         
         # 加载拖拽灵敏度设置
-        drag_sensitivity = self.settings.value("drag_sensitivity", 5)
-        drag_sensitivity = _safe_int_conversion(drag_sensitivity, 5)
+        try:
+            from stock_monitor.config.manager import ConfigManager
+            config_manager = ConfigManager()
+            drag_sensitivity = config_manager.get("drag_sensitivity", 5)
+            drag_sensitivity = _safe_int_conversion(drag_sensitivity, 5)
+        except Exception as e:
+            pass
             
     def save_settings(self):
         """保存设置"""
-        # 保存自选股列表
-        watch_list = []
-        for i in range(self.watch_list.count()):
-            watch_list.append(self.watch_list.item(i).text())
-        self.settings.setValue("watch_list", watch_list)
-        
-        # 同时保存到主配置文件中
+        # 保存所有设置到主配置文件
         try:
-            from stock_monitor.config.manager import load_config, save_config
-            from stock_monitor.utils.logger import app_logger
-            cfg = load_config()
-            cfg['user_stocks'] = self.get_stocks_from_list()
-            if not save_config(cfg):
-                app_logger.warning("主配置文件保存失败")
-        except Exception as e:
-            app_logger.error(f"保存主配置文件时发生异常: {e}")
-        
-        # 保存开机启动设置
-        self.settings.setValue("auto_start", self.auto_start_checkbox.isChecked())
-        
-        # 保存刷新频率设置
-        refresh_text = self.refresh_combo.currentText()
-        refresh_interval = self._map_refresh_text_to_value(refresh_text)
-        self.settings.setValue("refresh_interval", refresh_interval)
-        
-        # 保存字体设置
-        self.settings.setValue("display/font_family", self.font_combo.currentText())
-        self.settings.setValue("display/font_size", self.font_size_spinbox.value())
-        
-        # 保存主题设置
-        if self.light_theme_radio.isChecked():
-            self.settings.setValue("display/theme", "light")
-        else:
-            self.settings.setValue("display/theme", "dark")
+            from stock_monitor.config.manager import ConfigManager
+            config_manager = ConfigManager()
             
-        # 保存透明度设置
-        self.settings.setValue("display/transparency", self.transparency_slider.value())
-        
-        # 保存拖拽灵敏度设置
-        self.settings.setValue("drag_sensitivity", 5)  # 当前固定为5ms
-        
-        # 注意：信号已经在accept方法中发出，避免重复发出信号
-        
-        # 添加调试信息
-        from stock_monitor.utils.logger import app_logger
-        app_logger.info(f"保存设置时的自选股列表: {watch_list}")
-        app_logger.info(f"格式化后的股票代码列表: {self.get_stocks_from_list()}")
+            # 保存自选股列表
+            user_stocks = self.get_stocks_from_list()
+            config_manager.set('user_stocks', user_stocks)
+            
+            # 保存开机启动设置
+            config_manager.set("auto_start", self.auto_start_checkbox.isChecked())
+            
+            # 保存刷新频率设置
+            refresh_text = self.refresh_combo.currentText()
+            refresh_interval = self._map_refresh_text_to_value(refresh_text)
+            config_manager.set("refresh_interval", refresh_interval)
+            
+            # 保存字体设置
+            config_manager.set("font_family", self.font_combo.currentText())
+            config_manager.set("font_size", self.font_size_spinbox.value())
+            
+            # 保存主题设置
+            if self.light_theme_radio.isChecked():
+                config_manager.set("theme", "light")
+            else:
+                config_manager.set("theme", "dark")
+                
+            # 保存透明度设置
+            config_manager.set("transparency", self.transparency_slider.value())
+            
+            # 保存拖拽灵敏度设置
+            config_manager.set("drag_sensitivity", 5)  # 当前固定为5ms
+            
+            # 添加调试信息
+            from stock_monitor.utils.logger import app_logger
+            app_logger.info(f"保存设置时的自选股列表: {user_stocks}")
+        except Exception as e:
+            from stock_monitor.utils.logger import app_logger
+            app_logger.error(f"保存设置时出错: {e}")
         
     def accept(self):
         """点击确定按钮时保存设置"""
         self.save_settings()
         self.save_position()  # 保存位置
-        super().accept()
         
         # 确保配置更改信号发出
         if self.main_window:
@@ -795,6 +842,8 @@ class NewSettingsDialog(QDialog):
             from stock_monitor.utils.logger import app_logger
             app_logger.info(f"发送配置更改信号: 股票列表={stocks}, 刷新间隔={refresh_interval}")
             self.config_changed.emit(stocks, refresh_interval)
+            
+        super().accept()
         
     def reject(self):
         """点击取消按钮时恢复原始设置"""
@@ -805,17 +854,14 @@ class NewSettingsDialog(QDialog):
         """保存对话框位置"""
         if self.main_window:
             # 保存位置到主窗口的配置中
-            from stock_monitor.config.manager import load_config, save_config
-            from stock_monitor.utils.logger import app_logger
-            cfg = load_config()
+            from stock_monitor.config.manager import ConfigManager
+            config_manager = ConfigManager()
             pos = [self.x(), self.y()]
-            cfg['settings_dialog_pos'] = pos
-            if not save_config(cfg):
-                app_logger.warning("保存设置对话框位置到配置文件失败")
-
-    def showEvent(self, event):
+            config_manager.set('settings_dialog_pos', pos)
+    
+    def showEvent(self, a0):  # type: ignore
         """重写showEvent以设置初始位置"""
-        super().showEvent(event)
+        super().showEvent(a0)
         
         # 每次显示时都重新设置位置，确保不遮挡主窗口
         self.set_initial_position()

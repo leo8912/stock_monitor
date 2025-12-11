@@ -53,9 +53,10 @@ class MainWindow(QtWidgets.QWidget):
         super().__init__()
         self.setup_ui()
         self.load_position()
-        self.current_user_stocks = []
-        self.refresh_interval = 2
-        self.setup_refresh_worker()
+        # 移除这里重复的初始化和刷新调用
+        # self.current_user_stocks = []
+        # self.refresh_interval = 2
+        # self.setup_refresh_worker()
         # 移除自动检查更新功能，只在设置中提供手动检查更新选项
 
     def setup_ui(self):
@@ -126,17 +127,22 @@ class MainWindow(QtWidgets.QWidget):
         self.action_settings = self.menu.addAction('设置')
         self.menu.addSeparator()
         self.action_quit = self.menu.addAction('退出')
-        self.action_settings.triggered.connect(self.open_settings)
-        self.action_quit.triggered.connect(QtWidgets.QApplication.quit)
+        if self.action_settings is not None:
+            self.action_settings.triggered.connect(self.open_settings)
+        if self.action_quit is not None:
+            self.action_quit.triggered.connect(QtWidgets.QApplication.quit)
         
         # 确保菜单项连接正确，避免功能不稳定
-        self.action_settings.setMenuRole(QtWidgets.QAction.MenuRole.NoRole)
-        self.action_quit.setMenuRole(QtWidgets.QAction.MenuRole.NoRole)
+        if self.action_settings is not None:
+            self.action_settings.setMenuRole(QtWidgets.QAction.MenuRole.ApplicationSpecificRole)
+        if self.action_quit is not None:
+            self.action_quit.setMenuRole(QtWidgets.QAction.MenuRole.ApplicationSpecificRole)
         
         # 初始化数据
         self.settings_dialog = None
-        cfg = load_config()
-        self.refresh_interval = cfg.get('refresh_interval', 5)
+        from stock_monitor.config.manager import ConfigManager
+        config_manager = ConfigManager()
+        self.refresh_interval = config_manager.get('refresh_interval', 5)
         self.current_user_stocks = self.load_user_stocks()
         
         # 初始化后台刷新工作线程
@@ -164,8 +170,6 @@ class MainWindow(QtWidgets.QWidget):
         # 启动刷新线程和信号连接
         self.update_table_signal.connect(self.table.update_data)  # type: ignore
         
-        # 不再在初始化时立即刷新，避免阻塞窗口显示
-        # self.refresh_now(self.current_user_stocks)
         # 启动后台刷新线程
         self.refresh_worker.start(self.current_user_stocks, self.refresh_interval)
         self._start_database_update_thread()
@@ -211,9 +215,11 @@ class MainWindow(QtWidgets.QWidget):
             
     def setup_refresh_worker(self):
         """设置刷新工作线程"""
-        from stock_monitor.core.refresh_worker import RefreshWorker
-        self.refresh_worker = RefreshWorker(self._on_refresh_update, self._handle_refresh_error)
-        self.refresh_worker.start([], self.refresh_interval)
+        # 启动后台刷新线程
+        self.refresh_worker.start(self.current_user_stocks, self.refresh_interval)
+        
+        # 启动后立即刷新一次数据，确保界面显示
+        self.refresh_now()
     
     def _handle_refresh_error(self):
         """处理刷新错误"""
@@ -250,7 +256,7 @@ class MainWindow(QtWidgets.QWidget):
             bool: 是否处理了事件
         """
         event = a1
-        if event.type() == QtCore.QEvent.MouseButtonPress:  # type: ignore
+        if event is not None and event.type() == QtCore.QEvent.MouseButtonPress:  # type: ignore
             if event.button() == QtCore.Qt.LeftButton:  # type: ignore
                 cursor_pos = QtGui.QCursor.pos()
                 frame_top_left = self.frameGeometry().topLeft()
@@ -266,14 +272,14 @@ class MainWindow(QtWidgets.QWidget):
                 self.menu.popup(click_pos)
                 event.accept()
                 return True
-        elif event.type() == QtCore.QEvent.MouseMove:  # type: ignore
+        elif event is not None and event.type() == QtCore.QEvent.MouseMove:  # type: ignore
             if event.buttons() == QtCore.Qt.LeftButton and self.drag_position is not None:  # type: ignore
                 cursor_pos = QtGui.QCursor.pos()
                 self.move(cursor_pos.x() - self.drag_position.x(), 
                          cursor_pos.y() - self.drag_position.y())
                 event.accept()
                 return True
-        elif event.type() == QtCore.QEvent.MouseButtonRelease:  # type: ignore
+        elif event is not None and event.type() == QtCore.QEvent.MouseButtonRelease:  # type: ignore
             self.drag_position = None
             self.setCursor(QtCore.Qt.ArrowCursor)  # type: ignore
             self.save_position()  # 拖动结束时自动保存位置
@@ -329,15 +335,16 @@ class MainWindow(QtWidgets.QWidget):
 
     def save_position(self):
         """保存窗口位置到配置文件"""
-        cfg = load_config()
+        from stock_monitor.config.manager import ConfigManager
+        config_manager = ConfigManager()
         pos = self.pos()
-        cfg['window_pos'] = [pos.x(), pos.y()]
-        save_config(cfg)
+        config_manager.set('window_pos', [pos.x(), pos.y()])
 
     def load_position(self):
         """从配置文件加载窗口位置"""
-        cfg = load_config()
-        pos = cfg.get('window_pos')
+        from stock_monitor.config.manager import ConfigManager
+        config_manager = ConfigManager()
+        pos = config_manager.get('window_pos')
         if pos and isinstance(pos, list) and len(pos) == 2:
             self.move(pos[0], pos[1])
         else:
@@ -359,7 +366,8 @@ class MainWindow(QtWidgets.QWidget):
             except Exception:
                 pass
         # 使用QueuedConnection避免阻塞UI
-        self.settings_dialog.config_changed.connect(self.on_user_stocks_changed, QtCore.Qt.QueuedConnection)
+        if self.settings_dialog is not None:
+            self.settings_dialog.config_changed.connect(self.on_user_stocks_changed, QtCore.Qt.ConnectionType.QueuedConnection)
         
         self.settings_dialog.show()
         self.settings_dialog.raise_()
@@ -379,6 +387,7 @@ class MainWindow(QtWidgets.QWidget):
         # 更新后台刷新线程的配置
         self.refresh_worker.update_stocks(user_stocks)
         self.refresh_worker.update_interval(refresh_interval)
+        # 强制刷新显示
         self.refresh_now(user_stocks)
 
     def process_stock_data(self, data, stocks_list):
@@ -545,8 +554,9 @@ class MainWindow(QtWidgets.QWidget):
             list: 用户股票列表
         """
         try:
-            cfg = load_config()
-            stocks = cfg.get('user_stocks', None)
+            from stock_monitor.config.manager import ConfigManager
+            config_manager = ConfigManager()
+            stocks = config_manager.get('user_stocks', None)
             
             # 确保stocks是一个列表
             if not isinstance(stocks, list):

@@ -113,6 +113,7 @@ class StockSearchWidget(QtWidgets.QWidget):
             }
         """)
         self.search_input.textChanged.connect(self._on_search_text_changed)  # type: ignore 
+        self.search_input.returnPressed.connect(self._on_return_pressed)  # type: ignore
         layout.addWidget(self.search_input) 
         
         # 搜索结果列表 (创建空列表，避免初始化时加载数据)
@@ -219,6 +220,17 @@ class StockSearchWidget(QtWidgets.QWidget):
         if self._search_throttle_timer.isActive(): 
             self._search_throttle_timer.stop() 
         self._search_throttle_timer.start(150) 
+        
+    def _on_return_pressed(self):
+        """处理回车键按下事件"""
+        # 如果有搜索结果，添加第一个结果
+        if self.result_list.count() > 0:
+            self.result_list.setCurrentRow(0)  # 选中第一项
+            self.add_selected_stock()  # 添加选中的股票
+        # 清空搜索框
+        self.search_input.clear()
+        self.result_list.clear()
+        self.add_btn.setEnabled(False)
         
     def _perform_search(self): 
         """执行实际的搜索操作""" 
@@ -327,7 +339,7 @@ class StockSearchWidget(QtWidgets.QWidget):
             QtWidgets.QMessageBox.information(self, "提示", f"股票 {name} 已在自选股列表中") 
             return 
             
-        # 添加到股票列表 
+        # 添加到股票列表，确保是新增而不是覆盖最后一项
         if self.stock_list: 
             from stock_monitor.utils.helpers import get_stock_emoji 
             emoji = get_stock_emoji(code, name) 
@@ -341,7 +353,7 @@ class StockSearchWidget(QtWidgets.QWidget):
                 display = f"{emoji} {name} ({code})" 
             else: 
                 display = f"{emoji} {code}" 
-            self.stock_list.addItem(display) 
+            self.stock_list.addItem(display)  # 使用addItem而不是其他可能覆盖的方法
             
         # 发出信号 
         self.stock_added.emit(code, name) 

@@ -7,27 +7,19 @@ from ..utils.logger import app_logger
 from ..utils.helpers import handle_exception
 
 # 配置文件路径 - 存在用户目录中，避免更新时丢失
-# 修复问题1和问题2：使用更明确的配置文件路径处理
+# 简化配置路径处理逻辑，统一使用.stock_monitor目录
 def get_config_dir():
     """获取配置目录路径，区分开发环境和生产环境"""
-    # 检查是否在开发环境中运行（通过检查是否在源码目录中）
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(os.path.dirname(current_dir))
-    
-    # 如果在项目目录中运行（开发环境），使用项目内的配置目录
-    # 但如果是PyInstaller打包的应用，则始终视为生产环境
-    if (os.path.exists(os.path.join(project_root, '.git')) or os.path.exists(os.path.join(project_root, 'stock_monitor'))) and not hasattr(sys, '_MEIPASS'):
-        config_dir = os.path.join(project_root, '.stock_monitor_dev')
-        app_logger.info(f"开发环境: 使用配置目录 {config_dir}")
+    # PyInstaller环境使用可执行文件所在目录，其他环境使用main.py所在目录
+    if hasattr(sys, '_MEIPASS'):
+        # PyInstaller打包环境 - 使用可执行文件所在目录
+        config_dir = os.path.join(os.path.dirname(sys.executable), '.stock_monitor')
     else:
-        # 生产环境：始终使用程序目录下的配置，确保绿色软件特性
-        if hasattr(sys, '_MEIPASS'):
-            # PyInstaller打包环境 - 使用可执行文件所在目录
-            config_dir = os.path.join(os.path.dirname(sys.executable), '.stock_monitor')
-        else:
-            # 普通生产环境 - 使用main.py所在目录
-            config_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.stock_monitor')
-        app_logger.info(f"生产环境: 使用配置目录 {config_dir}")
+        # 普通环境 - 使用main.py所在目录
+        current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        config_dir = os.path.join(current_dir, '.stock_monitor')
+    
+    app_logger.info(f"使用配置目录: {config_dir}")
     
     # 确保配置目录存在
     os.makedirs(config_dir, exist_ok=True)
@@ -40,6 +32,20 @@ CONFIG_PATH = os.path.join(CONFIG_DIR, 'config.json')
 class ConfigManager:
     """配置管理器，封装配置的加载和保存操作"""
     
+    _instance = None
+    
+    def __new__(cls, config_path: str = CONFIG_PATH):
+        """
+        实现单例模式，确保全局只有一个配置管理器实例
+        
+        Args:
+            config_path: 配置文件路径
+        """
+        if cls._instance is None:
+            cls._instance = super(ConfigManager, cls).__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+    
     def __init__(self, config_path: str = CONFIG_PATH):
         """
         初始化配置管理器
@@ -47,12 +53,17 @@ class ConfigManager:
         Args:
             config_path: 配置文件路径
         """
+        if self._initialized:
+            return
+            
         self.config_path = config_path
         self._config: Dict[str, Any] = {}
+        self._load_config()
+        self._initialized = True
     
-    def load_config(self) -> Dict[str, Any]:
+    def _load_config(self) -> None:
         """加载配置文件，包含完整的错误处理和默认值"""
-        def _load_config():
+        def _load_config_impl():
             if not os.path.exists(self.config_path):
                 # 创建默认配置文件
                 default_config = {
@@ -129,9 +140,9 @@ class ConfigManager:
             return default_config
         
         try:
-            return _load_config()
+            _load_config_impl()
         except json.JSONDecodeError:
-            return handle_exception(
+            handle_exception(
                 "处理JSON解码错误",
                 _handle_json_decode_error,
                 {
@@ -144,7 +155,7 @@ class ConfigManager:
                 app_logger
             )
         except PermissionError:
-            return handle_exception(
+            handle_exception(
                 "处理权限错误",
                 _handle_permission_error,
                 {
@@ -157,9 +168,9 @@ class ConfigManager:
                 app_logger
             )
         except Exception:
-            return handle_exception(
+            handle_exception(
                 "加载配置文件",
-                _load_config,
+                _load_config_impl,
                 {
                     "user_stocks": ["sh600460", "sh603986", "sh600030", "sh000001"],
                     "refresh_interval": 5,
@@ -170,27 +181,22 @@ class ConfigManager:
                 app_logger
             )
     
-    def save_config(self, cfg: Dict[str, Any]) -> bool:
+    def _save_config(self) -> bool:
         """
         保存配置文件
         
-        Args:
-            cfg: 配置字典
-            
         Returns:
             bool: 保存是否成功
         """
-        self._config = cfg
-        
-        def _save_config():
+        def _save_config_impl():
             with open(self.config_path, 'w', encoding='utf-8') as f:
-                json.dump(cfg, f, ensure_ascii=False, indent=2)
+                json.dump(self._config, f, ensure_ascii=False, indent=2)
             app_logger.info("配置文件保存成功")
             return True
         
         return handle_exception(
             "保存配置文件",
-            _save_config,
+            _save_config_impl,
             False,
             app_logger
         )
@@ -206,27 +212,28 @@ class ConfigManager:
         Returns:
             配置项的值或默认值
         """
-        if not self._config:
-            self.load_config()
         return self._config.get(key, default)
     
-    def set(self, key: str, value: Any) -> None:
+    def set(self, key: str, value: Any) -> bool:
         """
         设置配置项的值
         
         Args:
             key: 配置项键名
             value: 配置项的值
+            
+        Returns:
+            bool: 是否保存成功
         """
-        if not self._config:
-            self.load_config()
         self._config[key] = value
+        return self._save_config()
 
 
 def load_config() -> Dict[str, Any]:
     """加载配置文件，包含完整的错误处理和默认值"""
     manager = ConfigManager()
-    return manager.load_config()
+    # 由于使用了单例模式，这里直接返回内部配置的副本
+    return manager._config.copy()
 
 
 def save_config(cfg: Dict[str, Any]) -> bool:
@@ -240,7 +247,8 @@ def save_config(cfg: Dict[str, Any]) -> bool:
         bool: 保存是否成功
     """
     manager = ConfigManager()
-    return manager.save_config(cfg)
+    manager._config = cfg
+    return manager._save_config()
 
 
 def is_market_open():
