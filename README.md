@@ -2,7 +2,22 @@
 
 本软件是一个用于实时监控A股行情的桌面应用程序，采用Python和PyQt5开发，具有简洁美观的界面和丰富的功能。
 
-![alt text](image.png)
+![A股行情监控系统界面示意图](image.png)
+
+## 项目概述
+
+A股行情监控系统是一款专为A股投资者设计的实时行情监控工具，帮助用户快速掌握自选股的最新动态。该软件具备以下特色功能：
+
+- 实时显示自选股最新价格和涨跌幅
+- 高亮显示涨跌停股票及其封单情况
+- 市场整体涨跌状态可视化展示
+- 灵活的自选股管理（支持代码/名称/拼音搜索）
+- 窗口拖拽移动和位置记忆
+- 右键菜单快捷操作
+- 可调节的数据刷新频率（2-60秒）
+- 自动版本更新功能
+- 日志自动清理机制
+- 绿色软件特性（解压即用）
 
 ## 项目结构
 
@@ -64,71 +79,7 @@ stock_monitor/
 └── README.md              # 项目说明文档
 ```
 
-## 模块功能详解
-
-### 1. 主程序模块 (main.py)
-
-主程序是整个应用的入口点，负责初始化界面、启动后台线程和协调各模块工作。
-
-主要功能：
-- 初始化主窗口和系统托盘
-- 启动数据刷新线程
-- 启动数据库更新线程
-- 处理用户交互（拖拽、右键菜单等）
-- 管理配置加载和保存
-- 实现窗口位置记忆功能
-
-### 2. 配置管理模块 (config/)
-
-负责应用配置的加载、保存和管理。
-
-主要文件：
-- [manager.py](file:///D:/code/stock/stock_monitor/config/manager.py): 提供配置文件的加载、保存和股市开市时间判断功能
-
-### 3. 数据处理模块 (data/)
-
-负责股票数据的获取、处理和更新。
-
-主要文件：
-- [quotation.py](file:///D:/code/stock/stock_monitor/data/quotation.py): 处理行情数据，包括价格计算、涨跌幅计算、封单检测等
-- [stocks.py](file:///D:/code/stock/stock_monitor/data/stocks.py): 加载股票基础数据，处理拼音信息等
-- [updater.py](file:///D:/code/stock/stock_monitor/data/updater.py): 从网络获取最新的股票数据并更新本地数据库
-
-### 4. 网络请求模块 (network/)
-
-封装了所有网络请求相关的功能，提供统一的网络接口。
-
-主要文件：
-- [manager.py](file:///D:/code/stock/stock_monitor/network/manager.py): 网络请求管理器，封装GET/POST请求和GitHub API请求
-
-### 5. 用户界面模块 (ui/)
-
-负责所有用户界面的展示和交互。
-
-主要文件：
-- [components.py](file:///D:/code/stock/stock_monitor/ui/components.py): UI基础组件
-- [market_status.py](file:///D:/code/stock/stock_monitor/ui/market_status.py): 市场状态条组件，可视化展示整体市场涨跌情况
-- [settings_dialog.py](file:///D:/code/stock/stock_monitor/ui/dialogs/settings_dialog.py): 设置对话框，用于管理自选股、刷新频率等设置
-
-### 6. 工具模块 (utils/)
-
-提供通用的工具函数和辅助功能。
-
-主要文件：
-- [error_handler.py](file:///D:/code/stock/stock_monitor/utils/error_handler.py): 错误处理和异常管理
-- [helpers.py](file:///D:/code/stock/stock_monitor/utils/helpers.py): 辅助函数，如资源路径获取、emoji处理等
-- [logger.py](file:///D:/code/stock/stock_monitor/utils/logger.py): 日志记录功能
-- [log_cleaner.py](file:///D:/code/stock/stock_monitor/utils/log_cleaner.py): 日志清理工具，定期删除过期日志文件
-
-### 7. 资源文件 (resources/)
-
-存放应用所需的静态资源文件。
-
-主要文件：
-- icon.ico: 应用图标
-- stock_basic.json: 股票基础数据，包括股票代码和名称
-
-## 主要功能
+## 核心功能详解
 
 ### 1. 实时行情监控
 - 实时显示自选股的最新价格和涨跌幅
@@ -159,7 +110,8 @@ stock_monitor/
 
 ### 7. 自动更新功能
 - 支持自动检测并下载新版本
-- 可配置GitHub Token以提高API请求限制
+- 通过GitHub API检测更新，支持备用加速下载源(https://ghfast.top/)
+- 两阶段更新策略，提高更新稳定性
 
 ### 8. 开机自启动
 - 支持设置开机自动启动

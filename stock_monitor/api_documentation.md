@@ -1,18 +1,24 @@
-# easyquotation 库 API 使用说明
+# API 文档
 
-## 简介
+## 概述
+
+本项目使用 `easyquotation` 库获取中国股票行情信息，支持新浪、腾讯等数据源。
+
+## easyquotation 库使用说明
+
+### 简介
 
 easyquotation 是一个用于获取中国股票行情信息的 Python 库，支持新浪、腾讯等数据源。
 
-## 安装
+### 安装
 
 ```bash
 pip install easyquotation
 ```
 
-## 基本使用
+### 基本使用
 
-### 1. 导入和初始化
+#### 1. 导入和初始化
 
 ```python
 import easyquotation
@@ -24,9 +30,9 @@ quotation = easyquotation.use('sina')
 quotation = easyquotation.use('tencent')  # 或 'qq'
 ```
 
-### 2. 获取实时行情数据
+#### 2. 获取实时行情数据
 
-#### 获取单只或多只股票数据
+##### 获取单只或多只股票数据
 
 ```python
 # 获取不带前缀的股票数据
@@ -38,21 +44,21 @@ data = quotation.stocks(['sh000001', 'sz000002'], prefix=True)
 # 返回: {'sh000001': {...}, 'sz000002': {...}}
 ```
 
-#### 获取所有股票数据
+##### 获取所有股票数据
 
 ```python
 # 获取所有股票数据
 all_data = quotation.all
 ```
 
-#### 获取市场快照
+##### 获取市场快照
 
 ```python
 # 获取市场快照数据
 snapshot = quotation.market_snapshot(prefix=True)
 ```
 
-#### 获取实时行情
+##### 获取实时行情
 
 ```python
 # 获取实时行情数据
@@ -65,16 +71,16 @@ real_data = quotation.real('sh000001')
 real_data = quotation.real(['sh000001', 'sz000001'], prefix=True)
 ```
 
-### 3. 获取股票代码列表
+#### 3. 获取股票代码列表
 
 ```python
 # 获取股票代码列表
 stock_list = quotation.stock_list
 ```
 
-## 其他数据源
+### 其他数据源
 
-### 港股日K线图
+#### 港股日K线图
 
 ```python
 import easyquotation
@@ -96,7 +102,7 @@ print(data)
 }
 ```
 
-### 腾讯港股实时行情
+#### 腾讯港股实时行情
 
 ```python
 import easyquotation
@@ -123,7 +129,7 @@ print(data)
 }
 ```
 
-### 集思录(JSL)行情
+#### 集思录(JSL)行情
 
 ```python
 quotation = easyquotation.use('jsl')
@@ -162,9 +168,9 @@ ETF数据返回格式：
 }
 ```
 
-## 数据结构说明
+### 数据结构说明
 
-### 股票数据字段
+#### 股票数据字段
 
 | 字段名 | 说明 |
 |--------|------|
@@ -185,21 +191,21 @@ ETF数据返回格式：
 | date | 日期 |
 | time | 时间 |
 
-## 特殊情况处理
+### 特殊情况处理
 
-### 1. 上证指数与平安银行代码冲突
+#### 1. 上证指数与平安银行代码冲突
 
 - `000001` 在不同市场代表不同标的：
   - `sh000001`: 上证指数
   - `sz000001`: 平安银行
 
-### 2. A股指数与万科Ａ代码冲突
+#### 2. A股指数与万科Ａ代码冲突
 
 - `000002` 在不同市场代表不同标的：
   - `sh000002`: Ａ股指数
   - `sz000002`: 万科Ａ
 
-## 常用指数代码
+### 常用指数代码
 
 | 代码 | 名称 |
 |------|------|
@@ -209,9 +215,9 @@ ETF数据返回格式：
 | sz399001 | 深证成指 |
 | sz399006 | 创业板指 |
 
-## 最佳实践
+### 最佳实践
 
-### 1. 股票代码处理
+#### 1. 股票代码处理
 
 为了确保正确识别股票，建议始终使用带前缀的股票代码：
 ```python
@@ -222,7 +228,7 @@ stock_data = quotation.stocks(['sh600000', 'sz000001'], prefix=True)
 stock_data = quotation.stocks(['600000', '000001'])
 ```
 
-### 2. 错误处理
+#### 2. 错误处理
 
 在获取股票数据时，应当添加适当的错误处理机制：
 ```python
@@ -237,7 +243,7 @@ except Exception as e:
     print(f"获取股票数据时发生错误: {e}")
 ```
 
-### 3. 数据缓存
+#### 3. 数据缓存
 
 对于频繁访问的数据，建议使用缓存机制以减少网络请求：
 ```python
@@ -267,7 +273,7 @@ def get_stock_data_with_cache(stock_codes):
         return None
 ```
 
-### 4. 批量处理
+#### 4. 批量处理
 
 当需要获取大量股票数据时，建议分批处理以避免请求超时：
 ```python
@@ -286,9 +292,9 @@ def get_all_stocks_batch(stock_codes, batch_size=50):
     return all_data
 ```
 
-## 不同市场股票数据获取方法
+### 不同市场股票数据获取方法
 
-### A股数据获取
+#### A股数据获取
 
 A股包括上海证券交易所（sh）和深圳证券交易所（sz）的股票，使用sina行情引擎：
 
@@ -308,7 +314,7 @@ data = quotation.stocks(codes, prefix=True)
 real_data = quotation.real(['sh600000', 'sz000001'], prefix=True)
 ```
 
-### 港股数据获取
+#### 港股数据获取
 
 港股使用专门的行情引擎hkquote：
 
@@ -327,7 +333,7 @@ data = hk_quotation.stocks(codes)
 real_data = hk_quotation.real(['00700', '09988'])
 ```
 
-### 指数数据获取
+#### 指数数据获取
 
 指数也是A股的一部分，同样使用A股行情引擎：
 
@@ -345,7 +351,7 @@ codes = ['sh000001', 'sz399001', 'sh000300', 'sz399006']  # 上证指数、深�
 data = quotation.stocks(codes, prefix=True)
 ```
 
-## 项目代码梳理
+### 项目代码梳理
 
 在项目中，我们严格按照不同市场类型区分处理，确保数据获取的准确性：
 
@@ -355,7 +361,7 @@ data = quotation.stocks(codes, prefix=True)
 
 所有数据获取均采用批量处理方式，提高效率并减少网络请求次数。
 
-## 注意事项
+### 注意事项
 
 1. 股票代码前缀规则：
    - `sh`: 上海证券交易所
