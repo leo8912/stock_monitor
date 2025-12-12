@@ -715,11 +715,98 @@ def main():
     # 应用待处理的更新
     apply_pending_updates()
     
+    # 设置开机启动
+    _setup_auto_start()
+    
     app = QtWidgets.QApplication(sys.argv)
     main_window = MainWindow()
     tray = SystemTray(main_window)
     tray.show()
     sys.exit(app.exec_())
+
+def _setup_auto_start():
+    """
+    设置开机自启动功能
+    通过在用户启动文件夹中创建/删除快捷方式实现
+    """
+    try:
+        from stock_monitor.config.manager import ConfigManager
+        from stock_monitor.utils.logger import app_logger
+        import os
+        import sys
+        
+        # 获取配置
+        config_manager = ConfigManager()
+        auto_start = config_manager.get("auto_start", False)
+        
+        # 获取启动文件夹路径
+        startup_folder = os.path.join(
+            os.environ.get('APPDATA', ''),
+            'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup'
+        )
+        
+        # 检查启动文件夹是否存在
+        if not os.path.exists(startup_folder):
+            app_logger.warning(f"启动文件夹不存在: {startup_folder}")
+            return
+            
+        shortcut_path = os.path.join(startup_folder, 'StockMonitor.lnk')
+        
+        # 如果启用开机启动
+        if auto_start:
+            # 获取应用程序路径
+            if hasattr(sys, '_MEIPASS'):
+                # PyInstaller打包环境
+                app_path = sys.executable
+            else:
+                # 开发环境
+                app_path = os.path.abspath(sys.argv[0])
+            
+            # 创建快捷方式
+            _create_shortcut(app_path, shortcut_path)
+            app_logger.info(f"已创建开机启动快捷方式: {shortcut_path}")
+        else:
+            # 如果禁用开机启动且快捷方式存在，则删除
+            if os.path.exists(shortcut_path):
+                os.remove(shortcut_path)
+                app_logger.info(f"已删除开机启动快捷方式: {shortcut_path}")
+    except Exception as e:
+        from stock_monitor.utils.logger import app_logger
+        app_logger.error(f"设置开机启动失败: {e}")
+
+def _create_shortcut(target_path, shortcut_path):
+    """
+    创建快捷方式
+    
+    Args:
+        target_path (str): 目标文件路径
+        shortcut_path (str): 快捷方式保存路径
+    """
+    try:
+        # 尝试使用win32com创建快捷方式
+        import win32com.client
+        shell = win32com.client.Dispatch("WScript.Shell")
+        shortcut = shell.CreateShortCut(shortcut_path)
+        shortcut.Targetpath = target_path
+        shortcut.WorkingDirectory = os.path.dirname(target_path)
+        shortcut.save()
+    except ImportError:
+        # win32com不可用时的备选方案
+        try:
+            # 尝试只使用内置模块
+            import shutil
+            if target_path.endswith('.py'):
+                # 如果是Python脚本，创建批处理文件
+                batch_content = f'@echo off\npython "{target_path}"\n'
+                batch_path = shortcut_path.replace('.lnk', '.bat')
+                with open(batch_path, 'w') as f:
+                    f.write(batch_content)
+            else:
+                # 如果是exe文件，直接复制
+                shutil.copy2(target_path, shortcut_path.replace('.lnk', '.exe'))
+        except Exception as e:
+            from stock_monitor.utils.logger import app_logger
+            app_logger.error(f"创建快捷方式失败: {e}")
 
 if __name__ == '__main__':
     main()

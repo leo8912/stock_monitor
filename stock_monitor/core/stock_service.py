@@ -291,7 +291,7 @@ class StockDataService:
                     bid1 = info.get('bid1', 0)
                     bid1_vol = info.get('bid1_volume', 0) or info.get('volume_2', 0)
                     ask1 = info.get('ask1', 0)
-                    ask1_vol = info.get('bid1_volume', 0) or info.get('volume_3', 0)
+                    ask1_vol = info.get('ask1_volume', 0) or info.get('volume_3', 0)
                     
                     # 添加更严格的None值检查
                     if now is None or close is None:

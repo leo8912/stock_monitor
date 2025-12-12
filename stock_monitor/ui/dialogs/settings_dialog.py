@@ -804,7 +804,11 @@ class NewSettingsDialog(QDialog):
             config_manager.set('user_stocks', user_stocks)
             
             # 保存开机启动设置
-            config_manager.set("auto_start", self.auto_start_checkbox.isChecked())
+            auto_start_enabled = self.auto_start_checkbox.isChecked()
+            config_manager.set("auto_start", auto_start_enabled)
+            
+            # 实际设置开机启动
+            self._set_auto_start(auto_start_enabled)
             
             # 保存刷新频率设置
             refresh_text = self.refresh_combo.currentText()
@@ -833,7 +837,86 @@ class NewSettingsDialog(QDialog):
         except Exception as e:
             from stock_monitor.utils.logger import app_logger
             app_logger.error(f"保存设置时出错: {e}")
+    
+    def _set_auto_start(self, enabled):
+        """
+        设置开机启动
         
+        Args:
+            enabled (bool): 是否启用开机启动
+        """
+        try:
+            from stock_monitor.utils.logger import app_logger
+            import os
+            import sys
+            
+            # 获取启动文件夹路径
+            startup_folder = os.path.join(
+                os.environ.get('APPDATA', ''),
+                'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup'
+            )
+            
+            # 检查启动文件夹是否存在
+            if not os.path.exists(startup_folder):
+                app_logger.warning(f"启动文件夹不存在: {startup_folder}")
+                return
+                
+            shortcut_path = os.path.join(startup_folder, 'StockMonitor.lnk')
+            
+            if enabled:
+                # 获取应用程序路径
+                if hasattr(sys, '_MEIPASS'):
+                    # PyInstaller打包环境
+                    app_path = sys.executable
+                else:
+                    # 开发环境
+                    app_path = os.path.abspath(sys.argv[0])
+                
+                # 创建快捷方式
+                self._create_shortcut(app_path, shortcut_path)
+                app_logger.info(f"已创建开机启动快捷方式: {shortcut_path}")
+            else:
+                # 删除快捷方式（如果存在）
+                if os.path.exists(shortcut_path):
+                    os.remove(shortcut_path)
+                    app_logger.info(f"已删除开机启动快捷方式: {shortcut_path}")
+        except Exception as e:
+            from stock_monitor.utils.logger import app_logger
+            app_logger.error(f"设置开机启动失败: {e}")
+
+    def _create_shortcut(self, target_path, shortcut_path):
+        """
+        创建快捷方式
+        
+        Args:
+            target_path (str): 目标文件路径
+            shortcut_path (str): 快捷方式保存路径
+        """
+        try:
+            # 尝试使用win32com创建快捷方式
+            import win32com.client
+            shell = win32com.client.Dispatch("WScript.Shell")
+            shortcut = shell.CreateShortCut(shortcut_path)
+            shortcut.Targetpath = target_path
+            shortcut.WorkingDirectory = os.path.dirname(target_path)
+            shortcut.save()
+        except ImportError:
+            # win32com不可用时的备选方案
+            try:
+                import shutil
+                if target_path.endswith('.py'):
+                    # 如果是Python脚本，创建批处理文件
+                    batch_content = f'@echo off\npython "{target_path}"\n'
+                    batch_path = shortcut_path.replace('.lnk', '.bat')
+                    with open(batch_path, 'w') as f:
+                        f.write(batch_content)
+                else:
+                    # 如果是exe文件，直接复制
+                    shutil.copy2(target_path, shortcut_path.replace('.lnk', '.exe'))
+            except Exception as e:
+                from stock_monitor.utils.logger import app_logger
+                app_logger.error(f"创建快捷方式失败: {e}")
+
     def accept(self):
         """点击确定按钮时保存设置"""
         self.save_settings()
@@ -1002,7 +1085,7 @@ class NewSettingsDialog(QDialog):
         # 发送信号通知主窗口更新样式
         # self.settings_changed.emit()
         pass
-        
+
     def get_stocks_from_list(self):
         """
         从股票列表中提取股票代码

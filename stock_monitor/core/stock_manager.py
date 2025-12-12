@@ -8,6 +8,7 @@ from ..utils.logger import app_logger
 from ..core.stock_service import stock_data_service
 from ..utils.stock_utils import StockCodeProcessor
 from ..core.data_change_detector import DataChangeDetector
+from ..utils.helpers import is_equal
 
 
 class StockManager:
@@ -74,7 +75,7 @@ class StockManager:
                     bid1 = info.get('bid1', 0)
                     bid1_vol = info.get('bid1_volume', 0) or info.get('volume_2', 0)
                     ask1 = info.get('ask1', 0)
-                    ask1_vol = info.get('bid1_volume', 0) or info.get('volume_3', 0)
+                    ask1_vol = info.get('ask1_volume', 0) or info.get('volume_3', 0)
                     
                     # 添加更严格的None值检查
                     if now is None or close is None:
@@ -125,15 +126,15 @@ class StockManager:
                     # 确保所有值都不是None
                     if (now is not None and high is not None and bid1 is not None and 
                         bid1_vol is not None and ask1 is not None and
-                        str(now) == str(high) and str(now) == str(bid1) and 
-                        bid1_vol > 0 and str(ask1) == "0.0"):
+                        is_equal(str(now), str(high)) and is_equal(str(now), str(bid1)) and 
+                        bid1_vol > 0 and is_equal(str(ask1), "0.0")):
                         # 将封单数转换为以"k"为单位，封单数/100000来算（万手转k）
                         seal_vol = f"{int(bid1_vol/100000)}k" if bid1_vol >= 100000 else f"{int(bid1_vol)}"
                         seal_type = 'up'
                     elif (now is not None and low is not None and ask1 is not None and 
                           ask1_vol is not None and bid1 is not None and
-                          str(now) == str(low) and str(now) == str(ask1) and 
-                          ask1_vol > 0 and str(bid1) == "0.0"):
+                          is_equal(str(now), str(low)) and is_equal(str(now), str(ask1)) and 
+                          ask1_vol > 0 and is_equal(str(bid1), "0.0")):
                         # 将封单数转换为以"k"为单位，封单数/100000来算（万手转k）
                         seal_vol = f"{int(ask1_vol/100000)}k" if ask1_vol >= 100000 else f"{int(ask1_vol)}"
                         seal_type = 'down'
