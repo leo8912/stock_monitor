@@ -11,6 +11,8 @@ from PyQt5.QtCore import pyqtSlot
 # 导入日志记录器
 from stock_monitor.utils.logger import app_logger
 
+__version__ = "2.2.4"
+
 class StockTable(QtWidgets.QTableWidget):
     """
     股票表格控件
@@ -97,7 +99,7 @@ class StockTable(QtWidgets.QTableWidget):
             if self.rowCount() != row_count:
                 self.setRowCount(row_count)
             
-            # 检查是否需要显示封单列
+            # 检查是否需要显示封单列（检查是否有涨停或跌停的股票）
             show_seal_column = any(stock[5] for stock in stocks)  # stock[5]是seal_type
             
             column_count = 4 if show_seal_column else 3
@@ -151,11 +153,13 @@ class StockTable(QtWidgets.QTableWidget):
                 # 如果需要显示封单列
                 if show_seal_column:
                     item_seal = QtWidgets.QTableWidgetItem()
+                    # 对于有封单信息的股票显示封单数
                     if seal_vol and seal_type:
                         item_seal.setText(f"{seal_vol} ")
                     else:
                         item_seal.setText("")
                         
+                    # 根据涨跌停类型设置封单列的颜色
                     if seal_type == 'up':
                         item_seal.setBackground(QtGui.QColor('#ffecec'))
                         item_seal.setForeground(QtGui.QColor(color))
@@ -180,8 +184,8 @@ class StockTable(QtWidgets.QTableWidget):
             # 通知父窗口调整大小
             if self.parent():
                 parent = self.parent()
-                if hasattr(parent, 'adjust_window_height'):
-                    parent.adjust_window_height()
+                if hasattr(parent, 'adjust_window_height') and callable(getattr(parent, 'adjust_window_height')):
+                    parent.adjust_window_height()  # type: ignore
         except Exception as e:
             error_msg = f"更新表格数据时发生错误: {e}"
             app_logger.error(error_msg)
