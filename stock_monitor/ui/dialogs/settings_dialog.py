@@ -51,8 +51,15 @@ class DraggableListWidget(QListWidget):
         
     def focusOutEvent(self, e):
         """重写焦点丢失事件，取消所有选中项"""
-        super().focusOutEvent(e)
-        self.clearSelection()
+        # 检查焦点转移到了哪个控件
+        # 如果是删除按钮获得焦点，则不清除选中状态
+        focused_widget = QApplication.focusWidget()
+        if focused_widget and hasattr(focused_widget, 'objectName') and focused_widget.objectName() == 'removeButton':
+            super().focusOutEvent(e)
+            # 不清除选中状态
+        else:
+            super().focusOutEvent(e)
+            self.clearSelection()
         
     def mousePressEvent(self, e):
         """重写鼠标按下事件，处理空白区域点击"""
@@ -63,6 +70,7 @@ class DraggableListWidget(QListWidget):
             self.clearSelection()
         
         super().mousePressEvent(e)
+
 
 class NewSettingsDialog(QDialog):
     """设置对话框类"""
@@ -78,15 +86,19 @@ class NewSettingsDialog(QDialog):
         # 保存主窗口引用
         self.main_window = main_window
         
+        # 保存原始自选股列表，用于取消操作时恢复
+        self.original_watch_list = []
+        
         # 设置窗口图标
         icon_path = resource_path('icon.ico')
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
         
-        # 移除右上角的问号帮助按钮，只保留关闭按钮
+        # 移除右上角的问号帮助按钮，并确保窗口不置顶
         flags = self.windowFlags()
         flags &= ~Qt.WindowType.WindowContextHelpButtonHint
-        self.setWindowFlags(Qt.WindowFlags(flags))  # type: ignore
+        flags &= ~Qt.WindowType.WindowStaysOnTopHint
+        self.setWindowFlags(Qt.WindowType.Window)
         
         # 设置窗口样式以匹配暗色主题
         self.setStyleSheet("QDialog { background-color: #1e1e1e; } ")
@@ -234,33 +246,51 @@ class NewSettingsDialog(QDialog):
                 text-align: center;
                 padding: 2px 4px;
             }
-            QSpinBox {
-                background-color: #2d2d2d;
+            QPushButton {
+                background-color: #0078d4;
                 color: white;
-                border: 1px solid #555555;
+                border: none;
                 border-radius: 4px;
-                padding: 2px 4px;
+                padding: 6px 12px;
                 font-family: 'Microsoft YaHei';
-                font-size: 20px;
+                font-size: 19px;
+                min-width: 80px;
                 min-height: 22px;
             }
-            QSpinBox:hover {
-                border: 1px solid #0078d4;
+            QPushButton:hover {
+                background-color: #108de6;
             }
-            QSpinBox:focus {
-                border: 1px solid #0078d4;
+            QPushButton:pressed {
+                background-color: #005a9e;
             }
-            QSpinBox::up-button, QSpinBox::down-button {
-                width: 16px;
+            QPushButton:disabled {
+                background-color: #555555;
+                color: #888888;
+            }
+            QGroupBox {
+                font-family: 'Microsoft YaHei';
+                font-size: 20px;
+                font-weight: bold;
+                color: white;
+                border: 1px solid #555555;
+                border-radius: 6px;
+                margin-top: 1ex;
+                padding-top: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top center;
+                padding: 0 10px;
             }
             QSlider::groove:horizontal {
+                border: 1px solid #555555;
                 height: 6px;
                 background: #2d2d2d;
                 border-radius: 3px;
             }
             QSlider::handle:horizontal {
                 background: #0078d4;
-                border: 1px solid #555555;
+                border: 1px solid #005a9e;
                 width: 18px;
                 height: 18px;
                 border-radius: 9px;
@@ -270,119 +300,47 @@ class NewSettingsDialog(QDialog):
                 background: #0078d4;
                 border-radius: 3px;
             }
-            QPushButton {
-                background-color: #0078d4;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 4px 8px;  /* 增大按钮内边距使视觉更平衡 */
-                font-family: 'Microsoft YaHei';
-                font-size: 20px;
-                min-width: 0px;
-                min-height: 22px;
-            }
-            QPushButton:hover {
-                background-color: #005a9e;
-            }
-            QPushButton:pressed {
-                background-color: #004578;
-            }
-            QPushButton#cancelButton {
+            QSpinBox {
                 background-color: #2d2d2d;
-                border: 1px solid #555555;
-                padding: 4px 8px;  /* 增大按钮内边距使视觉更平衡 */
-                min-height: 22px;
-            }
-            QPushButton#cancelButton:hover {
-                background-color: #3d3d3d;
-            }
-            QPushButton#checkUpdateButton {
-                min-width: 0px;
-                min-height: 22px;
-                padding: 4px 8px;  /* 增大按钮内边距使视觉更平衡 */
-            }
-            QGroupBox {
-                font-family: 'Microsoft YaHei';
-                font-size: 22px;
-                font-weight: bold;
                 color: white;
                 border: 1px solid #555555;
                 border-radius: 4px;
-                margin-top: 1ex;
-                padding-top: 8px;
+                padding: 2px 4px;
+                font-family: 'Microsoft YaHei';
+                font-size: 19px;
+                min-height: 22px;
+                alignment: center;
             }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                subcontrol-position: top center;
-                padding: 0 5px;
+            QSpinBox:hover {
+                border: 1px solid #0078d4;
             }
-            QScrollBar:vertical {
-                background: #2d2d2d;
-                width: 10px;
-                border-radius: 5px;
-                margin: 0px;
+            QSpinBox:focus {
+                border: 1px solid #0078d4;
             }
-            QScrollBar::handle:vertical {
-                background: #555555;
-                border-radius: 5px;
-                min-height: 20px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background: #666666;
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                height: 0px;
-                subcontrol-position: none;
-            }
-            /* 标题栏样式 */
-            QMenuBar {
-                background-color: #1e1e1e;
-                color: white;
+            QSpinBox::up-button, QSpinBox::down-button {
+                width: 16px;
                 border: none;
+                background-color: #2d2d2d;
             }
-            QMenuBar::item {
-                background-color: #1e1e1e;
-                color: white;
-                padding: 4px 8px;
-            }
-            QMenuBar::item:selected {
+            QSpinBox::up-button:hover, QSpinBox::down-button:hover {
                 background-color: #3d3d3d;
-            }
-            QMenuBar::item:pressed {
-                background-color: #0078d4;
-            }
-            QToolBar {
-                background-color: #1e1e1e;
-                border: none;
-            }
-            /* 标题栏按钮样式 */
-            QToolButton {
-                background-color: transparent;
-                border: none;
-                color: white;
-            }
-            QToolButton:hover {
-                background-color: #3d3d3d;
-            }
-            QToolButton:pressed {
-                background-color: #0078d4;
             }
         """)
         
         # 创建主布局
         main_layout = QVBoxLayout()
-        main_layout.setContentsMargins(20, 20, 20, 0)  # 最大限度减小底部边距
-        main_layout.setSpacing(10)  # 减少间距到10px
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(15)
         self.setLayout(main_layout)
         
-        # 创建自选股管理组
+        # 自选股管理组
         watchlist_group = QGroupBox("自选股管理")
         watchlist_layout = QHBoxLayout()
         watchlist_layout.setContentsMargins(10, 10, 10, 10)
         watchlist_layout.setSpacing(15)
         watchlist_group.setLayout(watchlist_layout)
         
-        # 左侧区域 - 搜索添加自选股
+        # 左侧区域 - 搜索股票
         left_layout = QVBoxLayout()
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(8)
@@ -422,6 +380,7 @@ class NewSettingsDialog(QDialog):
         
         # 添加删除按钮
         self.remove_button = QPushButton("删除选中")
+        self.remove_button.setObjectName("removeButton")  # 添加对象名称以便识别
         self.remove_button.setFixedWidth(120)
         self.remove_button.clicked.connect(self.remove_selected_stocks)
         
@@ -552,29 +511,23 @@ class NewSettingsDialog(QDialog):
         button_layout = QHBoxLayout()
         button_layout.setContentsMargins(0, 0, 0, 0)  # 移除边距
         button_layout.setSpacing(10)
-        button_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)  # 垂直居中对齐
-        
+        button_layout.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)  # 右对齐并垂直居中
+
         # 确定和取消按钮
         self.ok_button = QPushButton("确定")
         self.cancel_button = QPushButton("取消")
         self.cancel_button.setObjectName("cancelButton")
-        
-        button_layout.addStretch()
+
         button_layout.addWidget(self.ok_button)
         button_layout.addWidget(self.cancel_button)
-        
-        # 添加应用按钮
-        self.apply_button = QPushButton("应用")
-        self.apply_button.clicked.connect(self.apply_settings)
-        button_layout.insertWidget(1, self.apply_button)
-        
+
         # 创建底部布局，包含系统设置和按钮
         bottom_layout = QHBoxLayout()
-        bottom_layout.setContentsMargins(0, 0, 0, 8)  # 增加底部边距3px，从5px到8px
+        bottom_layout.setContentsMargins(0, 0, 0, 0)
         bottom_layout.addLayout(system_layout)
         bottom_layout.addStretch()
         bottom_layout.addLayout(button_layout)
-        
+
         # 调整底部布局的对齐方式，使文字和按钮视觉上更齐平
         bottom_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         
@@ -747,7 +700,10 @@ class NewSettingsDialog(QDialog):
         for item in formatted_watch_list:
             if isinstance(item, str):
                 self.watch_list.addItem(item)
-            
+        
+        # 保存原始自选股列表副本，用于取消操作时恢复
+        self.original_watch_list = [formatted_watch_list[i] for i in range(len(formatted_watch_list))]
+        
         # 加载开机启动设置
         try:
             from stock_monitor.config.manager import ConfigManager
@@ -947,7 +903,6 @@ class NewSettingsDialog(QDialog):
     def accept(self):
         """点击确定按钮时保存设置"""
         self.save_settings()
-        self.save_position()  # 保存位置
         
         # 确保配置更改信号发出
         if self.main_window:
@@ -958,144 +913,42 @@ class NewSettingsDialog(QDialog):
             app_logger.info(f"发送配置更改信号: 股票列表={stocks}, 刷新间隔={refresh_interval}")
             self.config_changed.emit(stocks, refresh_interval)
             
-        super().accept()
+        # 更新原始列表为当前列表
+        self.original_watch_list = []
+        for i in range(self.watch_list.count()):
+            item = self.watch_list.item(i)
+            if item:
+                self.original_watch_list.append(item.text())
         
-    def apply_settings(self):
-        """应用设置但不关闭对话框"""
-        self.save_settings()
-        self.save_position()  # 保存位置
-        
-        # 确保配置更改信号发出
-        if self.main_window:
-            stocks = self.get_stocks_from_list()
-            refresh_interval = self._map_refresh_text_to_value(self.refresh_combo.currentText())
-            # 添加调试信息
-            from stock_monitor.utils.logger import app_logger
-            app_logger.info(f"应用设置并发送配置更改信号: 股票列表={stocks}, 刷新间隔={refresh_interval}")
-            self.config_changed.emit(stocks, refresh_interval)
+        # 使用hide()替代accept()避免可能的退出问题
+        self.hide()
         
     def reject(self):
         """点击取消按钮时恢复原始设置"""
-        self.save_position()  # 保存位置
-        super().reject()
+        # 恢复原始自选股列表
+        self.watch_list.clear()
+        for item in self.original_watch_list:
+            self.watch_list.addItem(item)
         
-    def save_position(self):
-        """保存对话框位置"""
-        if self.main_window:
-            # 保存位置到主窗口的配置中
-            from stock_monitor.config.manager import ConfigManager
-            config_manager = ConfigManager()
-            pos = [self.x(), self.y()]
-            config_manager.set('settings_dialog_pos', pos)
-    
+        # 隐藏窗口而不是关闭
+        self.hide()
+        
     def showEvent(self, a0):  # type: ignore
         """重写showEvent以设置初始位置"""
         super().showEvent(a0)
         
-        # 每次显示时都重新设置位置，确保不遮挡主窗口
-        self.set_initial_position()
+        # 居中显示窗口
+        self.center_on_screen()
+
+    def center_on_screen(self):
+        """将窗口居中显示在屏幕中央"""
+        screen = QApplication.primaryScreen()
+        if screen:
+            screen_geo = screen.availableGeometry()
+            x = (screen_geo.width() - self.width()) // 2
+            y = (screen_geo.height() - self.height()) // 2
+            self.move(max(screen_geo.left(), x), max(screen_geo.top(), y))
     
-    def set_initial_position(self):
-        """设置初始位置，避免遮挡主窗口"""
-        if self.main_window:
-            # 获取主窗口位置和尺寸
-            main_geo = self.main_window.geometry()
-            
-            # 检查位置是否在屏幕范围内
-            screen = QApplication.primaryScreen()
-            if screen:
-                available_geo = screen.availableGeometry()
-                
-                # 尝试不同的位置，优先级依次为：右侧、左侧、下方、上方
-                positions = []
-                
-                # 右侧位置
-                right_x = main_geo.x() + main_geo.width() + 20
-                right_y = main_geo.y()
-                positions.append((right_x, right_y, "右侧"))
-                
-                # 左侧位置
-                left_x = main_geo.x() - self.width() - 20
-                left_y = main_geo.y()
-                positions.append((left_x, left_y, "左侧"))
-                
-                # 下方位置
-                bottom_x = main_geo.x()
-                bottom_y = main_geo.y() + main_geo.height() + 20
-                positions.append((bottom_x, bottom_y, "下方"))
-                
-                # 上方位置
-                top_x = main_geo.x()
-                top_y = main_geo.y() - self.height() - 20
-                positions.append((top_x, top_y, "上方"))
-                
-                # 选择第一个完全适合的位置
-                x, y = None, None
-                chosen_position = None
-                for pos_x, pos_y, pos_name in positions:
-                    # 检查位置是否在屏幕范围内
-                    if (available_geo.left() <= pos_x and 
-                        pos_x + self.width() <= available_geo.right() and
-                        available_geo.top() <= pos_y and
-                        pos_y + self.height() <= available_geo.bottom()):
-                        x, y = pos_x, pos_y
-                        chosen_position = pos_name
-                        break
-                
-                # 如果没有找到完全适合的位置，计算最小遮挡的位置
-                if x is None or y is None:
-                    min_overlap_area = float('inf')
-                    best_x, best_y = None, None
-                    best_position = None
-                    
-                    for pos_x, pos_y, pos_name in positions:
-                        # 计算窗口在屏幕内的部分
-                        visible_x1 = max(available_geo.left(), pos_x)
-                        visible_y1 = max(available_geo.top(), pos_y)
-                        visible_x2 = min(available_geo.right(), pos_x + self.width())
-                        visible_y2 = min(available_geo.bottom(), pos_y + self.height())
-                        
-                        # 检查是否有可见部分
-                        if visible_x1 < visible_x2 and visible_y1 < visible_y2:
-                            # 计算可见面积
-                            visible_area = (visible_x2 - visible_x1) * (visible_y2 - visible_y1)
-                            # 计算遮挡面积
-                            overlap_area = (self.width() * self.height()) - visible_area
-                            
-                            # 选择遮挡面积最小的位置
-                            if overlap_area < min_overlap_area:
-                                min_overlap_area = overlap_area
-                                best_x, best_y = pos_x, pos_y
-                                best_position = pos_name
-                    
-                    # 如果找到了最小遮挡的位置
-                    if best_x is not None and best_y is not None:
-                        x, y = best_x, best_y
-                        chosen_position = f"{best_position}(最小遮挡)"
-                    else:
-                        # 如果还是没有合适的位置，使用默认位置并进行边界调整
-                        x = main_geo.x() + main_geo.width() + 20
-                        y = main_geo.y()
-                        chosen_position = "右侧(调整后)"
-                        
-                        # 确保设置窗口不会超出右边界
-                        if x + self.width() > available_geo.right():
-                            x = available_geo.right() - self.width()
-                        
-                        # 确保设置窗口不会超出左边界
-                        if x < available_geo.left():
-                            x = available_geo.left()
-                        
-                        # 确保设置窗口不会超出下边界
-                        if y + self.height() > available_geo.bottom():
-                            y = available_geo.bottom() - self.height()
-                        
-                        # 确保设置窗口不会超出上边界
-                        if y < available_geo.top():
-                            y = available_geo.top()
-                
-                self.move(x, y)
-        
     def _map_refresh_text_to_value(self, text):
         """将刷新频率文本映射为数值"""
         mapping = {"2秒": 2, "5秒": 5, "10秒": 10, "30秒": 30}
@@ -1128,3 +981,9 @@ class NewSettingsDialog(QDialog):
         # 使用统一的工具函数处理股票代码提取
         from stock_monitor.utils import extract_stocks_from_list
         return extract_stocks_from_list(items)
+
+    def closeEvent(self, a0):  # type: ignore
+        """处理窗口关闭事件"""
+        self.hide()
+        if a0:
+            a0.ignore()  # 阻止窗口真正关闭
