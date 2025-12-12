@@ -49,7 +49,21 @@ class DraggableListWidget(QListWidget):
         self.setAcceptDrops(True)
         self.setDropIndicatorShown(True)
         
+    def focusOutEvent(self, e):
+        """重写焦点丢失事件，取消所有选中项"""
+        super().focusOutEvent(e)
+        self.clearSelection()
         
+    def mousePressEvent(self, e):
+        """重写鼠标按下事件，处理空白区域点击"""
+        # 检查点击位置是否在项目上
+        item = self.itemAt(e.pos()) if e else None
+        if item is None:
+            # 点击在空白区域，取消所有选中
+            self.clearSelection()
+        
+        super().mousePressEvent(e)
+
 class NewSettingsDialog(QDialog):
     """设置对话框类"""
     
@@ -418,6 +432,7 @@ class NewSettingsDialog(QDialog):
         right_layout.addLayout(watchlist_header_layout)
         self.watch_list = DraggableListWidget()
         # 样式已在全局样式表中定义
+        self.watch_list.itemSelectionChanged.connect(self.update_remove_button_state)
         right_layout.addWidget(self.watch_list)
         
         # 初始化删除按钮状态
@@ -643,6 +658,9 @@ class NewSettingsDialog(QDialog):
             for _, code, stock in matched_stocks[:20]:
                 item_text = f"{code} {stock.get('name', '')}"
                 self.search_results.addItem(item_text)
+                
+            # 取消自选股列表的选中状态
+            self.watch_list.clearSelection()
         except Exception as e:
             from stock_monitor.utils.error_handler import app_logger
             app_logger.error(f"搜索股票时出错: {e}")
@@ -656,6 +674,9 @@ class NewSettingsDialog(QDialog):
             # 清空搜索框
             self.search_input.clear()
             self.search_results.clear()
+            
+        # 取消自选股列表的选中状态
+        self.watch_list.clearSelection()
             
     def add_to_watchlist(self, item):
         """将股票添加到自选股列表"""
@@ -673,6 +694,9 @@ class NewSettingsDialog(QDialog):
         self.watch_list.addItem(item.text())
         self.update_remove_button_state()
         
+        # 取消自选股列表的选中状态
+        self.watch_list.clearSelection()
+        
     def remove_selected_stocks(self):
         """删除选中的股票"""
         selected_items = self.watch_list.selectedItems()
@@ -680,6 +704,9 @@ class NewSettingsDialog(QDialog):
             row = self.watch_list.row(item)
             self.watch_list.takeItem(row)
         self.update_remove_button_state()
+        
+        # 取消自选股列表的选中状态
+        self.watch_list.clearSelection()
         
     def update_remove_button_state(self):
         """更新删除按钮的状态"""
