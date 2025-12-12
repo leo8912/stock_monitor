@@ -1,8 +1,3 @@
-"""
-网络请求模块
-封装所有网络请求相关的功能
-"""
-
 import requests
 import time
 from typing import Optional, Dict, Any
@@ -72,17 +67,25 @@ class NetworkManager:
             app_logger.error(f"POST请求失败: {url}, 错误: {e}")
             return None
     
-    def github_api_request(self, url: str) -> Optional[Dict[Any, Any]]:
+    def github_api_request(self, url: str, use_mirror: bool = False) -> Optional[Dict[Any, Any]]:
         """
         发送GitHub API请求
         
         Args:
             url: GitHub API URL
+            use_mirror: 是否使用镜像源
             
         Returns:
             JSON响应数据或None（如果失败）
         """
-        response = self.get(url)
+        # 如果需要使用镜像源，则替换URL
+        if use_mirror:
+            mirror_url = f"https://ghfast.top/{url}"
+            app_logger.info(f"使用镜像源: {mirror_url}")
+        else:
+            mirror_url = url
+            
+        response = self.get(mirror_url)
         if response:
             try:
                 return response.json()

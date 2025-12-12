@@ -30,23 +30,29 @@ class AppUpdater:
         self.current_version = __version__
         self.latest_release_info: Optional[Dict[Any, Any]] = None
         
-    def check_for_updates(self) -> bool:
+    def check_for_updates(self) -> Optional[bool]:
         """
         检查是否有新版本可用
         
         Returns:
-            bool: 如果有新版本返回True，否则返回False
+            bool: 如果有新版本返回True，如果没有新版本返回False，如果网络错误返回None
         """
         try:
             app_logger.info("开始检查更新...")
             
-            # 获取最新的release信息
+            # 首先尝试使用原始GitHub地址
             api_url = f"https://api.github.com/repos/{self.github_repo}/releases/latest"
             release_info = self.network_manager.github_api_request(api_url)
             
+            # 如果失败，尝试使用镜像源
+            if not release_info:
+                app_logger.warning("使用GitHub原始地址检查更新失败，尝试使用镜像源...")
+                release_info = self.network_manager.github_api_request(api_url, use_mirror=True)
+            
             if not release_info:
                 app_logger.warning("无法获取最新的release信息")
-                return False
+                # 区分是网络问题还是其他问题
+                return None  # 网络问题，无法确定是否有新版本
                 
             self.latest_release_info = release_info
             latest_version = release_info.get('tag_name', '').replace('stock_monitor_', '').replace('v', '')
@@ -63,7 +69,7 @@ class AppUpdater:
                 
         except Exception as e:
             app_logger.error(f"检查更新时发生错误: {e}")
-            return False
+            return None  # 网络错误或其他异常
     
     def download_update(self, parent=None) -> Optional[str]:
         """
@@ -113,8 +119,16 @@ class AppUpdater:
             progress_dialog.setAutoReset(True)
             progress_dialog.show()
             
-            # 下载文件
-            response = requests.get(download_url, stream=True)
+            # 首先尝试使用原始URL下载
+            try:
+                response = requests.get(download_url, stream=True, timeout=30)
+            except requests.exceptions.RequestException as e:
+                app_logger.warning(f"使用原始URL下载失败: {e}，尝试使用镜像源...")
+                # 构造镜像URL
+                mirror_url = f"https://ghfast.top/{download_url}"
+                app_logger.info(f"使用镜像URL: {mirror_url}")
+                response = requests.get(mirror_url, stream=True, timeout=30)
+                
             response.raise_for_status()
             
             total_size = int(response.headers.get('content-length', 0))
@@ -143,6 +157,12 @@ class AppUpdater:
             app_logger.info(f"更新包下载完成: {download_path}")
             return download_path
             
+        except requests.exceptions.Timeout:
+            app_logger.error("下载更新时发生超时错误")
+            return None
+        except requests.exceptions.ConnectionError:
+            app_logger.error("下载更新时发生连接错误")
+            return None
         except Exception as e:
             app_logger.error(f"下载更新时发生错误: {e}")
             return None

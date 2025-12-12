@@ -548,14 +548,26 @@ class NewSettingsDialog(QDialog):
             from stock_monitor.core.updater import app_updater
             
             # 使用统一的更新流程
-            if app_updater.check_for_updates():
+            result = app_updater.check_for_updates()
+            if result is True:
+                # 有新版本，执行更新
                 app_updater.perform_update(self)
-            else:
+            elif result is False:
+                # 确认没有新版本
                 from PyQt5.QtWidgets import QMessageBox
                 QMessageBox.information(
                     self,
                     "无更新",
-                    "当前已是最新版本。",
+                    "当前已是最新版本，无需更新",
+                    QMessageBox.Ok
+                )
+            else:
+                # 网络错误或其他问题
+                from PyQt5.QtWidgets import QMessageBox
+                QMessageBox.critical(
+                    self,
+                    "检查更新失败",
+                    "检查更新失败：网络连接异常，请稍后重试",
                     QMessageBox.Ok
                 )
         except Exception as e:
@@ -565,7 +577,7 @@ class NewSettingsDialog(QDialog):
             QMessageBox.critical(
                 self,
                 "检查更新失败",
-                f"检查更新时发生错误: {str(e)}",
+                "检查更新失败：网络连接异常，请稍后重试",
                 QMessageBox.Ok
             )
     
