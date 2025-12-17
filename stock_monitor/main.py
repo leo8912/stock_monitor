@@ -712,17 +712,57 @@ def apply_pending_updates():
 
 def main():
     """主函数"""
-    # 应用待处理的更新
-    apply_pending_updates()
-    
-    # 设置开机启动
-    _setup_auto_start()
-    
-    app = QtWidgets.QApplication(sys.argv)
-    main_window = MainWindow()
-    tray = SystemTray(main_window)
-    tray.show()
-    sys.exit(app.exec_())
+    try:
+        app = QtWidgets.QApplication(sys.argv)
+        
+        # 初始化数据库
+        try:
+            from stock_monitor.utils.db_initializer import initialize_database
+            initialize_database()
+        except Exception as e:
+            app_logger.error(f"数据库初始化失败: {e}")
+        
+        # 初始化配置管理器
+        from stock_monitor.config.manager import ConfigManager
+        config_manager = ConfigManager()
+        
+        # 初始化股票服务
+        from stock_monitor.core.stock_service import StockDataService
+        stock_service = StockDataService()
+        
+        # 初始化股票管理器
+        from stock_monitor.core.stock_manager import StockManager
+        stock_manager = StockManager()
+        
+        # 初始化行情数据获取器
+        from stock_monitor.data.market.quotation import get_quotation_engine
+        quotation_engine = get_quotation_engine()
+        if quotation_engine is None:
+            app_logger.error("无法初始化行情引擎")
+            sys.exit(1)
+        
+        # 创建主窗口
+        from stock_monitor.ui.widgets.market_status import MarketStatusBar
+        window = MainWindow()
+        
+        # 显示窗口
+        window.show()
+        
+        # 启动预加载调度器
+        try:
+            from stock_monitor.data.market.updater import start_preload_scheduler
+            start_preload_scheduler()
+        except Exception as e:
+            app_logger.error(f"启动预加载调度器失败: {e}")
+        
+        # 运行应用
+        sys.exit(app.exec_())
+        
+    except Exception as e:
+        app_logger.critical(f"应用程序启动失败: {e}")
+        import traceback
+        app_logger.critical(f"详细错误信息: {traceback.format_exc()}")
+        sys.exit(1)
 
 def _setup_auto_start():
     """

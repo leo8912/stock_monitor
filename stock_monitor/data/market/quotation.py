@@ -194,7 +194,22 @@ def process_stock_data(data: Dict[str, Any], stocks_list: List[str]) -> List[Tup
 
 def get_name_by_code(code: str) -> str:
     """股票代码获取股票名称"""
-    # 读取本地股票数据
+    # 优先从SQLite数据库获取股票名称
+    try:
+        from stock_monitor.data.stock.stock_db import stock_db
+        stock_info = stock_db.get_stock_by_code(code)
+        if stock_info:
+            name = stock_info['name']
+            # 对于港股，只保留中文部分
+            if code.startswith('hk'):
+                # 去除"-"及之后的部分，只保留中文名称
+                if '-' in name:
+                    name = name.split('-')[0].strip()
+            return name
+    except Exception as e:
+        app_logger.warning(f"从SQLite数据库获取股票 {code} 名称失败: {e}")
+    
+    # 如果SQLite数据库不可用，回退到JSON文件
     try:
         with open(resource_path("stock_basic.json"), "r", encoding="utf-8") as f:
             stock_data = json.load(f)
@@ -218,7 +233,19 @@ def get_name_by_code(code: str) -> str:
 
 def get_stock_info_by_code(code: str) -> Optional[Dict[str, str]]:
     """根据股票代码获取股票完整信息"""
-    # 读取本地股票数据
+    # 优先从SQLite数据库获取股票信息
+    try:
+        from stock_monitor.data.stock.stock_db import stock_db
+        stock_info = stock_db.get_stock_by_code(code)
+        if stock_info:
+            # 对于港股，只保留中文部分
+            if code.startswith('hk') and '-' in stock_info['name']:
+                stock_info['name'] = stock_info['name'].split('-')[0].strip()
+            return stock_info
+    except Exception as e:
+        app_logger.warning(f"从SQLite数据库获取股票 {code} 信息失败: {e}")
+    
+    # 如果SQLite数据库不可用，回退到JSON文件
     try:
         with open(resource_path("stock_basic.json"), "r", encoding="utf-8") as f:
             stock_data = json.load(f)

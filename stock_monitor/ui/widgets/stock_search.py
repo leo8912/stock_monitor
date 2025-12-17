@@ -21,31 +21,12 @@ class StockSearchWidget(QtWidgets.QWidget):
     # 定义信号，当用户添加股票时发出 
     stock_added = pyqtSignal(str, str)  # code, name 
     
-    def __init__(self, stock_data=None, stock_list=None, sync_callback=None, parent=None): 
-        """ 
-        初始化股票搜索控件 
-        
-        Args: 
-            stock_data: 股票数据列表 
-            stock_list: 股票列表控件引用 
-            sync_callback: 同步回调函数 
-            parent: 父级控件 
-        """ 
-        super(StockSearchWidget, self).__init__(parent) 
-        self.stock_data = stock_data or [] 
-        self.stock_list = stock_list 
-        self.sync_callback = sync_callback 
-        self.filtered_stocks = [] 
-        # 添加搜索节流定时器 
-        self._search_throttle_timer = QtCore.QTimer(self) 
-        self._search_throttle_timer.setSingleShot(True) 
-        self._search_throttle_timer.timeout.connect(self._perform_search)  # type: ignore 
-        self._pending_search_text = "" 
-        self.init_ui() 
-        
-        # 如果提供了股票数据，则丰富拼音信息 
-        if self.stock_data: 
-            self.stock_data = self._enrich_pinyin(self.stock_data)
+    def __init__(self, stock_list=None, sync_callback=None):
+        super().__init__()
+        self.stock_list = stock_list
+        self.sync_callback = sync_callback
+        self.setup_ui()
+        self._load_stock_data()
 
     def _enrich_pinyin(self, stock_list):
         """
@@ -60,144 +41,89 @@ class StockSearchWidget(QtWidgets.QWidget):
         # 使用统一的拼音处理函数
         return enrich_pinyin(stock_list)
 
-    def init_ui(self): 
+    def setup_ui(self):
         """初始化用户界面"""
         # 设置整体样式
         self.setStyleSheet("""
             QWidget {
-                background: transparent;
-                border: none;
-                border-radius: 8px;
-                font-family: "Microsoft YaHei", "微软雅黑", sans-serif;
+                background-color: #2d2d2d;
+                color: white;
+                font-family: 'Microsoft YaHei';
+                font-size: 16px;
             }
         """)
         
-        layout = QtWidgets.QVBoxLayout(self) 
-        # 调整间距和边距
-        layout.setSpacing(16) 
-        layout.setContentsMargins(16, 16, 16, 16) 
+        # 创建主布局
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
         
-        # 标题 
-        title = QtWidgets.QLabel("🔍 添加自选股") 
-        # 增大字体大小并居中显示
-        title.setStyleSheet("""
-            QLabel {
-                color: #000000;
-                font-size: 30px;
-                font-weight: bold;
-                background: transparent;
-                padding: 0;
-                text-align: center;
-            }
-        """)
-        title.setAlignment(QtCore.Qt.AlignCenter)  # type: ignore
-        layout.addWidget(title) 
-        
-        # 搜索框 
-        self.search_input = QtWidgets.QLineEdit() 
-        # 增大字体大小
-        self.search_input.setPlaceholderText("📝 输入股票代码、名称或拼音...") 
+        # 创建搜索框
+        self.search_input = QtWidgets.QLineEdit()
+        self.search_input.setPlaceholderText("🔍 输入股票代码/名称/拼音/首字母")
         self.search_input.setStyleSheet("""
             QLineEdit {
-                background: #ffffff;
-                color: #000000;
-                font-size: 20px;
+                padding: 12px;
+                border: 2px solid #555555;
                 border-radius: 8px;
-                border: 2px solid #cccccc;
-                padding: 14px 18px;
-                min-height: 32px;
+                background-color: #3d3d3d;
+                color: white;
+                font-size: 16px;
             }
             QLineEdit:focus {
-                border: 2px solid #0078d4;
-                background: #ffffff;
+                border-color: #0078d4;
             }
         """)
-        self.search_input.textChanged.connect(self._on_search_text_changed)  # type: ignore 
+        # 连接信号
+        self.search_input.textChanged.connect(self._on_search_text_changed)  # type: ignore
         self.search_input.returnPressed.connect(self._on_return_pressed)  # type: ignore
-        layout.addWidget(self.search_input) 
+        layout.addWidget(self.search_input)
         
-        # 搜索结果列表 (创建空列表，避免初始化时加载数据)
-        self.result_list = QtWidgets.QListWidget() 
-        self.result_list.itemClicked.connect(self.on_item_clicked)  # type: ignore 
-        # 增大字体大小并居中显示
+        # 创建结果列表
+        self.result_list = QtWidgets.QListWidget()
         self.result_list.setStyleSheet("""
             QListWidget {
-                background: #ffffff;
-                color: #000000;
-                font-size: 20px;
+                background-color: #3d3d3d;
+                border: 2px solid #555555;
                 border-radius: 8px;
-                border: 2px solid #cccccc;
-                outline: none;
-                padding: 10px;
-                min-height: 320px;
+                color: white;
+                font-size: 16px;
+                padding: 5px;
             }
             QListWidget::item {
-                height: 50px;
+                padding: 10px;
                 border-radius: 6px;
-                padding: 0 18px;
-                margin: 6px 10px;
-                text-align: center;
-            }
-            QListWidget::item:selected {
-                background: #0078d4;
-                color: #ffffff;
             }
             QListWidget::item:hover {
-                background: #e0e0e0;
+                background-color: #4d4d4d;
             }
-            /* 滚动条样式 */
-            QScrollBar:vertical {
-                border: none;
-                background: transparent;
-                width: 10px;
-                margin: 0px 0px 0px 0px;
-            }
-            QScrollBar::handle:vertical {
-                background: #555555;
-                border-radius: 5px;
-                min-height: 20px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background: #777777;
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                height: 0px;
-            }
-            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
-                background: none;
+            QListWidget::item:selected {
+                background-color: #0078d4;
             }
         """)
-        # 设置最小高度但不填充数据
-        self.result_list.setMinimumHeight(320)
-        layout.addWidget(self.result_list) 
+        self.result_list.clicked.connect(self.on_item_clicked)  # type: ignore
+        layout.addWidget(self.result_list)
         
-        # 添加按钮 
-        self.add_btn = QtWidgets.QPushButton("➕ 添加选中") 
-        self.add_btn.clicked.connect(self.add_selected_stock)  # type: ignore 
-        self.add_btn.setEnabled(False) 
-        # 增大字体大小和按钮尺寸
+        # 创建添加按钮
+        self.add_btn = QtWidgets.QPushButton("➕ 添加到自选股")
+        self.add_btn.setEnabled(False)
+        self.add_btn.clicked.connect(self.add_selected_stock)  # type: ignore
         self.add_btn.setStyleSheet("""
             QPushButton {
-                background: #0078d4;
-                color: #ffffff;
-                font-size: 20px;
-                border-radius: 8px;
-                padding: 14px 22px;
+                background-color: #0078d4;
+                color: white;
                 border: none;
+                border-radius: 8px;
+                padding: 12px;
+                font-size: 16px;
                 font-weight: bold;
-                min-width: 140px;
-                min-height: 50px;
-                max-height: 50px;
-            }
-            QPushButton:hover {
-                background: #006cbe;
-            }
-            QPushButton:pressed {
-                background: #005ba1;
             }
             QPushButton:disabled {
-                background: #cccccc;
-                color: #666666;
+                background-color: #555555;
+                color: #888888;
+            }
+            QPushButton:hover:!disabled {
+                background-color: #005a9e;
             }
         """)
         # 增大按钮尺寸
@@ -208,6 +134,29 @@ class StockSearchWidget(QtWidgets.QWidget):
         layout.addSpacing(10)
         layout.setAlignment(self.add_btn, QtCore.Qt.AlignmentFlag.AlignHCenter)
         
+    def _load_stock_data(self):
+        """加载股票数据"""
+        try:
+            # 从数据库加载股票数据
+            from stock_monitor.data.stock.stock_db import stock_db
+            self.stock_data = stock_db.get_all_stocks()
+            app_logger.debug(f"从数据库加载了 {len(self.stock_data)} 条股票数据")
+        except Exception as e:
+            app_logger.error(f"从数据库加载股票数据失败: {e}")
+            # 回退到原来的实现
+            try:
+                from stock_monitor.data.stock.stocks import load_stock_data, enrich_pinyin
+                self.stock_data = load_stock_data()
+                self.stock_data = enrich_pinyin(self.stock_data)
+                app_logger.debug(f"从文件加载了 {len(self.stock_data)} 条股票数据")
+            except Exception as fallback_e:
+                app_logger.error(f"加载股票数据失败: {fallback_e}")
+                self.stock_data = []
+        
+        # 丰富拼音信息
+        if self.stock_data:
+            self.stock_data = self._enrich_pinyin(self.stock_data)
+
     def _on_search_text_changed(self, text): 
         """ 
         搜索框文本改变时的处理函数（节流版本） 
@@ -248,52 +197,60 @@ class StockSearchWidget(QtWidgets.QWidget):
         self.result_list.clear()
         
         if text:
-            # 根据输入文本过滤股票，并计算匹配度和优先级
-            matched_stocks = []
-            for stock in self.stock_data:
-                code = stock['code']
-                name = stock['name']
-                pinyin = stock.get('pinyin', '')
-                abbr = stock.get('abbr', '')
+            # 使用SQLite数据库进行搜索
+            try:
+                from stock_monitor.data.stock.stock_db import stock_db
+                matched_stocks = stock_db.search_stocks(text, limit=30)
+                self.filtered_stocks = matched_stocks
+            except Exception as e:
+                app_logger.warning(f"使用SQLite数据库搜索失败，回退到传统方法: {e}")
+                # 回退到原来的实现
+                # 根据输入文本过滤股票，并计算匹配度和优先级
+                matched_stocks = []
+                for stock in self.stock_data:
+                    code = stock['code']
+                    name = stock['name']
+                    pinyin = stock.get('pinyin', '')
+                    abbr = stock.get('abbr', '')
+                    
+                    # 计算匹配分数
+                    score = 0
+                    if text == code:  # 完全匹配代码
+                        score = 100
+                    elif text in code:  # 部分匹配代码
+                        score = 80
+                    elif text.lower() == name.lower():  # 完全匹配名称
+                        score = 90
+                    elif text.lower() in name.lower():  # 部分匹配名称
+                        score = 70
+                    elif text.lower() == pinyin:  # 完全匹配全拼
+                        score = 85
+                    elif text.lower() in pinyin:  # 部分匹配全拼
+                        score = 60
+                    elif text.lower() == abbr:  # 完全匹配首字母
+                        score = 80
+                    elif text.lower() in abbr:  # 部分匹配首字母
+                        score = 50
+                    
+                    # 计算优先级，A股优先
+                    priority = 0
+                    if code.startswith(('sh', 'sz')) and not code.startswith(('sh000', 'sz399')):
+                        priority = 10  # A股最高优先级
+                    elif code.startswith(('sh000', 'sz399')):
+                        priority = 5   # 指数次优先级
+                    elif code.startswith('hk'):
+                        priority = 1   # 港股较低优先级
+                    
+                    # 如果有匹配分数，则添加到结果中
+                    if score > 0:
+                        matched_stocks.append((stock, score, priority))
                 
-                # 计算匹配分数
-                score = 0
-                if text == code:  # 完全匹配代码
-                    score = 100
-                elif text in code:  # 部分匹配代码
-                    score = 80
-                elif text.lower() == name.lower():  # 完全匹配名称
-                    score = 90
-                elif text.lower() in name.lower():  # 部分匹配名称
-                    score = 70
-                elif text.lower() == pinyin:  # 完全匹配全拼
-                    score = 85
-                elif text.lower() in pinyin:  # 部分匹配全拼
-                    score = 60
-                elif text.lower() == abbr:  # 完全匹配首字母
-                    score = 80
-                elif text.lower() in abbr:  # 部分匹配首字母
-                    score = 50
-                
-                # 计算优先级，A股优先
-                priority = 0
-                if code.startswith(('sh', 'sz')) and not code.startswith(('sh000', 'sz399')):
-                    priority = 10  # A股最高优先级
-                elif code.startswith(('sh000', 'sz399')):
-                    priority = 5   # 指数次优先级
-                elif code.startswith('hk'):
-                    priority = 1   # 港股较低优先级
-                
-                # 如果有匹配分数，则添加到结果中
-                if score > 0:
-                    matched_stocks.append((stock, score, priority))
+                # 按优先级和匹配分数排序，优先级高的在前，匹配度高的在前
+                matched_stocks.sort(key=lambda x: (-x[2], -x[1]))
+                self.filtered_stocks = [stock for stock, score, priority in matched_stocks]
             
-            # 按优先级和匹配分数排序，优先级高的在前，匹配度高的在前
-            matched_stocks.sort(key=lambda x: (-x[2], -x[1]))
-            self.filtered_stocks = [stock for stock, score, priority in matched_stocks]
-            
-            # 显示前30个匹配结果（增加显示数量）
-            for stock in self.filtered_stocks[:30]:
+            # 显示匹配结果
+            for stock in self.filtered_stocks:
                 code = stock['code']
                 name = stock['name']
                 emoji = get_stock_emoji(code, name)

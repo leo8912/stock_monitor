@@ -324,22 +324,19 @@ def update_stock_database() -> bool:
         # 按代码排序
         stocks_data.sort(key=lambda x: x['code'])
         
-        # 直接使用网络数据覆盖本地文件，去除所有手动修改
-        stock_file_path = resource_path("stock_basic.json")
-        with open(stock_file_path, 'w', encoding='utf-8') as f:
-            json.dump(stocks_data, f, ensure_ascii=False, indent=2)
-        
-        app_logger.info(f"股票数据库更新完成，共 {len(stocks_data)} 只股票，已清除所有本地手动修改")
-        return True
+        # 使用数据库更新而不是文件写入
+        from stock_monitor.data.stock.stock_updater import incremental_update_stock_database
+        return incremental_update_stock_database()
         
     except Exception as e:
         app_logger.error(f"更新股票数据库失败: {e}")
         # 即使更新失败，也尝试使用现有数据
         try:
-            stock_file_path = resource_path("stock_basic.json")
-            # 检查文件是否存在
-            if os.path.exists(stock_file_path):
-                app_logger.info("使用现有的股票数据库文件")
+            # 检查数据库中是否有数据
+            from stock_monitor.data.stock.stock_db import stock_db
+            stock_count = stock_db.get_all_stocks_count()
+            if stock_count > 0:
+                app_logger.info("使用现有的股票数据库")
                 return True
         except Exception as fallback_e:
             app_logger.error(f"回退方案也失败: {fallback_e}")

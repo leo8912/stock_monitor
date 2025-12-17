@@ -35,7 +35,7 @@ class StockDataCache:
             
         # 加载新的股票数据
         try:
-            stock_data = self._load_stock_data_from_file()
+            stock_data = self._load_stock_data_from_db()
             self._cache = stock_data
             self._cache_time = current_time
             app_logger.debug("重新加载股票数据并更新缓存")
@@ -48,6 +48,26 @@ class StockDataCache:
                 return self._cache
             # 否则返回空列表
             return []
+            
+    def _load_stock_data_from_db(self) -> List[Dict[str, str]]:
+        """
+        从数据库加载股票数据
+        
+        Returns:
+            List[Dict[str, str]]: 股票数据列表
+            
+        Raises:
+            Exception: 数据库访问失败时抛出异常
+        """
+        try:
+            from stock_monitor.data.stock.stock_db import stock_db
+            stocks = stock_db.get_all_stocks()
+            app_logger.debug(f"从数据库加载股票数据成功，共 {len(stocks)} 条记录")
+            return stocks
+        except Exception as e:
+            app_logger.warning(f"无法从数据库加载股票数据: {e}")
+            # 如果无法从数据库加载，尝试从文件加载
+            return self._load_stock_data_from_file()
             
     def _load_stock_data_from_file(self) -> List[Dict[str, str]]:
         """
