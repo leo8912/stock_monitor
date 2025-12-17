@@ -3,12 +3,9 @@
 用于缓存股票基础数据，避免重复加载和处理
 """
 
-import os
-import json
 import time
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Optional
 from .logger import app_logger
-from .helpers import resource_path
 
 
 class StockDataCache:
@@ -66,26 +63,7 @@ class StockDataCache:
             return stocks
         except Exception as e:
             app_logger.warning(f"无法从数据库加载股票数据: {e}")
-            # 如果无法从数据库加载，尝试从文件加载
-            return self._load_stock_data_from_file()
-            
-    def _load_stock_data_from_file(self) -> List[Dict[str, str]]:
-        """
-        从文件加载股票数据
-        
-        Returns:
-            List[Dict[str, str]]: 股票数据列表
-            
-        Raises:
-            Exception: 文件读取或解析失败时抛出异常
-        """
-        try:
-            stock_file_path = resource_path("stock_basic.json")
-            with open(stock_file_path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            app_logger.warning(f"无法加载本地股票数据: {e}，将使用网络数据")
-            # 如果无法加载本地文件，抛出异常让调用者处理
+            # 抛出异常让调用者处理
             raise e
 
     def clear_cache(self) -> None:

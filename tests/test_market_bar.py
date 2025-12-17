@@ -1,6 +1,6 @@
 import sys
 import time
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton
 from stock_monitor.ui.widgets import MarketStatusBar
 
 class TestWindow(QWidget):

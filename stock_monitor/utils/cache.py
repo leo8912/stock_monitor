@@ -228,3 +228,57 @@ class DataCache:
 
 # 创建全局缓存实例
 global_cache = DataCache()
+
+
+def cache_set(key: str, data: Any, expire: int = 30) -> None:
+    """
+    设置缓存数据
+    
+    Args:
+        key (str): 缓存键
+        data (Any): 要缓存的数据
+        expire (int): 过期时间（秒），默认30秒
+    """
+    global_cache.set(key, data, expire)
+
+
+def cache_get(key: str) -> Optional[Any]:
+    """
+    获取缓存数据
+    
+    Args:
+        key (str): 缓存键
+        
+    Returns:
+        Optional[Any]: 缓存数据，如果不存在或已过期则返回None
+    """
+    return global_cache.get(key)
+
+
+
+
+def cache_set(key: str, data: Any, expire: int = 30) -> None:
+    """
+    设置缓存数据
+    
+    Args:
+        key (str): 缓存键
+        data (Any): 要缓存的数据
+        expire (int): 过期时间（秒），默认30秒
+    """
+    global_cache.set(key, data, expire)
+
+
+def cache_get(key: str) -> Optional[Any]:
+    """
+    获取缓存数据
+    
+    Args:
+        key (str): 缓存键
+        
+    Returns:
+        Optional[Any]: 缓存数据，如果不存在或已过期则返回None
+    """
+    return global_cache.get(key)
+
+

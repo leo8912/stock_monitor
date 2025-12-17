@@ -12,6 +12,7 @@ from typing import Dict, Any, List, Tuple, Optional
 from stock_monitor.utils.logger import app_logger
 from stock_monitor.utils.helpers import resource_path, is_equal
 from stock_monitor.utils.stock_utils import StockCodeProcessor
+from stock_monitor.data.stock.stock_data_source import StockDataSource
 
 
 def get_quotation_engine(market_type='sina'):
@@ -194,7 +195,7 @@ def process_stock_data(data: Dict[str, Any], stocks_list: List[str]) -> List[Tup
 
 def get_name_by_code(code: str) -> str:
     """股票代码获取股票名称"""
-    # 优先从SQLite数据库获取股票名称
+    # 从SQLite数据库获取股票名称
     try:
         from stock_monitor.data.stock.stock_db import stock_db
         stock_info = stock_db.get_stock_by_code(code)
@@ -208,32 +209,12 @@ def get_name_by_code(code: str) -> str:
             return name
     except Exception as e:
         app_logger.warning(f"从SQLite数据库获取股票 {code} 名称失败: {e}")
-    
-    # 如果SQLite数据库不可用，回退到JSON文件
-    try:
-        with open(resource_path("stock_basic.json"), "r", encoding="utf-8") as f:
-            stock_data = json.load(f)
-        for s in stock_data:
-            if s['code'] == code:
-                name = s['name']
-                # 对于港股，只保留中文部分
-                if code.startswith('hk'):
-                    # 去除"-"及之后的部分，只保留中文名称
-                    if '-' in name:
-                        name = name.split('-')[0].strip()
-                return name
-    except FileNotFoundError as e:
-        app_logger.error(f"股票基础数据文件未找到: {e}")
-    except json.JSONDecodeError as e:
-        app_logger.error(f"股票基础数据文件格式错误: {e}")
-    except Exception as e:
-        app_logger.error(f"根据代码获取股票名称时发生错误: {e}")
     return ""
 
 
 def get_stock_info_by_code(code: str) -> Optional[Dict[str, str]]:
     """根据股票代码获取股票完整信息"""
-    # 优先从SQLite数据库获取股票信息
+    # 从SQLite数据库获取股票信息
     try:
         from stock_monitor.data.stock.stock_db import stock_db
         stock_info = stock_db.get_stock_by_code(code)
@@ -244,21 +225,4 @@ def get_stock_info_by_code(code: str) -> Optional[Dict[str, str]]:
             return stock_info
     except Exception as e:
         app_logger.warning(f"从SQLite数据库获取股票 {code} 信息失败: {e}")
-    
-    # 如果SQLite数据库不可用，回退到JSON文件
-    try:
-        with open(resource_path("stock_basic.json"), "r", encoding="utf-8") as f:
-            stock_data = json.load(f)
-        for s in stock_data:
-            if s['code'] == code:
-                # 对于港股，只保留中文部分
-                if code.startswith('hk') and '-' in s['name']:
-                    s['name'] = s['name'].split('-')[0].strip()
-                return s
-    except FileNotFoundError as e:
-        app_logger.error(f"股票基础数据文件未找到: {e}")
-    except json.JSONDecodeError as e:
-        app_logger.error(f"股票基础数据文件格式错误: {e}")
-    except Exception as e:
-        app_logger.error(f"根据代码获取股票信息时发生错误: {e}")
     return None

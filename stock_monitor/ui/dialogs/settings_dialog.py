@@ -2,13 +2,13 @@
 设置对话框模块
 """
 
-from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton, 
+from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton, 
                              QListWidget, QLineEdit, QLabel, QWidget, QCheckBox,
                              QComboBox, QAbstractItemView, QGroupBox, QFormLayout,
                              QSpinBox, QSlider, QGridLayout, QRadioButton, QButtonGroup,
                              QApplication)
-from PyQt5.QtCore import Qt, QSize, pyqtSignal, QPoint
-from PyQt5.QtGui import QDragEnterEvent, QDropEvent, QFont, QIcon, QColor
+from PyQt6.QtCore import Qt, QSize, pyqtSignal, QPoint
+from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QFont, QIcon, QColor
 import easyquotation
 import os
 import ctypes
@@ -89,10 +89,18 @@ class NewSettingsDialog(QDialog):
         # 保存原始自选股列表，用于取消操作时恢复
         self.original_watch_list = []
         
-        # 设置窗口图标
+        # 设置窗口标题和图标
+        self.setWindowTitle('A股行情监控设置')
         icon_path = resource_path('icon.ico')
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
+            # 同时设置任务栏图标
+            import ctypes
+            myappid = 'stock.monitor.settings'  # 设置应用ID
+            try:
+                ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+            except Exception:
+                pass
         
         # 移除右上角的问号帮助按钮，并确保窗口不置顶
         flags = self.windowFlags()
@@ -100,233 +108,24 @@ class NewSettingsDialog(QDialog):
         flags &= ~Qt.WindowType.WindowStaysOnTopHint
         self.setWindowFlags(Qt.WindowType.Window)
         
+        # 设置窗口大小
+        self.resize(900, 700)  # 进一步调大窗口尺寸
+        
         # 设置窗口样式以匹配暗色主题
         self.setStyleSheet("QDialog { background-color: #1e1e1e; } ")
         
         # 在Windows上设置标题栏颜色
         try:
-            import platform
-            if platform.system() == "Windows":
-                # Windows 10/11 暗色模式支持
-                import ctypes
-                from ctypes import c_int, c_uint, c_char_p, POINTER, windll
-                # DWMWA_USE_IMMERSIVE_DARK_MODE = 20
-                hwnd = self.winId().__int__()
-                value = c_int(1)  # 启用暗色模式
-                windll.dwmapi.DwmSetWindowAttribute(hwnd, 20, ctypes.byref(value), ctypes.sizeof(value))
-        except Exception:
-            # 忽略DWM API调用异常
+            # 尝试设置Windows 10/11标题栏颜色
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                int(self.winId()),
+                35,  # DWMWA_CAPTION_COLOR
+                ctypes.byref(ctypes.c_int(0x1e1e1e)),
+                ctypes.sizeof(ctypes.c_int)
+            )
+        except:
             pass
-        
-        self.init_ui()
-        self.load_settings()
-        
-    def init_ui(self):
-        """初始化UI"""
-        self.setWindowTitle("设置")
-        self.setFixedSize(1400, 900)  # 增大窗口尺寸以适应更多内容
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #1e1e1e;
-                color: white;
-                font-family: 'Microsoft YaHei';
-                font-size: 20px;
-            }
-            /* 标题栏样式 */
-            QTitleBar {
-                background-color: #1e1e1e;
-                color: white;
-            }
-            QTitleBar QLabel {
-                color: white;
-            }
-            QTitleBar QToolButton {
-                background-color: transparent;
-                border: none;
-                color: white;
-            }
-            QTitleBar QToolButton:hover {
-                background-color: #3d3d3d;
-            }
-            QTitleBar QToolButton:pressed {
-                background-color: #0078d4;
-            }
             
-            /* Windows 标题栏按钮样式 */
-            QMenuBar::item {
-                background-color: #1e1e1e;
-            }
-            QLabel {
-                color: white;
-                font-size: 20px;
-                margin-bottom: 5px;
-                font-family: 'Microsoft YaHei';
-            }
-            QLineEdit {
-                background-color: #2d2d2d;
-                color: white;
-                border: 1px solid #555555;
-                border-radius: 4px;
-                padding: 4px;
-                font-family: 'Microsoft YaHei';
-                font-size: 20px;
-                min-height: 20px;
-            }
-            QLineEdit:focus {
-                border: 1px solid #0078d4;
-            }
-            QListWidget {
-                background-color: #2d2d2d;
-                color: white;
-                border: 1px solid #555555;
-                border-radius: 4px;
-                font-family: 'Microsoft YaHei';
-                font-size: 20px;
-                outline: 0;
-            }
-            QListWidget::item {
-                padding: 6px;
-                border-bottom: 1px solid #333333;
-            }
-            QListWidget::item:selected {
-                background-color: #0078d4;
-            }
-            QCheckBox {
-                color: white;
-                font-family: 'Microsoft YaHei';
-                font-size: 19px;
-                spacing: 5px;
-                min-height: 22px;
-                padding: 2px 0;
-                alignment: center;
-            }
-            
-            QCheckBox::indicator {
-                width: 18px;
-                height: 18px;
-                border-radius: 6px;  /* 圆形复选框 */
-            }
-            QCheckBox::indicator:unchecked {
-                border: 1px solid #555555;
-                background-color: #2d2d2d;
-            }
-            QCheckBox::indicator:checked {
-                border: 1px solid #0078d4;
-                background-color: #0078d4;
-            }
-            QCheckBox:hover {
-                background-color: rgba(255, 255, 255, 0.1);
-                border-radius: 4px;
-            }
-            QComboBox {
-                background-color: #2d2d2d;
-                color: white;
-                border: 1px solid #555555;
-                border-radius: 4px;
-                padding: 2px 4px;
-                font-family: 'Microsoft YaHei';
-                font-size: 19px;
-                min-height: 22px;
-                alignment: center;
-            }
-            QComboBox::drop-down {
-                border: none;
-                width: 20px;
-            }
-            QComboBox:hover {
-                border: 1px solid #0078d4;
-            }
-            QComboBox:focus {
-                border: 1px solid #0078d4;
-            }
-            QComboBox QAbstractItemView {
-                background-color: #2d2d2d;
-                border: 1px solid #555555;
-                selection-background-color: #0078d4;
-                text-align: center;
-                padding: 2px 4px;
-            }
-            QPushButton {
-                background-color: #0078d4;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 6px 12px;
-                font-family: 'Microsoft YaHei';
-                font-size: 19px;
-                min-width: 80px;
-                min-height: 22px;
-            }
-            QPushButton:hover {
-                background-color: #108de6;
-            }
-            QPushButton:pressed {
-                background-color: #005a9e;
-            }
-            QPushButton:disabled {
-                background-color: #555555;
-                color: #888888;
-            }
-            QGroupBox {
-                font-family: 'Microsoft YaHei';
-                font-size: 20px;
-                font-weight: bold;
-                color: white;
-                border: 1px solid #555555;
-                border-radius: 6px;
-                margin-top: 1ex;
-                padding-top: 10px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                subcontrol-position: top center;
-                padding: 0 10px;
-            }
-            QSlider::groove:horizontal {
-                border: 1px solid #555555;
-                height: 6px;
-                background: #2d2d2d;
-                border-radius: 3px;
-            }
-            QSlider::handle:horizontal {
-                background: #0078d4;
-                border: 1px solid #005a9e;
-                width: 18px;
-                height: 18px;
-                border-radius: 9px;
-                margin: -6px 0;
-            }
-            QSlider::sub-page:horizontal {
-                background: #0078d4;
-                border-radius: 3px;
-            }
-            QSpinBox {
-                background-color: #2d2d2d;
-                color: white;
-                border: 1px solid #555555;
-                border-radius: 4px;
-                padding: 2px 4px;
-                font-family: 'Microsoft YaHei';
-                font-size: 19px;
-                min-height: 22px;
-                alignment: center;
-            }
-            QSpinBox:hover {
-                border: 1px solid #0078d4;
-            }
-            QSpinBox:focus {
-                border: 1px solid #0078d4;
-            }
-            QSpinBox::up-button, QSpinBox::down-button {
-                width: 16px;
-                border: none;
-                background-color: #2d2d2d;
-            }
-            QSpinBox::up-button:hover, QSpinBox::down-button:hover {
-                background-color: #3d3d3d;
-            }
-        """)
-        
         # 创建主布局
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(20, 20, 20, 20)
@@ -352,92 +151,254 @@ class NewSettingsDialog(QDialog):
         self.search_input.setPlaceholderText("输入股票代码或名称...")
         self.search_input.textChanged.connect(self.on_search_text_changed)
         self.search_input.returnPressed.connect(self._on_search_return_pressed)
+        self.search_input.setStyleSheet("""
+            QLineEdit {
+                padding: 8px;
+                border: 1px solid #555555;
+                border-radius: 4px;
+                background-color: #3d3d3d;
+                color: white;
+                font-size: 14px;
+            }
+            QLineEdit:focus {
+                border-color: #0078d4;
+            }
+        """)
         
         left_layout.addWidget(search_label)
         left_layout.addWidget(self.search_input)
         
         # 搜索结果列表
         self.search_results = QListWidget()
-        # 样式已在全局样式表中定义
-        self.search_results.itemDoubleClicked.connect(self.add_to_watchlist)
-        search_results_label = QLabel("搜索结果 (双击添加)")
-        search_results_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        left_layout.addWidget(search_results_label)
+        self.search_results.setStyleSheet("""
+            QListWidget {
+                background-color: #3d3d3d;
+                border: 1px solid #555555;
+                border-radius: 4px;
+                color: white;
+                font-size: 12px;
+                outline: 0;
+            }
+            QListWidget::item {
+                padding: 4px;
+                border-bottom: 1px solid #333333;
+            }
+            QListWidget::item:selected {
+                background-color: #0078d4;
+            }
+        """)
+        self.search_results.itemDoubleClicked.connect(self.add_stock_from_search)
         left_layout.addWidget(self.search_results)
         
-        # 右侧区域 - 已添加自选股列表
+        # 添加按钮
+        self.add_button = QPushButton("添加")
+        self.add_button.clicked.connect(self.add_stock_from_search)
+        self.add_button.setStyleSheet("""
+            QPushButton {
+                background-color: #0078d4;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 6px 12px;
+                font-size: 14px;
+                min-width: 60px;
+                min-height: 20px;
+            }
+            QPushButton:hover {
+                background-color: #108de6;
+            }
+            QPushButton:pressed {
+                background-color: #005a9e;
+            }
+            QPushButton:disabled {
+                background-color: #555555;
+                color: #888888;
+            }
+        """)
+        self.add_button.setEnabled(False)
+        self.search_results.itemSelectionChanged.connect(
+            lambda: self.add_button.setEnabled(len(self.search_results.selectedItems()) > 0)
+        )
+        
+        # 创建按钮布局
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        button_layout.addWidget(self.add_button)
+        left_layout.addLayout(button_layout)
+        
+        watchlist_layout.addLayout(left_layout, 1)
+        
+        # 右侧区域 - 自选股列表
         right_layout = QVBoxLayout()
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(8)
         
-        # 创建包含标签和按钮的水平布局
-        watchlist_header_layout = QHBoxLayout()
-        watchlist_header_layout.setContentsMargins(0, 0, 0, 0)
-        watchlist_header_layout.setSpacing(4)
+        # 自选股列表标签
+        watchlist_label = QLabel("自选股列表")
+        watchlist_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        right_layout.addWidget(watchlist_label)
         
-        watchlist_label = QLabel("自选股列表 (拖拽排序)")
-        watchlist_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)  # type: ignore
-        
-        # 添加删除按钮
-        self.remove_button = QPushButton("删除选中")
-        self.remove_button.setObjectName("removeButton")  # 添加对象名称以便识别
-        self.remove_button.setFixedWidth(120)
-        self.remove_button.clicked.connect(self.remove_selected_stocks)
-        
-        watchlist_header_layout.addWidget(watchlist_label)
-        watchlist_header_layout.addStretch()
-        watchlist_header_layout.addWidget(self.remove_button)
-        
-        right_layout.addLayout(watchlist_header_layout)
+        # 自选股列表
         self.watch_list = DraggableListWidget()
-        # 样式已在全局样式表中定义
-        self.watch_list.itemSelectionChanged.connect(self.update_remove_button_state)
+        self.watch_list.setStyleSheet("""
+            QListWidget {
+                background-color: #3d3d3d;
+                border: 1px solid #555555;
+                border-radius: 4px;
+                color: white;
+                font-size: 14px;
+                outline: 0;
+            }
+            QListWidget::item {
+                padding: 4px;
+                border-bottom: 1px solid #333333;
+
+            }
+            QListWidget::item:selected {
+                background-color: #0078d4;
+            }
+        """)
+        
+        # 启用拖拽排序
+        self.watch_list.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+        self.watch_list.setDefaultDropAction(Qt.DropAction.MoveAction)
+        self.watch_list.setDragEnabled(True)
+        self.watch_list.setAcceptDrops(True)
+        self.watch_list.setDropIndicatorShown(True)
+        
         right_layout.addWidget(self.watch_list)
         
-        # 初始化删除按钮状态
-        self.update_remove_button_state()
+        # 操作按钮布局
+        action_layout = QHBoxLayout()
+        action_layout.setSpacing(6)
         
-        # 添加左右区域到自选股管理组
-        watchlist_layout.addLayout(left_layout, 1)
+        # 删除按钮
+        self.remove_button = QPushButton("删除")
+        self.remove_button.setObjectName("removeButton")
+        self.remove_button.clicked.connect(self.remove_selected_stocks)
+        self.remove_button.setStyleSheet("""
+            QPushButton {
+                background-color: #dc3545;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 6px 12px;
+                font-size: 14px;
+                min-width: 60px;
+                min-height: 20px;
+            }
+            QPushButton:hover {
+                background-color: #c82333;
+            }
+            QPushButton:pressed {
+                background-color: #bd2130;
+            }
+            QPushButton:disabled {
+                background-color: #555555;
+                color: #888888;
+            }
+        """)
+        self.remove_button.setEnabled(False)
+        self.watch_list.itemSelectionChanged.connect(
+            lambda: self.remove_button.setEnabled(len(self.watch_list.selectedItems()) > 0)
+        )
+        
+        # 上移按钮
+        self.move_up_button = QPushButton("上移")
+        self.move_up_button.clicked.connect(self.move_up_selected_stock)
+        self.move_up_button.setStyleSheet("""
+            QPushButton {
+                background-color: #28a745;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 6px 12px;
+                font-size: 14px;
+                min-width: 60px;
+                min-height: 20px;
+            }
+            QPushButton:hover {
+                background-color: #218838;
+            }
+            QPushButton:pressed {
+                background-color: #1e7e34;
+            }
+            QPushButton:disabled {
+                background-color: #555555;
+                color: #888888;
+            }
+        """)
+        self.move_up_button.setEnabled(False)
+        self.watch_list.itemSelectionChanged.connect(self._update_move_buttons_state)
+        
+        # 下移按钮
+        self.move_down_button = QPushButton("下移")
+        self.move_down_button.clicked.connect(self.move_down_selected_stock)
+        self.move_down_button.setStyleSheet("""
+            QPushButton {
+                background-color: #28a745;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 6px 12px;
+                font-size: 14px;
+                min-width: 60px;
+                min-height: 20px;
+            }
+            QPushButton:hover {
+                background-color: #218838;
+            }
+            QPushButton:pressed {
+                background-color: #1e7e34;
+            }
+            QPushButton:disabled {
+                background-color: #555555;
+                color: #888888;
+            }
+        """)
+        self.move_down_button.setEnabled(False)
+        self.watch_list.itemSelectionChanged.connect(self._update_move_buttons_state)
+        
+        action_layout.addWidget(self.remove_button)
+        action_layout.addStretch()
+        action_layout.addWidget(self.move_up_button)
+        action_layout.addWidget(self.move_down_button)
+        
+        right_layout.addLayout(action_layout)
         watchlist_layout.addLayout(right_layout, 1)
+        main_layout.addWidget(watchlist_group)
         
         # 显示设置组
         display_group = QGroupBox("显示设置")
         display_layout = QVBoxLayout()
         display_layout.setContentsMargins(10, 10, 10, 10)
-        display_layout.setSpacing(5)  # 减少间距
+        display_layout.setSpacing(10)
         display_group.setLayout(display_layout)
         
-        # 显示设置行 - 字体、主题、透明度
+        # 显示设置行
         display_row_layout = QHBoxLayout()
-        display_row_layout.setSpacing(5)  # 减少间距
+        display_row_layout.setContentsMargins(0, 0, 0, 0)
+        display_row_layout.setSpacing(10)
         
-        # 字体设置
+        # 字体大小设置
         font_layout = QHBoxLayout()
         font_layout.setSpacing(4)
-        self.font_combo = QComboBox()
-        self.font_combo.addItems(["Microsoft YaHei", "Segoe UI", "Arial", "SimSun", "SimHei"])
-        self.font_combo.setFixedWidth(180)  # 调整宽度确保完整显示字体名称
         self.font_size_spinbox = QSpinBox()
-        self.font_size_spinbox.setRange(9, 24)
-        self.font_size_spinbox.setValue(12)
-        self.font_size_spinbox.setFixedWidth(100)  # 调整宽度确保完整显示最大字号
-        font_layout.addWidget(QLabel("字体:"))
-        font_layout.addWidget(self.font_combo)
+        self.font_size_spinbox.setRange(10, 20)
+        self.font_size_spinbox.setValue(13)  # 默认13px
+        self.font_size_spinbox.setSuffix(" px")
+        self.font_size_spinbox.setFixedWidth(80)
+        font_layout.addWidget(QLabel("字体大小:"))
         font_layout.addWidget(self.font_size_spinbox)
         
-        # 主题设置
-        theme_layout = QHBoxLayout()
-        theme_layout.setSpacing(4)
-        self.dark_theme_radio = QRadioButton("深色")
-        self.light_theme_radio = QRadioButton("浅色")
-        self.theme_group = QButtonGroup()
-        self.theme_group.addButton(self.dark_theme_radio)
-        self.theme_group.addButton(self.light_theme_radio)
-        self.dark_theme_radio.setChecked(True)
-        theme_layout.addWidget(QLabel("主题:"))
-        theme_layout.addWidget(self.dark_theme_radio)
-        theme_layout.addWidget(self.light_theme_radio)
+        # 字体设置
+        font_family_layout = QHBoxLayout()
+        font_family_layout.setSpacing(4)
+        self.font_family_combo = QComboBox()
+        self.font_family_combo.addItems(["微软雅黑", "宋体", "黑体", "楷体", "仿宋"])
+        self.font_family_combo.setFixedWidth(100)
+        font_family_layout.addWidget(QLabel("字体:"))
+        font_family_layout.addWidget(self.font_family_combo)
         
         # 透明度设置
         transparency_layout = QHBoxLayout()
@@ -456,7 +417,7 @@ class NewSettingsDialog(QDialog):
         
         display_row_layout.addLayout(font_layout)
         display_row_layout.addSpacing(10)
-        display_row_layout.addLayout(theme_layout)
+        display_row_layout.addLayout(font_family_layout)
         display_row_layout.addSpacing(10)
         display_row_layout.addLayout(transparency_layout)
         display_row_layout.addStretch()
@@ -524,24 +485,33 @@ class NewSettingsDialog(QDialog):
         # 创建底部布局，包含系统设置和按钮
         bottom_layout = QHBoxLayout()
         bottom_layout.setContentsMargins(0, 0, 0, 0)
-        bottom_layout.addLayout(system_layout)
-        bottom_layout.addStretch()
+        bottom_layout.addLayout(system_layout, 1)
         bottom_layout.addLayout(button_layout)
 
-        # 调整底部布局的对齐方式，使文字和按钮视觉上更齐平
-        bottom_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-        
-        # 添加所有组件到主布局，调整顺序：自选股管理组、显示设置组、底部布局
-        main_layout.addWidget(watchlist_group)
         main_layout.addWidget(display_group)
         main_layout.addLayout(bottom_layout)
-        
-        # 连接信号和槽
+
+        # 连接信号槽
         self.ok_button.clicked.connect(self.accept)
         self.cancel_button.clicked.connect(self.reject)
-        self.watch_list.itemSelectionChanged.connect(self.update_remove_button_state)
         self.check_update_button.clicked.connect(self.check_for_updates)
         
+        # 连接字体设置变化信号，实现实时预览
+        self.font_size_spinbox.valueChanged.connect(self.on_font_setting_changed)
+        self.font_family_combo.currentTextChanged.connect(self.on_font_setting_changed)
+        # 连接透明度设置变化信号，实现实时预览
+        self.transparency_slider.valueChanged.connect(self.on_transparency_changed)
+        
+        # 加载配置
+        self.load_config()
+        
+        # 保存原始自选股列表，用于取消操作时恢复
+        self.original_watch_list = []
+        for i in range(self.watch_list.count()):
+            item = self.watch_list.item(i)
+            if item:
+                self.original_watch_list.append(item.text())
+
     def check_for_updates(self):
         """检查更新"""
         try:
@@ -554,31 +524,31 @@ class NewSettingsDialog(QDialog):
                 app_updater.perform_update(self)
             elif result is False:
                 # 确认没有新版本
-                from PyQt5.QtWidgets import QMessageBox
+                from PyQt6.QtWidgets import QMessageBox
                 QMessageBox.information(
                     self,
                     "无更新",
                     "当前已是最新版本，无需更新",
-                    QMessageBox.Ok
+                    QMessageBox.StandardButton.Ok
                 )
             else:
                 # 网络错误或其他问题
-                from PyQt5.QtWidgets import QMessageBox
+                from PyQt6.QtWidgets import QMessageBox
                 QMessageBox.critical(
                     self,
                     "检查更新失败",
                     "检查更新失败：网络连接异常，请稍后重试",
-                    QMessageBox.Ok
+                    QMessageBox.StandardButton.Ok
                 )
         except Exception as e:
             from stock_monitor.utils.logger import app_logger
             app_logger.error(f"检查更新时发生错误: {e}")
-            from PyQt5.QtWidgets import QMessageBox
+            from PyQt6.QtWidgets import QMessageBox
             QMessageBox.critical(
                 self,
                 "检查更新失败",
                 "检查更新失败：网络连接异常，请稍后重试",
-                QMessageBox.Ok
+                QMessageBox.StandardButton.Ok
             )
     
     def on_search_text_changed(self, text):
@@ -635,7 +605,7 @@ class NewSettingsDialog(QDialog):
         # 如果有搜索结果，添加第一个结果
         if self.search_results.count() > 0:
             item = self.search_results.item(0)
-            self.add_to_watchlist(item)
+            self.add_stock_from_search(item)
             # 清空搜索框
             self.search_input.clear()
             self.search_results.clear()
@@ -643,7 +613,7 @@ class NewSettingsDialog(QDialog):
         # 取消自选股列表的选中状态
         self.watch_list.clearSelection()
             
-    def add_to_watchlist(self, item):
+    def add_stock_from_search(self, item):
         """将股票添加到自选股列表"""
         # 检查是否已经存在于自选股列表中
         for i in range(self.watch_list.count()):
@@ -651,7 +621,7 @@ class NewSettingsDialog(QDialog):
             if watch_item is not None and item is not None:
                 if watch_item.text() == item.text():
                     # 已存在，不重复添加，给出提示
-                    from PyQt5.QtWidgets import QMessageBox
+                    from PyQt6.QtWidgets import QMessageBox
                     QMessageBox.information(self, "提示", "股票已在自选股列表中")
                     return
                 
@@ -678,95 +648,121 @@ class NewSettingsDialog(QDialog):
         has_selection = len(self.watch_list.selectedItems()) > 0
         self.remove_button.setEnabled(has_selection)
         
-    def load_settings(self):
-        """加载设置"""
-        # 完全从主配置文件加载设置，不再使用本地ini配置
+    def move_up_selected_stock(self):
+        """将选中的股票上移"""
+        selected_items = self.watch_list.selectedItems()
+        if len(selected_items) != 1:
+            return
+        
+        item = selected_items[0]
+        row = self.watch_list.row(item)
+        if row > 0:
+            self.watch_list.takeItem(row)
+            self.watch_list.insertItem(row - 1, item)
+            self.watch_list.setCurrentItem(item)
+            self._update_move_buttons_state()
+        
+    def move_down_selected_stock(self):
+        """将选中的股票下移"""
+        selected_items = self.watch_list.selectedItems()
+        if len(selected_items) != 1:
+            return
+        
+        item = selected_items[0]
+        row = self.watch_list.row(item)
+        if row < self.watch_list.count() - 1:
+            self.watch_list.takeItem(row)
+            self.watch_list.insertItem(row + 1, item)
+            self.watch_list.setCurrentItem(item)
+            self._update_move_buttons_state()
+        
+    def _update_move_buttons_state(self):
+        """更新上移和下移按钮的状态"""
+        selected_items = self.watch_list.selectedItems()
+        if len(selected_items) != 1:
+            self.move_up_button.setEnabled(False)
+            self.move_down_button.setEnabled(False)
+            return
+        
+        item = selected_items[0]
+        row = self.watch_list.row(item)
+        self.move_up_button.setEnabled(row > 0)
+        self.move_down_button.setEnabled(row < self.watch_list.count() - 1)
+        
+    def load_config(self):
+        """加载配置"""
+        # 加载自选股列表
         try:
             from stock_monitor.config.manager import ConfigManager
             config_manager = ConfigManager()
+            user_stocks = config_manager.get('user_stocks', [])
+            self.watch_list.clear()
             
-            # 加载自选股列表
-            watch_list = config_manager.get('user_stocks', [])
-            
-            # 转换为显示格式
-            formatted_watch_list = []
-            from stock_monitor.utils import extract_stocks_from_list
+            # 加载股票数据用于显示股票名称
             from stock_monitor.data.stock.stocks import load_stock_data
+            all_stocks_list = load_stock_data()
+            all_stocks_dict = {stock['code']: stock for stock in all_stocks_list}
             
-            # 加载股票数据以便获取名称
-            all_stocks = {stock['code']: stock for stock in load_stock_data()}
-            
-            for code in watch_list:
-                if code in all_stocks:
-                    stock_info = all_stocks[code]
-                    formatted_watch_list.append(f"{code} {stock_info['name']}")
+            for stock_code in user_stocks:
+                # 尝试查找股票的完整信息
+                if stock_code in all_stocks_dict:
+                    stock = all_stocks_dict[stock_code]
+                    from stock_monitor.utils.helpers import get_stock_emoji
+                    emoji = get_stock_emoji(stock_code, stock.get('name', ''))
+                    name = stock.get('name', '')
+                    if name:
+                        display_text = f"{emoji} {name} ({stock_code})"
+                    else:
+                        display_text = f"{emoji} {stock_code}"
                 else:
-                    formatted_watch_list.append(code)
+                    # 如果找不到股票信息，只显示代码
+                    display_text = stock_code
+                    
+                self.watch_list.addItem(display_text)
         except Exception as e:
-            # 出错时使用空列表
-            formatted_watch_list = []
-            from stock_monitor.utils.logger import app_logger
-            app_logger.error(f"加载自选股列表时出错: {e}")
-                
-        self.watch_list.clear()
-        for item in formatted_watch_list:
-            if isinstance(item, str):
-                self.watch_list.addItem(item)
-        
-        # 保存原始自选股列表副本，用于取消操作时恢复
-        self.original_watch_list = [formatted_watch_list[i] for i in range(len(formatted_watch_list))]
-        
+            self.watch_list.clear()
+            
         # 加载开机启动设置
         try:
             from stock_monitor.config.manager import ConfigManager
             config_manager = ConfigManager()
             auto_start = config_manager.get("auto_start", False)
-            self.auto_start_checkbox.setChecked(_safe_bool_conversion(auto_start))
+            auto_start = _safe_bool_conversion(auto_start, False)
+            self.auto_start_checkbox.setChecked(auto_start)
         except Exception as e:
             self.auto_start_checkbox.setChecked(False)
-        
+            
         # 加载刷新频率设置
         try:
             from stock_monitor.config.manager import ConfigManager
             config_manager = ConfigManager()
             refresh_interval = config_manager.get("refresh_interval", 5)
             refresh_interval = _safe_int_conversion(refresh_interval, 5)
-            self.refresh_combo.setCurrentText(self._map_refresh_value_to_text(refresh_interval))
+            refresh_text = self._map_refresh_value_to_text(refresh_interval)
+            index = self.refresh_combo.findText(refresh_text)
+            if index >= 0:
+                self.refresh_combo.setCurrentIndex(index)
         except Exception as e:
-            self.refresh_combo.setCurrentText(self._map_refresh_value_to_text(5))
+            self.refresh_combo.setCurrentIndex(1)  # 默认5秒
             
         # 加载字体设置
         try:
             from stock_monitor.config.manager import ConfigManager
             config_manager = ConfigManager()
-            font_family = config_manager.get("font_family", "Microsoft YaHei")
-            if isinstance(font_family, str):
-                font_index = self.font_combo.findText(font_family)
-                if font_index >= 0:
-                    self.font_combo.setCurrentIndex(font_index)
-        except Exception as e:
-            pass
-            
-        try:
-            from stock_monitor.config.manager import ConfigManager
-            config_manager = ConfigManager()
-            font_size = config_manager.get("font_size", 12)
-            font_size = _safe_int_conversion(font_size, 12)
+            font_size = config_manager.get("font_size", 13)  # 默认改为13
+            font_size = _safe_int_conversion(font_size, 13)
             self.font_size_spinbox.setValue(font_size)
-        except Exception as e:
-            self.font_size_spinbox.setValue(12)
-        
-        # 加载主题设置
-        try:
-            from stock_monitor.config.manager import ConfigManager
-            config_manager = ConfigManager()
-            theme = config_manager.get("theme", "dark")
-            if isinstance(theme, str) and theme == "light":
-                self.light_theme_radio.setChecked(True)
+            
+            # 加载字体族设置
+            font_family = config_manager.get("font_family", "微软雅黑")
+            index = self.font_family_combo.findText(font_family)
+            if index >= 0:
+                self.font_family_combo.setCurrentIndex(index)
             else:
-                self.dark_theme_radio.setChecked(True)
+                self.font_family_combo.setCurrentIndex(0)  # 默认微软雅黑
         except Exception as e:
-            self.dark_theme_radio.setChecked(True)
+            self.font_size_spinbox.setValue(13)  # 默认13px
+            self.font_family_combo.setCurrentIndex(0)  # 默认微软雅黑
             
         # 加载透明度设置
         try:
@@ -777,7 +773,7 @@ class NewSettingsDialog(QDialog):
             self.transparency_slider.setValue(transparency)
         except Exception as e:
             self.transparency_slider.setValue(80)
-        
+            
         # 加载拖拽灵敏度设置
         try:
             from stock_monitor.config.manager import ConfigManager
@@ -787,9 +783,8 @@ class NewSettingsDialog(QDialog):
         except Exception as e:
             pass
             
-    def save_settings(self):
-        """保存设置"""
-        # 保存所有设置到主配置文件
+    def save_config(self):
+        """保存配置"""
         try:
             from stock_monitor.config.manager import ConfigManager
             config_manager = ConfigManager()
@@ -810,21 +805,16 @@ class NewSettingsDialog(QDialog):
             refresh_interval = self._map_refresh_text_to_value(refresh_text)
             config_manager.set("refresh_interval", refresh_interval)
             
-            # 保存字体设置
-            config_manager.set("font_family", self.font_combo.currentText())
-            config_manager.set("font_size", self.font_size_spinbox.value())
+            # 保存字体设置 - 直接使用spinbox的值
+            font_size = self.font_size_spinbox.value()
+            config_manager.set("font_size", font_size)
             
-            # 保存主题设置
-            if self.light_theme_radio.isChecked():
-                config_manager.set("theme", "light")
-            else:
-                config_manager.set("theme", "dark")
-                
+            # 保存字体族设置
+            font_family = self.font_family_combo.currentText()
+            config_manager.set("font_family", font_family)
+            
             # 保存透明度设置
             config_manager.set("transparency", self.transparency_slider.value())
-            
-            # 保存拖拽灵敏度设置
-            config_manager.set("drag_sensitivity", 5)  # 当前固定为5ms
             
             # 添加调试信息
             from stock_monitor.utils.logger import app_logger
@@ -914,7 +904,16 @@ class NewSettingsDialog(QDialog):
 
     def accept(self):
         """点击确定按钮时保存设置"""
-        self.save_settings()
+        self.save_config()
+        
+        # 清除预览透明度并恢复主窗口的默认状态
+        if self.main_window:
+            if hasattr(self.main_window, '_preview_transparency'):
+                delattr(self.main_window, '_preview_transparency')
+            self.main_window.update()
+            # 恢复主窗口菜单的默认样式
+            if hasattr(self.main_window, 'menu') and self.main_window.menu:
+                self.main_window.menu.restore_default_style()
         
         # 确保配置更改信号发出
         if self.main_window:
@@ -942,6 +941,17 @@ class NewSettingsDialog(QDialog):
         for item in self.original_watch_list:
             self.watch_list.addItem(item)
         
+        # 恢复主窗口的原始字体设置
+        if self.main_window:
+            self.main_window.update_font_size()
+            # 清除预览透明度并恢复主窗口的默认状态
+            if hasattr(self.main_window, '_preview_transparency'):
+                delattr(self.main_window, '_preview_transparency')
+            self.main_window.update()
+            # 恢复主窗口菜单的默认样式
+            if hasattr(self.main_window, 'menu') and self.main_window.menu:
+                self.main_window.menu.restore_default_style()
+            
         # 隐藏窗口而不是关闭
         self.hide()
         
@@ -977,7 +987,87 @@ class NewSettingsDialog(QDialog):
         # 发送信号通知主窗口更新样式
         # self.settings_changed.emit()
         pass
-
+    
+    def on_font_setting_changed(self):
+        """字体设置变化时的处理函数，用于实时预览"""
+        if self.main_window:
+            # 临时更新主窗口的字体设置
+            font_size = self.font_size_spinbox.value()
+            font_family = self.font_family_combo.currentText()
+            
+            # 更新主窗口字体
+            from PyQt6.QtGui import QFont
+            font = QFont(font_family, font_size)
+            self.main_window.setFont(font)
+            # 只更新主窗口本身的字体，不使用全局样式表影响子控件
+            self.main_window.setStyleSheet(f'font-family: "{font_family}"; font-size: {font_size}px;')
+            
+            # 更新表格字体
+            if hasattr(self.main_window, 'table') and self.main_window.table:
+                self.main_window.table.setStyleSheet(f'''
+                    QTableWidget {{
+                        background: transparent;
+                        border: none;
+                        outline: none;
+                        gridline-color: #aaa;
+                        selection-background-color: transparent;
+                        selection-color: #fff;
+                        font-family: "{font_family}";
+                        font-size: {font_size}px;
+                        font-weight: bold;
+                        color: #fff;
+                    }}
+                    QTableWidget::item {{
+                        border: none;
+                        padding: 0px;
+                        background: transparent;
+                    }}
+                    QTableWidget::item:selected {{
+                        background: transparent;
+                        color: #fff;
+                    }}
+                    QHeaderView::section {{
+                        background: transparent;
+                        border: none;
+                        color: transparent;
+                    }}
+                    QScrollBar {{
+                        background: transparent;
+                        width: 0px;
+                        height: 0px;
+                    }}
+                    QScrollBar::handle {{
+                        background: transparent;
+                    }}
+                    QScrollBar::add-line, QScrollBar::sub-line {{
+                        background: transparent;
+                        border: none;
+                    }}
+                ''')
+                
+            # 更新加载标签字体
+            if hasattr(self.main_window, 'loading_label') and self.main_window.loading_label:
+                self.main_window.loading_label.setStyleSheet(f"""
+                    QLabel {{
+                        color: #fff;
+                        font-size: {font_size}px;
+                        background: rgba(30, 30, 30, 0.8);
+                        border-radius: 10px;
+                        padding: 10px;
+                    }}
+                """)
+                
+            # 调整主窗口高度
+            self.main_window.adjust_window_height()
+    
+    def on_transparency_changed(self):
+        """透明度设置变化时的处理函数，用于实时预览"""
+        if self.main_window:
+            # 使用窗口级别的属性传递预览透明度值，触发主窗口重绘以预览背景透明度
+            # 这样可以确保只改变背景透明度，不影响文字清晰度
+            self.main_window._preview_transparency = self.transparency_slider.value()
+            self.main_window.update()
+    
     def get_stocks_from_list(self):
         """
         从股票列表中提取股票代码
@@ -988,14 +1078,40 @@ class NewSettingsDialog(QDialog):
         # 使用count()方法获取项目数量，然后逐个处理
         items = []
         for i in range(self.watch_list.count()):
-            items.append(self.watch_list.item(i))
+            item = self.watch_list.item(i)
+            if item:
+                items.append(item)
             
-        # 使用统一的工具函数处理股票代码提取
-        from stock_monitor.utils import extract_stocks_from_list
-        return extract_stocks_from_list(items)
+        # 提取股票代码（去除表情符号和名称部分）
+        stocks = []
+        for item in items:
+            text = item.text()
+            # 查找括号中的股票代码
+            import re
+            match = re.search(r'\(([^)]+)\)', text)
+            if match:
+                stocks.append(match.group(1))
+            else:
+                # 如果没有找到括号中的代码，就使用整个文本
+                stocks.append(text)
+        return stocks
 
     def closeEvent(self, a0):  # type: ignore
         """处理窗口关闭事件"""
         self.hide()
         if a0:
             a0.ignore()  # 阻止窗口真正关闭
+
+    def on_activated(self, reason):
+        """
+        托盘图标激活事件处理
+        
+        Args:
+            reason: 激活原因
+        """
+        if reason == QtWidgets.QSystemTrayIcon.ActivationReason.Trigger:  # type: ignore
+            self.main_window.show()
+            self.main_window.raise_()
+            self.main_window.activateWindow()
+        elif reason == QtWidgets.QSystemTrayIcon.ActivationReason.Context:  # type: ignore
+            self.contextMenu().exec(QtGui.QCursor.pos())  # type: ignore

@@ -3,14 +3,15 @@
 提供股票搜索和选择功能 
 
 该模块包含StockSearchWidget类，用于搜索和添加自选股。 
-""" 
+"""
 
-from PyQt5 import QtWidgets, QtCore
-from PyQt5.QtCore import pyqtSignal
+from PyQt6 import QtWidgets, QtCore
+from PyQt6.QtCore import pyqtSignal
 
 from stock_monitor.utils.logger import app_logger 
 from stock_monitor.data.stock.stocks import enrich_pinyin 
 from stock_monitor.utils.helpers import get_stock_emoji 
+from stock_monitor.data.stock.stock_data_source import StockDataSource
 
 
 class StockSearchWidget(QtWidgets.QWidget): 
@@ -21,8 +22,9 @@ class StockSearchWidget(QtWidgets.QWidget):
     # 定义信号，当用户添加股票时发出 
     stock_added = pyqtSignal(str, str)  # code, name 
     
-    def __init__(self, stock_list=None, sync_callback=None):
+    def __init__(self, stock_data_source: StockDataSource, stock_list=None, sync_callback=None):
         super().__init__()
+        self.stock_data_source = stock_data_source
         self.stock_list = stock_list
         self.sync_callback = sync_callback
         self.setup_ui()
@@ -49,7 +51,7 @@ class StockSearchWidget(QtWidgets.QWidget):
                 background-color: #2d2d2d;
                 color: white;
                 font-family: 'Microsoft YaHei';
-                font-size: 16px;
+                font-size: 14px;
             }
         """)
         
@@ -63,12 +65,12 @@ class StockSearchWidget(QtWidgets.QWidget):
         self.search_input.setPlaceholderText("🔍 输入股票代码/名称/拼音/首字母")
         self.search_input.setStyleSheet("""
             QLineEdit {
-                padding: 12px;
-                border: 2px solid #555555;
-                border-radius: 8px;
+                padding: 8px;
+                border: 1px solid #555555;
+                border-radius: 4px;
                 background-color: #3d3d3d;
                 color: white;
-                font-size: 16px;
+                font-size: 14px;
             }
             QLineEdit:focus {
                 border-color: #0078d4;
@@ -84,15 +86,15 @@ class StockSearchWidget(QtWidgets.QWidget):
         self.result_list.setStyleSheet("""
             QListWidget {
                 background-color: #3d3d3d;
-                border: 2px solid #555555;
-                border-radius: 8px;
+                border: 1px solid #555555;
+                border-radius: 4px;
                 color: white;
-                font-size: 16px;
+                font-size: 14px;
                 padding: 5px;
             }
             QListWidget::item {
-                padding: 10px;
-                border-radius: 6px;
+                padding: 6px;
+                border-radius: 3px;
             }
             QListWidget::item:hover {
                 background-color: #4d4d4d;
@@ -113,9 +115,9 @@ class StockSearchWidget(QtWidgets.QWidget):
                 background-color: #0078d4;
                 color: white;
                 border: none;
-                border-radius: 8px;
-                padding: 12px;
-                font-size: 16px;
+                border-radius: 4px;
+                padding: 8px;
+                font-size: 14px;
                 font-weight: bold;
             }
             QPushButton:disabled {
@@ -126,9 +128,8 @@ class StockSearchWidget(QtWidgets.QWidget):
                 background-color: #005a9e;
             }
         """)
-        # 增大按钮尺寸
-        self.add_btn.setFixedWidth(140)
-        self.add_btn.setFixedHeight(50)
+        # 调整按钮尺寸
+        self.add_btn.setFixedHeight(30)
         layout.addWidget(self.add_btn) 
         # 调整间距
         layout.addSpacing(10)
@@ -137,25 +138,15 @@ class StockSearchWidget(QtWidgets.QWidget):
     def _load_stock_data(self):
         """加载股票数据"""
         try:
-            # 从数据库加载股票数据
-            from stock_monitor.data.stock.stock_db import stock_db
-            self.stock_data = stock_db.get_all_stocks()
-            app_logger.debug(f"从数据库加载了 {len(self.stock_data)} 条股票数据")
+            # 从数据源加载股票数据
+            self.stock_data = self.stock_data_source.get_all_stocks()
+            app_logger.debug(f"从数据源加载了 {len(self.stock_data)} 条股票数据")
+            # 丰富拼音信息
+            if self.stock_data:
+                self.stock_data = self._enrich_pinyin(self.stock_data)
         except Exception as e:
-            app_logger.error(f"从数据库加载股票数据失败: {e}")
-            # 回退到原来的实现
-            try:
-                from stock_monitor.data.stock.stocks import load_stock_data, enrich_pinyin
-                self.stock_data = load_stock_data()
-                self.stock_data = enrich_pinyin(self.stock_data)
-                app_logger.debug(f"从文件加载了 {len(self.stock_data)} 条股票数据")
-            except Exception as fallback_e:
-                app_logger.error(f"加载股票数据失败: {fallback_e}")
-                self.stock_data = []
-        
-        # 丰富拼音信息
-        if self.stock_data:
-            self.stock_data = self._enrich_pinyin(self.stock_data)
+            app_logger.error(f"从数据源加载股票数据失败: {e}")
+            self.stock_data = []
 
     def _on_search_text_changed(self, text): 
         """ 
@@ -197,57 +188,9 @@ class StockSearchWidget(QtWidgets.QWidget):
         self.result_list.clear()
         
         if text:
-            # 使用SQLite数据库进行搜索
-            try:
-                from stock_monitor.data.stock.stock_db import stock_db
-                matched_stocks = stock_db.search_stocks(text, limit=30)
-                self.filtered_stocks = matched_stocks
-            except Exception as e:
-                app_logger.warning(f"使用SQLite数据库搜索失败，回退到传统方法: {e}")
-                # 回退到原来的实现
-                # 根据输入文本过滤股票，并计算匹配度和优先级
-                matched_stocks = []
-                for stock in self.stock_data:
-                    code = stock['code']
-                    name = stock['name']
-                    pinyin = stock.get('pinyin', '')
-                    abbr = stock.get('abbr', '')
-                    
-                    # 计算匹配分数
-                    score = 0
-                    if text == code:  # 完全匹配代码
-                        score = 100
-                    elif text in code:  # 部分匹配代码
-                        score = 80
-                    elif text.lower() == name.lower():  # 完全匹配名称
-                        score = 90
-                    elif text.lower() in name.lower():  # 部分匹配名称
-                        score = 70
-                    elif text.lower() == pinyin:  # 完全匹配全拼
-                        score = 85
-                    elif text.lower() in pinyin:  # 部分匹配全拼
-                        score = 60
-                    elif text.lower() == abbr:  # 完全匹配首字母
-                        score = 80
-                    elif text.lower() in abbr:  # 部分匹配首字母
-                        score = 50
-                    
-                    # 计算优先级，A股优先
-                    priority = 0
-                    if code.startswith(('sh', 'sz')) and not code.startswith(('sh000', 'sz399')):
-                        priority = 10  # A股最高优先级
-                    elif code.startswith(('sh000', 'sz399')):
-                        priority = 5   # 指数次优先级
-                    elif code.startswith('hk'):
-                        priority = 1   # 港股较低优先级
-                    
-                    # 如果有匹配分数，则添加到结果中
-                    if score > 0:
-                        matched_stocks.append((stock, score, priority))
-                
-                # 按优先级和匹配分数排序，优先级高的在前，匹配度高的在前
-                matched_stocks.sort(key=lambda x: (-x[2], -x[1]))
-                self.filtered_stocks = [stock for stock, score, priority in matched_stocks]
+            # 使用数据源进行搜索
+            matched_stocks = self.stock_data_source.search_stocks(text, limit=30)
+            self.filtered_stocks = matched_stocks
             
             # 显示匹配结果
             for stock in self.filtered_stocks:

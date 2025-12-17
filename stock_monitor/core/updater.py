@@ -6,8 +6,8 @@ import shutil
 import subprocess
 from typing import Optional, Dict, Any
 import requests
-from PyQt5.QtWidgets import QMessageBox, QProgressDialog, QApplication
-from PyQt5.QtCore import Qt
+from PyQt6.QtWidgets import QMessageBox, QProgressDialog, QApplication
+from PyQt6.QtCore import Qt
 from packaging import version
 
 from stock_monitor.version import __version__

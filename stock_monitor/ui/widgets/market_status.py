@@ -3,9 +3,9 @@
 显示整体股市涨跌情况的可视化状态条
 """
 
-from PyQt5 import QtWidgets, QtGui, QtCore
+from PyQt6 import QtWidgets, QtGui, QtCore
 from stock_monitor.utils.logger import app_logger
-
+import threading
 
 class MarketStatusBar(QtWidgets.QWidget):
     """股市状态条，显示整体涨跌情况"""
@@ -18,7 +18,59 @@ class MarketStatusBar(QtWidgets.QWidget):
         self.total_count = 100 # 总股票数
         self.setMinimumHeight(3)
         self.setMaximumHeight(3)
-        self.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Preferred)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Preferred)
+        
+        # 创建右键菜单
+        self.menu = QtWidgets.QMenu(self)
+        self.menu.setStyleSheet('''
+            QMenu {
+                background-color: #2d2d2d;
+                color: white;
+                border: 1px solid #555555;
+                border-radius: 4px;
+                font-family: 'Microsoft YaHei';
+                font-size: 14px;  /* 调大字体 */
+                padding: 2px 0;   /* 减小内边距 */
+                min-width: 100px; /* 缩小最小宽度 */
+            }
+            QMenu::item {
+                padding: 4px 16px;
+                border: none;
+            }
+            QMenu::item:selected {
+                background-color: #444444;
+            }
+        ''')
+        self.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self.show_context_menu)
+        
+    def show_context_menu(self, position):
+        """显示右键菜单"""
+        # 清空现有动作
+        self.menu.clear()
+        
+        # 添加"设置"动作
+        action_settings = self.menu.addAction('设置')
+        action_settings.triggered.connect(self.open_settings)
+        
+        # 添加分隔符
+        self.menu.addSeparator()
+        
+        # 添加"退出"动作
+        action_quit = self.menu.addAction('退出')
+        action_quit.triggered.connect(self.quit_app)
+        
+        # 显示菜单
+        self.menu.popup(QtGui.QCursor.pos())
+        
+    def open_settings(self):
+        """打开设置窗口"""
+        if self.parent():
+            self.parent().open_settings()
+            
+    def quit_app(self):
+        """退出应用"""
+        QtWidgets.QApplication.quit()
         
     def update_status(self, up_count, down_count, flat_count, total_count):
         """更新状态条显示"""
@@ -44,31 +96,29 @@ class MarketStatusBar(QtWidgets.QWidget):
         try:
             # 检查是否已经有正在运行的线程
             if hasattr(self, '_fetch_thread') and self._fetch_thread.is_alive():
-                app_logger.debug("市场状态更新线程已在运行，跳过本次更新")
+                app_logger.debug("已有正在运行的市场状态获取线程，跳过本次请求")
                 return
                 
-            # 在新线程中获取全市场数据，避免阻塞UI
-            from threading import Thread
-            self._fetch_thread = Thread(target=self._fetch_market_data, daemon=True)
+            # 在新线程中获取市场数据
+            self._fetch_thread = threading.Thread(target=self._fetch_market_data, daemon=True)
             self._fetch_thread.start()
         except Exception as e:
-            app_logger.error(f"获取市场数据时出错: {e}")
-        
+            app_logger.error(f"启动市场状态获取线程失败: {e}")
+            
     def _fetch_market_data(self):
-        """
-        获取全市场数据并更新状态条
-        """
+        """获取市场数据的实现"""
         try:
-            import easyquotation
-            import json
-            import os
-            
-            # 获取股票列表
-            quotation = easyquotation.use('sina')
-            # type: ignore 是因为pyright无法正确识别这个方法
-            stock_list = quotation.market_snapshot(prefix=True)  # type: ignore
-            
+            # 获取行情引擎
+            from stock_monitor.data.market.quotation import get_quotation_engine
+            quotation_engine = get_quotation_engine()
+            if quotation_engine is None:
+                app_logger.error("行情引擎未初始化")
+                return
+                
+            # 获取全市场股票数据
+            stock_list = quotation_engine.all
             if not stock_list:
+                app_logger.warning("未能获取到市场数据")
                 return
                 
             up_count = 0
@@ -105,24 +155,23 @@ class MarketStatusBar(QtWidgets.QWidget):
                     total_count += 1
             
             # 在主线程中更新UI
-            from PyQt5.QtCore import QMetaObject, Qt
+            from PyQt6.QtCore import QMetaObject, Qt
             QMetaObject.invokeMethod(
                 self, 
                 "_update_status_internal", 
-                Qt.QueuedConnection,  # type: ignore
+                Qt.ConnectionType.QueuedConnection,  # type: ignore
                 QtCore.Q_ARG(int, up_count),
                 QtCore.Q_ARG(int, down_count),
                 QtCore.Q_ARG(int, flat_count),
                 QtCore.Q_ARG(int, total_count)
             )
-            
         except Exception as e:
-            app_logger.error(f"获取全市场数据时出错: {e}")
-        
-    def paintEvent(self, event):  # type: ignore
+            app_logger.error(f"获取市场状态数据失败: {e}")
+
+    def paintEvent(self, event):
         """绘制状态条"""
         painter = QtGui.QPainter(self)
-        painter.setRenderHint(QtGui.QPainter.Antialiasing)  # type: ignore
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)  # type: ignore
         
         if self.total_count == 0:
             # 如果没有数据，显示红色

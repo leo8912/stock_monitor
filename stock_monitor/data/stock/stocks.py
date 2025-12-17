@@ -3,61 +3,30 @@
 用于加载和处理股票基础数据，包括拼音处理等功能
 """
 
-import json
-import os
 from typing import List, Dict, Any, Optional
 
 from stock_monitor.utils.logger import app_logger
-
 
 def load_stock_data() -> List[Dict[str, Any]]:
     """
     加载股票基础数据
     
-    首先尝试从SQLite数据库加载股票基础数据，如果失败则从本地 stock_basic.json 文件中加载。
-    如果文件不存在或加载失败，会返回空列表。
+    从SQLite数据库加载股票基础数据。
     
     Returns:
         List[Dict[str, Any]]: 股票数据列表，每个元素包含 'code' 和 'name' 字段
     """
-    from stock_monitor.utils.helpers import handle_exception
+    # 从SQLite数据库加载股票数据
+    from stock_monitor.data.stock.stock_db import stock_db
     
-    def _load_data_from_db():
-        # 从SQLite数据库加载股票数据
-        from stock_monitor.data.stock.stock_db import stock_db
-        # 这里可以考虑按需加载，但现在为了兼容性加载所有数据
-        # 实际项目中可以根据需要调整
-        
-        # 获取所有股票数据
-        a_stocks = stock_db.get_stocks_by_market_type('A')
-        index_stocks = stock_db.get_stocks_by_market_type('INDEX')
-        hk_stocks = stock_db.get_stocks_by_market_type('HK')
-        
-        all_stocks = a_stocks + index_stocks + hk_stocks
-        app_logger.debug(f"从SQLite数据库加载股票基础数据成功，共{len(all_stocks)}条记录")
-        return all_stocks
+    # 获取所有股票数据
+    a_stocks = stock_db.get_stocks_by_market_type('A')
+    index_stocks = stock_db.get_stocks_by_market_type('INDEX')
+    hk_stocks = stock_db.get_stocks_by_market_type('HK')
     
-    def _load_data_from_json():
-        # 使用resource_path函数正确获取资源文件路径
-        from stock_monitor.utils.helpers import resource_path
-        stock_file_path = resource_path('stock_basic.json')
-        with open(stock_file_path, 'r', encoding='utf-8') as f:
-            data: List[Dict[str, Any]] = json.load(f)
-        app_logger.debug(f"从JSON文件加载股票基础数据成功，共{len(data)}条记录")
-        return data
-    
-    # 首先尝试从数据库加载
-    try:
-        return _load_data_from_db()
-    except Exception as e:
-        app_logger.warning(f"从SQLite数据库加载股票数据失败: {e}，回退到JSON文件")
-        # 回退到JSON文件
-        return handle_exception(
-            "加载股票基础数据",
-            _load_data_from_json,
-            [],
-            app_logger
-        )
+    all_stocks = a_stocks + index_stocks + hk_stocks
+    app_logger.debug(f"从SQLite数据库加载股票基础数据成功，共{len(all_stocks)}条记录")
+    return all_stocks
 
 
 def enrich_pinyin(stock_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

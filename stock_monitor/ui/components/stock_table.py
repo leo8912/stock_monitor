@@ -5,8 +5,8 @@
 该模块包含StockTable类，用于在GUI中展示实时股票行情数据。
 """
 
-from PyQt5 import QtWidgets, QtGui, QtCore
-from PyQt5.QtCore import pyqtSlot
+from PyQt6 import QtWidgets, QtGui, QtCore
+from PyQt6.QtCore import pyqtSlot
 
 # 导入日志记录器
 from stock_monitor.utils.logger import app_logger
@@ -41,12 +41,17 @@ class StockTable(QtWidgets.QTableWidget):
         
         # 设置大小策略，允许收缩
         self.setSizePolicy(
-            QtWidgets.QSizePolicy.Preferred,
-            QtWidgets.QSizePolicy.Preferred
+            QtWidgets.QSizePolicy.Policy.Preferred,
+            QtWidgets.QSizePolicy.Policy.Preferred
         )
         
-        self.setStyleSheet('''
-            QTableWidget {
+        # 从配置中读取字体大小
+        from stock_monitor.config.manager import ConfigManager
+        config_manager = ConfigManager()
+        font_size = config_manager.get("font_size", 13)  # 默认13px
+        
+        self.setStyleSheet(f'''
+            QTableWidget {{
                 background: transparent;
                 border: none;
                 outline: none;
@@ -54,36 +59,36 @@ class StockTable(QtWidgets.QTableWidget):
                 selection-background-color: transparent;
                 selection-color: #fff;
                 font-family: "微软雅黑";
-                font-size: 20px;
+                font-size: {font_size}px;
                 font-weight: bold;
                 color: #fff;
-            }
-            QTableWidget::item {
+            }}
+            QTableWidget::item {{
                 border: none;
                 padding: 0px;
                 background: transparent;
-            }
-            QTableWidget::item:selected {
+            }}
+            QTableWidget::item:selected {{
                 background: transparent;
                 color: #fff;
-            }
-            QHeaderView::section {
+            }}
+            QHeaderView::section {{
                 background: transparent;
                 border: none;
                 color: transparent;
-            }
-            QScrollBar {
+            }}
+            QScrollBar {{
                 background: transparent;
                 width: 0px;
                 height: 0px;
-            }
-            QScrollBar::handle {
+            }}
+            QScrollBar::handle {{
                 background: transparent;
-            }
-            QScrollBar::add-line, QScrollBar::sub-line {
+            }}
+            QScrollBar::add-line, QScrollBar::sub-line {{
                 background: transparent;
                 border: none;
-            }
+            }}
         ''')
 
     @pyqtSlot(list)
