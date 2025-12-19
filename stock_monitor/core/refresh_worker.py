@@ -35,6 +35,7 @@ class RefreshWorker:
         self._max_consecutive_failures = 3
         self._processor = StockCodeProcessor()
         self._data_change_detector = DataChangeDetector()
+        self._last_successful_update = 0  # 记录上次成功更新的时间
         
     def start(self, user_stocks: List[str], refresh_interval: int):
         """
@@ -151,6 +152,8 @@ class RefreshWorker:
                         self._initial_update_done = True
                     # 调用更新回调
                     self.update_callback(stocks, failed_count == len(local_user_stocks) and len(local_user_stocks) > 0)
+                    # 记录成功更新时间
+                    self._last_successful_update = time.time()
                 else:
                     app_logger.debug("股票数据无变化，跳过UI更新")
                     

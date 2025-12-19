@@ -158,10 +158,13 @@ class DataCache:
         current_time = time.time()
         expired_keys = []
         
+        # 获取市场状态一次，避免在循环中重复调用
+        market_open = is_market_open_func()
+        
         for key, cache_entry in self._cache.items():
             # 根据市场状态确定实际的TTL
             actual_ttl = cache_entry['ttl']
-            if not is_market_open_func():
+            if not market_open:
                 # 闭市期间，将TTL延长到10倍（但不超过1小时）
                 actual_ttl = min(cache_entry['ttl'] * 10, 3600)
                 
@@ -186,11 +189,14 @@ class DataCache:
         total_items = len(self._cache)
         current_time = time.time()
         
+        # 获取市场状态一次，避免在循环中重复调用
+        market_open = is_market_open_func()
+        
         expired_count = 0
         for cache_entry in self._cache.values():
             # 根据市场状态确定实际的TTL
             actual_ttl = cache_entry['ttl']
-            if not is_market_open_func():
+            if not market_open:
                 # 闭市期间，将TTL延长到10倍（但不超过1小时）
                 actual_ttl = min(cache_entry['ttl'] * 10, 3600)
                 
@@ -253,32 +259,3 @@ def cache_get(key: str) -> Optional[Any]:
         Optional[Any]: 缓存数据，如果不存在或已过期则返回None
     """
     return global_cache.get(key)
-
-
-
-
-def cache_set(key: str, data: Any, expire: int = 30) -> None:
-    """
-    设置缓存数据
-    
-    Args:
-        key (str): 缓存键
-        data (Any): 要缓存的数据
-        expire (int): 过期时间（秒），默认30秒
-    """
-    global_cache.set(key, data, expire)
-
-
-def cache_get(key: str) -> Optional[Any]:
-    """
-    获取缓存数据
-    
-    Args:
-        key (str): 缓存键
-        
-    Returns:
-        Optional[Any]: 缓存数据，如果不存在或已过期则返回None
-    """
-    return global_cache.get(key)
-
-

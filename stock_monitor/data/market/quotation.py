@@ -39,6 +39,32 @@ def is_market_open() -> bool:
             (datetime.time(13,0) <= t <= datetime.time(15,0)))
 
 
+def _handle_special_stocks(code: str, info: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    处理特殊股票（如上证指数、平安银行）的名称修正
+    
+    Args:
+        code: 股票代码
+        info: 股票信息
+        
+    Returns:
+        修正后的股票信息
+    """
+    # 提取纯数字代码
+    pure_code = code[2:] if code.startswith(('sh', 'sz')) else code
+    if pure_code == '000001':
+        # 检查是否应该显示为上证指数
+        if code == 'sh000001':
+            # 强制修正名称为上证指数
+            info = info.copy()  # 创建副本避免修改原始数据
+            info['name'] = '上证指数'
+        elif code == 'sz000001':
+            # 强制修正名称为平安银行
+            info = info.copy()  # 创建副本避免修改原始数据
+            info['name'] = '平安银行'
+    return info
+
+
 def process_stock_data(data: Dict[str, Any], stocks_list: List[str]) -> List[Tuple]:
     """处理股票数据，返回格式化的股票列表"""
     stocks = []
@@ -58,30 +84,11 @@ def process_stock_data(data: Dict[str, Any], stocks_list: List[str]) -> List[Tup
             
             # 特殊处理：确保上证指数和平安银行正确映射
             if info and pure_code == '000001':
-                # 检查是否应该显示为上证指数
-                if code == 'sh000001':
-                    # 强制修正名称为上证指数
-                    info = info.copy()  # 创建副本避免修改原始数据
-                    info['name'] = '上证指数'
-                elif code == 'sz000001':
-                    # 强制修正名称为平安银行
-                    info = info.copy()  # 创建副本避免修改原始数据
-                    info['name'] = '平安银行'
+                info = _handle_special_stocks(code, info)
         
         # 特殊处理：确保上证指数和平安银行正确映射（即使精确匹配也需处理）
         if info and isinstance(data, dict):
-            # 提取纯数字代码
-            pure_code = code[2:] if code.startswith(('sh', 'sz')) else code
-            if pure_code == '000001':
-                # 检查是否应该显示为上证指数
-                if code == 'sh000001':
-                    # 强制修正名称为上证指数
-                    info = info.copy()  # 创建副本避免修改原始数据
-                    info['name'] = '上证指数'
-                elif code == 'sz000001':
-                    # 强制修正名称为平安银行
-                    info = info.copy()  # 创建副本避免修改原始数据
-                    info['name'] = '平安银行'
+            info = _handle_special_stocks(code, info)
         
         if info:
             name = info.get('name', code)
