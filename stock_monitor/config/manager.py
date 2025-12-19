@@ -63,123 +63,24 @@ class ConfigManager:
     
     def _load_config(self) -> None:
         """加载配置文件，包含完整的错误处理和默认值"""
-        def _load_config_impl():
+        try:
             if not os.path.exists(self.config_path):
-                # 创建默认配置文件
-                default_config = {
-                    "user_stocks": ["sh600460", "sh603986", "sh600030", "sh000001"],
-                    "refresh_interval": 5,
-                    "github_token": "",
-                    "window_pos": [],
-                    "settings_dialog_pos": []
-                }
-                with open(self.config_path, 'w', encoding='utf-8') as f:
-                    json.dump(default_config, f, ensure_ascii=False, indent=2)
-                self._config = default_config
-                return default_config
+                self._create_default_config()
+                return
             
             with open(self.config_path, 'r', encoding='utf-8') as f:
                 config: Dict[str, Any] = json.load(f)
                 
             # 确保必要的键存在
-            if 'user_stocks' not in config:
-                config['user_stocks'] = ["sh600460", "sh603986", "sh600030", "sh000001"]
-            if 'refresh_interval' not in config:
-                config['refresh_interval'] = 5
-            if 'github_token' not in config:
-                config['github_token'] = ""
-            if 'window_pos' not in config:
-                config['window_pos'] = []
-            if 'settings_dialog_pos' not in config:
-                config['settings_dialog_pos'] = []
-                
+            self._ensure_required_keys_exist(config)
             self._config = config
-            return config
-        
-        def _handle_json_decode_error():
-            # 如果JSON解析失败，备份原文件并创建新配置
-            error_msg = f"配置文件损坏，正在创建新的配置文件..."
-            app_logger.error(error_msg)
-            print(error_msg)
-            
-            if os.path.exists(self.config_path):
-                # 备份原文件
-                backup_path = self.config_path + ".bak"
-                shutil.copy2(self.config_path, backup_path)
-                backup_msg = f"原配置文件已备份为: {backup_path}"
-                app_logger.info(backup_msg)
-                print(backup_msg)
-                
-            # 创建默认配置文件
-            default_config = {
-                "user_stocks": ["sh600460", "sh603986", "sh600030", "sh000001"],
-                "refresh_interval": 5,
-                "github_token": "",
-                "window_pos": [],
-                "settings_dialog_pos": []
-            }
-            
-            with open(self.config_path, 'w', encoding='utf-8') as f:
-                json.dump(default_config, f, ensure_ascii=False, indent=2)
-            app_logger.info(f"默认配置文件已创建: {self.config_path}")
-            self._config = default_config
-            return default_config
-        
-        def _handle_permission_error():
-            error_msg = "配置文件权限错误，请检查文件权限"
-            app_logger.error(error_msg)
-            print(error_msg)
-            default_config = {
-                "user_stocks": ["sh600460", "sh603986", "sh600030", "sh000001"],
-                "refresh_interval": 5,
-                "github_token": "",
-                "window_pos": [],
-                "settings_dialog_pos": []
-            }
-            self._config = default_config
-            return default_config
-        
-        try:
-            _load_config_impl()
         except json.JSONDecodeError:
-            handle_exception(
-                "处理JSON解码错误",
-                _handle_json_decode_error,
-                {
-                    "user_stocks": ["sh600460", "sh603986", "sh600030", "sh000001"],
-                    "refresh_interval": 5,
-                    "github_token": "",
-                    "window_pos": [],
-                    "settings_dialog_pos": []
-                },
-                app_logger
-            )
+            self._handle_corrupted_config_file("JSON解码错误")
         except PermissionError:
-            handle_exception(
-                "处理权限错误",
-                _handle_permission_error,
-                {
-                    "user_stocks": ["sh600460", "sh603986", "sh600030", "sh000001"],
-                    "refresh_interval": 5,
-                    "github_token": "",
-                    "window_pos": [],
-                    "settings_dialog_pos": []
-                },
-                app_logger
-            )
-        except Exception:
-            handle_exception(
-                "加载配置文件",
-                _load_config_impl,
-                {
-                    "user_stocks": ["sh600460", "sh603986", "sh600030", "sh000001"],
-                    "refresh_interval": 5,
-                    "github_token": "",
-                    "window_pos": [],
-                    "settings_dialog_pos": []
-                },
-                app_logger
-            )
+            self._handle_permission_error_config()
+        except Exception as e:
+            app_logger.error(f"加载配置文件时发生未知错误: {e}")
+            self._config = self._get_default_config()
     
     def _save_config(self) -> bool:
         """
@@ -188,18 +89,14 @@ class ConfigManager:
         Returns:
             bool: 保存是否成功
         """
-        def _save_config_impl():
+        try:
             with open(self.config_path, 'w', encoding='utf-8') as f:
                 json.dump(self._config, f, ensure_ascii=False, indent=2)
             app_logger.info("配置文件保存成功")
             return True
-        
-        return handle_exception(
-            "保存配置文件",
-            _save_config_impl,
-            False,
-            app_logger
-        )
+        except Exception as e:
+            app_logger.error(f"保存配置文件时发生错误: {e}")
+            return False
     
     def get(self, key: str, default: Any = None) -> Any:
         """
@@ -227,6 +124,63 @@ class ConfigManager:
         """
         self._config[key] = value
         return self._save_config()
+
+    def _create_default_config(self) -> Dict[str, Any]:
+        """创建默认配置文件"""
+        default_config = self._get_default_config()
+        with open(self.config_path, 'w', encoding='utf-8') as f:
+            json.dump(default_config, f, ensure_ascii=False, indent=2)
+        self._config = default_config
+        return default_config
+
+    def _get_default_config(self) -> Dict[str, Any]:
+        """获取默认配置"""
+        return {
+            "user_stocks": ["sh600460", "sh603986", "sh600030", "sh000001"],
+            "refresh_interval": 5,
+            "github_token": "",
+            "window_pos": [],
+            "settings_dialog_pos": []
+        }
+
+    def _ensure_required_keys_exist(self, config: Dict[str, Any]) -> None:
+        """确保必要的键存在"""
+        default_config = self._get_default_config()
+        for key, default_value in default_config.items():
+            if key not in config:
+                config[key] = default_value
+
+    def _handle_corrupted_config_file(self, error_type: str) -> Dict[str, Any]:
+        """处理损坏的配置文件"""
+        # 如果配置文件损坏，备份原文件并创建新配置
+        error_msg = f"配置文件损坏({error_type})，正在创建新的配置文件..."
+        app_logger.error(error_msg)
+        print(error_msg)
+        
+        if os.path.exists(self.config_path):
+            # 备份原文件
+            backup_path = self.config_path + ".bak"
+            shutil.copy2(self.config_path, backup_path)
+            backup_msg = f"原配置文件已备份为: {backup_path}"
+            app_logger.info(backup_msg)
+            print(backup_msg)
+            
+        # 创建默认配置文件
+        default_config = self._get_default_config()
+        with open(self.config_path, 'w', encoding='utf-8') as f:
+            json.dump(default_config, f, ensure_ascii=False, indent=2)
+        app_logger.info(f"默认配置文件已创建: {self.config_path}")
+        self._config = default_config
+        return default_config
+
+    def _handle_permission_error_config(self) -> Dict[str, Any]:
+        """处理配置文件权限错误"""
+        error_msg = "配置文件权限错误，请检查文件权限"
+        app_logger.error(error_msg)
+        print(error_msg)
+        default_config = self._get_default_config()
+        self._config = default_config
+        return default_config
 
 
 def load_config() -> Dict[str, Any]:

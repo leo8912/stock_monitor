@@ -24,6 +24,10 @@ class StockCodeProcessor:
         if not isinstance(code, str) or not code:
             return None
             
+        # 如果代码包含空格，只取第一部分
+        if ' ' in code:
+            code = code.split()[0]
+            
         code = code.strip().lower()
         
         # 移除可能存在的额外字符
@@ -105,6 +109,11 @@ class StockCodeProcessor:
             elif len(parts) == 1:
                 # 如果只有一个部分，假设它是代码
                 code = parts[0]
+                
+        # 确保提取到的代码符合股票代码格式
+        if code and not code.startswith(('sh', 'sz', 'hk')):
+            # 如果代码不以sh、sz或hk开头，则认为提取失败
+            code = None
                 
         return code, text
 

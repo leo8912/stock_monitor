@@ -552,7 +552,13 @@ class NewSettingsDialog(QDialog):
             )
     
     def on_search_text_changed(self, text):
-        """搜索文本变化时的处理"""
+        """
+        搜索框文本改变时的处理函数
+        
+        Args:
+            text (str): 输入的文本
+        """
+        text = text.strip()
         if len(text) < 1:
             self.search_results.clear()
             return
@@ -589,10 +595,13 @@ class NewSettingsDialog(QDialog):
             # 按优先级排序，优先级高的在前
             matched_stocks.sort(key=lambda x: (-x[0], x[1]))
             
-            # 显示前20个匹配结果
+            # 显示前20个匹配结果，使用标准格式化显示
             for _, code, stock in matched_stocks[:20]:
-                item_text = f"{code} {stock.get('name', '')}"
-                self.search_results.addItem(item_text)
+                # 使用统一的格式化方法显示搜索结果
+                from stock_monitor.utils.helpers import get_stock_emoji
+                emoji = get_stock_emoji(code, stock.get('name', ''))
+                display_text = f"{emoji} {stock.get('name', '')} ({code})"
+                self.search_results.addItem(display_text)
                 
             # 取消自选股列表的选中状态
             self.watch_list.clearSelection()
@@ -616,17 +625,89 @@ class NewSettingsDialog(QDialog):
     def add_stock_from_search(self, item):
         """将股票添加到自选股列表"""
         # 检查是否已经存在于自选股列表中
+        # 解析item文本以提取股票代码
+        item_text = item.text()
+        import re
+        match = re.search(r'\(([^)]+)\)', item_text)
+        if match:
+            stock_code = match.group(1)
+        else:
+            # 如果找不到括号中的代码，尝试从文本中提取代码
+            # 处理类似 "sz000063 中兴通讯" 这样的格式
+            parts = item_text.split()
+            if parts:
+                # 使用股票代码处理器来验证和格式化代码
+                from stock_monitor.utils.stock_utils import StockCodeProcessor
+                processor = StockCodeProcessor()
+                stock_code = processor.format_stock_code(parts[0])
+                if not stock_code:
+                    # 如果第一部分不是有效的代码，尝试整个文本
+                    stock_code = processor.format_stock_code(item_text)
+            else:
+                stock_code = item_text
+            
         for i in range(self.watch_list.count()):
             watch_item = self.watch_list.item(i)
-            if watch_item is not None and item is not None:
-                if watch_item.text() == item.text():
+            if watch_item is not None:
+                # 检查watch_item中是否包含相同的股票代码
+                watch_text = watch_item.text()
+                watch_match = re.search(r'\(([^)]+)\)', watch_text)
+                if watch_match:
+                    watch_code = watch_match.group(1)
+                else:
+                    # 处理类似 "sz000063 中兴通讯" 这样的格式
+                    watch_parts = watch_text.split()
+                    if watch_parts:
+                        # 使用股票代码处理器来验证和格式化代码
+                        from stock_monitor.utils.stock_utils import StockCodeProcessor
+                        processor = StockCodeProcessor()
+                        watch_code = processor.format_stock_code(watch_parts[0])
+                        if not watch_code:
+                            # 如果第一部分不是有效的代码，尝试整个文本
+                            watch_code = processor.format_stock_code(watch_text)
+                    else:
+                        watch_code = watch_text
+                    
+                if watch_code == stock_code:
                     # 已存在，不重复添加，给出提示
                     from PyQt6.QtWidgets import QMessageBox
                     QMessageBox.information(self, "提示", "股票已在自选股列表中")
                     return
                 
-        # 添加到自选股列表
-        self.watch_list.addItem(item.text())
+        # 添加到自选股列表，确保格式化显示
+        # 解析股票代码和名称用于格式化显示
+        item_text = item.text()
+        match = re.search(r'\(([^)]+)\)', item_text)
+        if match:
+            # 标准格式 "名称 (code)"
+            code = match.group(1)
+            # 提取名称部分
+            name = item_text.replace(f" ({code})", "").split()[-1]
+        else:
+            # 非标准格式，尝试解析
+            parts = item_text.split()
+            if len(parts) >= 2:
+                code = parts[0]
+                name = " ".join(parts[1:])
+            else:
+                code = item_text
+                name = ""
+                
+        # 使用股票代码处理器获取emoji并格式化显示
+        from stock_monitor.utils.helpers import get_stock_emoji
+        from stock_monitor.utils.stock_utils import StockCodeProcessor
+        processor = StockCodeProcessor()
+        clean_code = processor.format_stock_code(code)
+        if clean_code:
+            code = clean_code
+            
+        emoji = get_stock_emoji(code, name)
+        if name:
+            display_text = f"{emoji} {name} ({code})"
+        else:
+            display_text = f"{emoji} {code}"
+            
+        self.watch_list.addItem(display_text)
         self.update_remove_button_state()
         
         # 取消自选股列表的选中状态
@@ -704,19 +785,25 @@ class NewSettingsDialog(QDialog):
             all_stocks_dict = {stock['code']: stock for stock in all_stocks_list}
             
             for stock_code in user_stocks:
+                # 确保股票代码是干净的，不含额外文本
+                # 提取股票代码部分（处理可能存在的"code name"格式）
+                clean_code = stock_code.split()[0] if stock_code.split() else stock_code
+                
                 # 尝试查找股票的完整信息
-                if stock_code in all_stocks_dict:
-                    stock = all_stocks_dict[stock_code]
+                stock_info = all_stocks_dict.get(clean_code)
+                if stock_info:
                     from stock_monitor.utils.helpers import get_stock_emoji
-                    emoji = get_stock_emoji(stock_code, stock.get('name', ''))
-                    name = stock.get('name', '')
+                    emoji = get_stock_emoji(clean_code, stock_info.get('name', ''))
+                    name = stock_info.get('name', '')
                     if name:
-                        display_text = f"{emoji} {name} ({stock_code})"
+                        display_text = f"{emoji} {name} ({clean_code})"
                     else:
-                        display_text = f"{emoji} {stock_code}"
+                        display_text = f"{emoji} {clean_code}"
                 else:
                     # 如果找不到股票信息，只显示代码
-                    display_text = stock_code
+                    from stock_monitor.utils.helpers import get_stock_emoji
+                    emoji = get_stock_emoji(clean_code, "")
+                    display_text = f"{emoji} {clean_code}"
                     
                 self.watch_list.addItem(display_text)
         except Exception as e:
@@ -1068,6 +1155,38 @@ class NewSettingsDialog(QDialog):
             self.main_window._preview_transparency = self.transparency_slider.value()
             self.main_window.update()
     
+    def _extract_stock_code(self, text: str) -> str:
+        """
+        从显示文本中提取股票代码
+        
+        Args:
+            text (str): 显示的文本
+            
+        Returns:
+            str: 股票代码
+        """
+        import re
+        match = re.search(r'\(([^)]+)\)', text)
+        if match:
+            return match.group(1)
+        else:
+            # 如果没有找到括号中的代码，尝试从文本中提取代码
+            # 处理类似 "sz000063 中兴通讯" 这样的格式
+            parts = text.split()
+            if parts:
+                # 使用股票代码处理器来验证和格式化代码
+                from stock_monitor.utils.stock_utils import StockCodeProcessor
+                processor = StockCodeProcessor()
+                code = processor.format_stock_code(parts[0])
+                if code:
+                    return code
+                else:
+                    # 如果第一部分不是有效的代码，尝试整个文本
+                    code = processor.format_stock_code(text)
+                    if code:
+                        return code
+            return text
+    
     def get_stocks_from_list(self):
         """
         从股票列表中提取股票代码
@@ -1075,25 +1194,12 @@ class NewSettingsDialog(QDialog):
         Returns:
             list: 股票代码列表
         """
-        # 使用count()方法获取项目数量，然后逐个处理
-        items = []
+        stocks = []
         for i in range(self.watch_list.count()):
             item = self.watch_list.item(i)
             if item:
-                items.append(item)
-            
-        # 提取股票代码（去除表情符号和名称部分）
-        stocks = []
-        for item in items:
-            text = item.text()
-            # 查找括号中的股票代码
-            import re
-            match = re.search(r'\(([^)]+)\)', text)
-            if match:
-                stocks.append(match.group(1))
-            else:
-                # 如果没有找到括号中的代码，就使用整个文本
-                stocks.append(text)
+                code = self._extract_stock_code(item.text())
+                stocks.append(code)
         return stocks
 
     def closeEvent(self, a0):  # type: ignore

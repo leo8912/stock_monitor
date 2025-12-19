@@ -85,6 +85,24 @@ class RefreshWorker:
             self.refresh_interval = refresh_interval
         app_logger.info(f"刷新线程间隔已更新: {refresh_interval}")
         
+    def _should_wait_before_next_refresh(self, local_user_stocks: List[str]) -> bool:
+        """
+        检查是否需要等待下次刷新
+        
+        Args:
+            local_user_stocks: 当前用户股票列表
+            
+        Returns:
+            bool: 是否需要等待
+        """
+        if not local_user_stocks:
+            # 如果没有股票，等待下次刷新
+            sleep_time = self.refresh_interval if is_market_open() else 60
+            app_logger.debug(f"无自选股数据，下次刷新间隔: {sleep_time}秒")
+            if self._stop_event.wait(sleep_time):
+                return True
+        return False
+        
     def _refresh_loop(self):
         """刷新循环"""
         # 减少启动延迟，给系统网络连接一些初始化时间
@@ -107,23 +125,13 @@ class RefreshWorker:
                         local_refresh_interval = self.refresh_interval
                         app_logger.info(f"刷新线程检测到配置变更，更新本地缓存: 股票={local_user_stocks}, 间隔={local_refresh_interval}")
                 
-                data_dict = {}
-                failed_count = 0
-                
                 # 检查是否有需要更新的数据
                 app_logger.debug(f"当前需要刷新的股票: {local_user_stocks}")
-                if not local_user_stocks:
-                    # 如果没有股票，等待下次刷新
-                    sleep_time = local_refresh_interval if is_market_open() else 60
-                    app_logger.debug(f"无自选股数据，下次刷新间隔: {sleep_time}秒")
-                    if self._stop_event.wait(sleep_time):
-                        break
-                    continue
+                if self._should_wait_before_next_refresh(local_user_stocks):
+                    break
                 
                 # 直接获取所有股票数据，不使用缓存
                 app_logger.debug(f"需要获取 {len(local_user_stocks)} 只股票数据")
-                # 使用股票数据服务批量获取数据
-                from stock_monitor.core.stock_service import stock_data_service
                 data_dict = stock_data_service.get_multiple_stocks_data(local_user_stocks)
                 
                 # 统计失败数量
@@ -174,4 +182,3 @@ class RefreshWorker:
                 # 出错后等待一段时间再继续
                 if self._stop_event.wait(5):
                     break
-                    

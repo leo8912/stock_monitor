@@ -27,6 +27,10 @@ class StockSearchWidget(QtWidgets.QWidget):
         self.stock_data_source = stock_data_source
         self.stock_list = stock_list
         self.sync_callback = sync_callback
+        self._pending_search_text = ""
+        self._search_throttle_timer = QtCore.QTimer(self)
+        self._search_throttle_timer.setSingleShot(True)
+        self._search_throttle_timer.timeout.connect(self._perform_search)
         self.setup_ui()
         self._load_stock_data()
 
@@ -63,6 +67,32 @@ class StockSearchWidget(QtWidgets.QWidget):
         # 创建搜索框
         self.search_input = QtWidgets.QLineEdit()
         self.search_input.setPlaceholderText("🔍 输入股票代码/名称/拼音/首字母")
+        self._set_search_input_style()
+        # 连接信号
+        self.search_input.textChanged.connect(self._on_search_text_changed)  # type: ignore
+        self.search_input.returnPressed.connect(self._on_return_pressed)  # type: ignore
+        layout.addWidget(self.search_input)
+        
+        # 创建结果列表
+        self.result_list = QtWidgets.QListWidget()
+        self._set_result_list_style()
+        self.result_list.clicked.connect(self.on_item_clicked)  # type: ignore
+        layout.addWidget(self.result_list)
+        
+        # 创建添加按钮
+        self.add_btn = QtWidgets.QPushButton("➕ 添加到自选股")
+        self.add_btn.setEnabled(False)
+        self.add_btn.clicked.connect(self.add_selected_stock)  # type: ignore
+        self._set_add_button_style()
+        # 调整按钮尺寸
+        self.add_btn.setFixedHeight(30)
+        layout.addWidget(self.add_btn) 
+        # 调整间距
+        layout.addSpacing(10)
+        layout.setAlignment(self.add_btn, QtCore.Qt.AlignmentFlag.AlignHCenter)
+        
+    def _set_search_input_style(self):
+        """设置搜索输入框样式"""
         self.search_input.setStyleSheet("""
             QLineEdit {
                 padding: 8px;
@@ -76,13 +106,9 @@ class StockSearchWidget(QtWidgets.QWidget):
                 border-color: #0078d4;
             }
         """)
-        # 连接信号
-        self.search_input.textChanged.connect(self._on_search_text_changed)  # type: ignore
-        self.search_input.returnPressed.connect(self._on_return_pressed)  # type: ignore
-        layout.addWidget(self.search_input)
-        
-        # 创建结果列表
-        self.result_list = QtWidgets.QListWidget()
+
+    def _set_result_list_style(self):
+        """设置结果列表样式"""
         self.result_list.setStyleSheet("""
             QListWidget {
                 background-color: #3d3d3d;
@@ -103,13 +129,9 @@ class StockSearchWidget(QtWidgets.QWidget):
                 background-color: #0078d4;
             }
         """)
-        self.result_list.clicked.connect(self.on_item_clicked)  # type: ignore
-        layout.addWidget(self.result_list)
-        
-        # 创建添加按钮
-        self.add_btn = QtWidgets.QPushButton("➕ 添加到自选股")
-        self.add_btn.setEnabled(False)
-        self.add_btn.clicked.connect(self.add_selected_stock)  # type: ignore
+
+    def _set_add_button_style(self):
+        """设置添加按钮样式"""
         self.add_btn.setStyleSheet("""
             QPushButton {
                 background-color: #0078d4;
@@ -128,12 +150,6 @@ class StockSearchWidget(QtWidgets.QWidget):
                 background-color: #005a9e;
             }
         """)
-        # 调整按钮尺寸
-        self.add_btn.setFixedHeight(30)
-        layout.addWidget(self.add_btn) 
-        # 调整间距
-        layout.addSpacing(10)
-        layout.setAlignment(self.add_btn, QtCore.Qt.AlignmentFlag.AlignHCenter)
         
     def _load_stock_data(self):
         """加载股票数据"""
@@ -184,16 +200,14 @@ class StockSearchWidget(QtWidgets.QWidget):
             text: 输入的文本
         """
         text = text.strip().lower()
-        self.filtered_stocks = []
         self.result_list.clear()
         
         if text:
             # 使用数据源进行搜索
             matched_stocks = self.stock_data_source.search_stocks(text, limit=30)
-            self.filtered_stocks = matched_stocks
             
             # 显示匹配结果
-            for stock in self.filtered_stocks:
+            for stock in matched_stocks:
                 code = stock['code']
                 name = stock['name']
                 emoji = get_stock_emoji(code, name)
@@ -227,14 +241,7 @@ class StockSearchWidget(QtWidgets.QWidget):
         name = stock['name'] 
         
         # 检查股票是否已存在 
-        existing_items = [] 
-        if self.stock_list: 
-            for i in range(self.stock_list.count()): 
-                item = self.stock_list.item(i) 
-                if item and code in item.text(): 
-                    existing_items.append(item) 
-        
-        if existing_items: 
+        if self._is_stock_already_added(code): 
             # 如果股票已存在，给出提示 
             QtWidgets.QMessageBox.information(self, "提示", f"股票 {name} 已在自选股列表中") 
             return 
@@ -243,19 +250,10 @@ class StockSearchWidget(QtWidgets.QWidget):
         if self.stock_list: 
             from stock_monitor.utils.helpers import get_stock_emoji 
             emoji = get_stock_emoji(code, name) 
-            # 对于港股，只显示中文名称部分 
-            if code.startswith('hk') and name: 
-                # 去除"-"及之后的部分，只保留中文名称 
-                if '-' in name: 
-                    name = name.split('-')[0].strip() 
-                display = f"{emoji} {name} ({code})" 
-            elif name: 
-                display = f"{emoji} {name} ({code})" 
-            else: 
-                display = f"{emoji} {code}" 
+            display = self._format_stock_display_text(code, name, emoji)
             self.stock_list.addItem(display)  # 使用addItem而不是其他可能覆盖的方法
             
-        # 发出信号 
+        # 发出信号，只发送股票代码，不发送包含名称的文本
         self.stock_added.emit(code, name) 
         
         # 调用同步回调 
@@ -268,3 +266,45 @@ class StockSearchWidget(QtWidgets.QWidget):
         self.add_btn.setEnabled(False) 
         
         app_logger.info(f"添加自选股: {code} {name}")
+
+    def _is_stock_already_added(self, code: str) -> bool:
+        """
+        检查股票是否已经在自选股列表中
+        
+        Args:
+            code (str): 股票代码
+            
+        Returns:
+            bool: 是否已添加
+        """
+        if not self.stock_list:
+            return False
+            
+        for i in range(self.stock_list.count()): 
+            item = self.stock_list.item(i) 
+            if item and f"({code})" in item.text(): 
+                return True
+        return False
+
+    def _format_stock_display_text(self, code: str, name: str, emoji: str) -> str:
+        """
+        格式化股票显示文本
+        
+        Args:
+            code (str): 股票代码
+            name (str): 股票名称
+            emoji (str): 股票emoji
+            
+        Returns:
+            str: 格式化后的显示文本
+        """
+        # 对于港股，只显示中文名称部分 
+        if code.startswith('hk') and name: 
+            # 去除"-"及之后的部分，只保留中文名称 
+            if '-' in name: 
+                name = name.split('-')[0].strip() 
+            return f"{emoji} {name} ({code})" 
+        elif name: 
+            return f"{emoji} {name} ({code})" 
+        else: 
+            return f"{emoji} {code}"

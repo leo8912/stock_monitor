@@ -7,6 +7,7 @@ from PyQt6 import QtWidgets, QtGui, QtCore
 from stock_monitor.utils.logger import app_logger
 import threading
 
+
 class MarketStatusBar(QtWidgets.QWidget):
     """股市状态条，显示整体涨跌情况"""
     
@@ -121,38 +122,7 @@ class MarketStatusBar(QtWidgets.QWidget):
                 app_logger.warning("未能获取到市场数据")
                 return
                 
-            up_count = 0
-            down_count = 0
-            flat_count = 0
-            total_count = 0
-            
-            # 遍历所有股票，统计涨跌情况
-            for code, data in stock_list.items():
-                if not data:
-                    continue
-                    
-                try:
-                    # 跳过指数类数据，只统计个股
-                    name = data.get('name', '')
-                    if '指数' in name or 'Ａ股' in name:
-                        continue
-                        
-                    close = float(data.get('close', 0))
-                    now = float(data.get('now', 0))
-                    
-                    if close == 0:
-                        flat_count += 1
-                    elif now > close:
-                        up_count += 1
-                    elif now < close:
-                        down_count += 1
-                    else:
-                        flat_count += 1
-                        
-                    total_count += 1
-                except (ValueError, TypeError):
-                    flat_count += 1
-                    total_count += 1
+            market_stats = self._calculate_market_statistics(stock_list)
             
             # 在主线程中更新UI
             from PyQt6.QtCore import QMetaObject, Qt
@@ -160,13 +130,75 @@ class MarketStatusBar(QtWidgets.QWidget):
                 self, 
                 "_update_status_internal", 
                 Qt.ConnectionType.QueuedConnection,  # type: ignore
-                QtCore.Q_ARG(int, up_count),
-                QtCore.Q_ARG(int, down_count),
-                QtCore.Q_ARG(int, flat_count),
-                QtCore.Q_ARG(int, total_count)
+                QtCore.Q_ARG(int, market_stats['up_count']),
+                QtCore.Q_ARG(int, market_stats['down_count']),
+                QtCore.Q_ARG(int, market_stats['flat_count']),
+                QtCore.Q_ARG(int, market_stats['total_count'])
             )
         except Exception as e:
             app_logger.error(f"获取市场状态数据失败: {e}")
+
+    def _calculate_market_statistics(self, stock_list: dict) -> dict:
+        """
+        计算市场统计数据
+        
+        Args:
+            stock_list (dict): 股票数据列表
+            
+        Returns:
+            dict: 统计结果
+        """
+        up_count = 0
+        down_count = 0
+        flat_count = 0
+        total_count = 0
+        
+        # 遍历所有股票，统计涨跌情况
+        for code, data in stock_list.items():
+            if not data:
+                continue
+                
+            try:
+                # 跳过指数类数据，只统计个股
+                name = data.get('name', '')
+                if self._is_index_stock(name):
+                    continue
+                    
+                close = float(data.get('close', 0))
+                now = float(data.get('now', 0))
+                
+                if close == 0:
+                    flat_count += 1
+                elif now > close:
+                    up_count += 1
+                elif now < close:
+                    down_count += 1
+                else:
+                    flat_count += 1
+                    
+                total_count += 1
+            except (ValueError, TypeError):
+                flat_count += 1
+                total_count += 1
+                
+        return {
+            'up_count': up_count,
+            'down_count': down_count,
+            'flat_count': flat_count,
+            'total_count': total_count
+        }
+
+    def _is_index_stock(self, name: str) -> bool:
+        """
+        判断是否为指数类股票
+        
+        Args:
+            name (str): 股票名称
+            
+        Returns:
+            bool: 是否为指数类股票
+        """
+        return '指数' in name or 'Ａ股' in name
 
     def paintEvent(self, event):
         """绘制状态条"""
