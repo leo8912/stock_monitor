@@ -212,7 +212,7 @@ class StockTable(QtWidgets.QTableWidget):
                 parent.adjust_window_height()  # type: ignore
 
     @pyqtSlot(list)
-    def update_data(self, stocks):
+    def update_data(self, stocks: List[tuple]) -> None:
         """
         更新表格数据，优化性能
         
