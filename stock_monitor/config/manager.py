@@ -65,7 +65,7 @@ class ConfigManager:
         """加载配置文件，包含完整的错误处理和默认值"""
         try:
             if not os.path.exists(self.config_path):
-                self._create_default_config()
+                self._handle_missing_config_file()
                 return
             
             with open(self.config_path, 'r', encoding='utf-8') as f:
@@ -79,8 +79,11 @@ class ConfigManager:
         except PermissionError:
             self._handle_permission_error_config()
         except Exception as e:
-            app_logger.error(f"加载配置文件时发生未知错误: {e}")
-            self._config = self._get_default_config()
+            self._handle_unknown_error_config(e)
+    
+    def _handle_missing_config_file(self) -> None:
+        """处理配置文件不存在的情况"""
+        self._create_default_config()
     
     def _save_config(self) -> bool:
         """
@@ -181,6 +184,12 @@ class ConfigManager:
         default_config = self._get_default_config()
         self._config = default_config
         return default_config
+    
+    def _handle_unknown_error_config(self, e: Exception) -> Dict[str, Any]:
+        """处理未知错误"""
+        app_logger.error(f"加载配置文件时发生未知错误: {e}")
+        self._config = self._get_default_config()
+        return self._config
 
 
 def load_config() -> Dict[str, Any]:
