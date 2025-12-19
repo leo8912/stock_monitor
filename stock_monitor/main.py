@@ -47,6 +47,11 @@ from stock_monitor.ui.widgets.context_menu import AppContextMenu
 # 导入后台刷新工作线程
 from stock_monitor.core.refresh_worker import RefreshWorker
 
+# 定义透明度计算相关的常量
+MIN_BACKGROUND_ALPHA = 200
+MAX_BACKGROUND_ALPHA = 255
+ALPHA_RANGE = MAX_BACKGROUND_ALPHA - MIN_BACKGROUND_ALPHA
+
 class MainWindow(QtWidgets.QWidget):
     """
     主窗口类
@@ -756,9 +761,9 @@ class MainWindow(QtWidgets.QWidget):
             
         # 将透明度值(0-100)转换为alpha值(0-255)
         # 0%透明度对应200 alpha(较透明)，100%透明度对应255 alpha(最不透明)
-        alpha = int(200 + (55 * transparency / 100))
+        alpha = int(MIN_BACKGROUND_ALPHA + (ALPHA_RANGE * transparency / 100))
         # 确保alpha值在有效范围内
-        alpha = max(200, min(255, alpha))
+        alpha = max(MIN_BACKGROUND_ALPHA, min(MAX_BACKGROUND_ALPHA, alpha))
         bg_color = QtGui.QColor(30, 30, 30, alpha)
         painter.setBrush(bg_color)
         painter.setPen(QtCore.Qt.PenStyle.NoPen)  # type: ignore
