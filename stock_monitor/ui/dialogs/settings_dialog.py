@@ -75,9 +75,10 @@ class DraggableListWidget(QListWidget):
 class StockSearchHandler:
     """股票搜索处理类"""
     
-    def __init__(self, search_input, search_results):
+    def __init__(self, search_input, search_results, watch_list):
         self.search_input = search_input
         self.search_results = search_results
+        self.watch_list = watch_list
         self._setup_search_ui()
         
     def _setup_search_ui(self):
@@ -154,7 +155,7 @@ class StockSearchHandler:
                 self.search_results.addItem(display_text)
                 
             # 取消自选股列表的选中状态
-            # 注意：这里需要通过外部引用访问watch_list
+            self.watch_list.clearSelection()
         except Exception as e:
             from stock_monitor.utils.error_handler import app_logger
             app_logger.error(f"搜索股票时出错: {e}")
@@ -171,15 +172,17 @@ class StockSearchHandler:
             self.search_results.clear()
             
         # 取消自选股列表的选中状态
-        # 注意：这里需要通过外部引用访问watch_list
-        # self.watch_list.clearSelection()
+        self.watch_list.clearSelection()
 
 
 class WatchListManager:
     """自选股列表管理类"""
     
-    def __init__(self, watch_list):
+    def __init__(self, watch_list, remove_button, move_up_button, move_down_button):
         self.watch_list = watch_list
+        self.remove_button = remove_button
+        self.move_up_button = move_up_button
+        self.move_down_button = move_down_button
         self._setup_watch_list_ui()
         
     def _setup_watch_list_ui(self):
@@ -213,17 +216,15 @@ class WatchListManager:
         for item in selected_items:
             row = self.watch_list.row(item)
             self.watch_list.takeItem(row)
-        # 注意：这里需要通过外部引用调用update_remove_button_state
-        # self.update_remove_button_state()
+        self.update_remove_button_state()
         
         # 取消自选股列表的选中状态
         self.watch_list.clearSelection()
         
     def update_remove_button_state(self):
         """更新删除按钮的状态"""
-        # 注意：这里需要通过外部引用访问remove_button
-        # has_selection = len(self.watch_list.selectedItems()) > 0
-        # self.remove_button.setEnabled(has_selection)
+        has_selection = len(self.watch_list.selectedItems()) > 0
+        self.remove_button.setEnabled(has_selection)
         
     def move_up_selected_stock(self):
         """将选中的股票上移"""
@@ -237,8 +238,7 @@ class WatchListManager:
             self.watch_list.takeItem(row)
             self.watch_list.insertItem(row - 1, item)
             self.watch_list.setCurrentItem(item)
-            # 注意：这里需要通过外部引用调用_update_move_buttons_state
-            # self._update_move_buttons_state()
+            self._update_move_buttons_state()
         
     def move_down_selected_stock(self):
         """将选中的股票下移"""
@@ -252,23 +252,20 @@ class WatchListManager:
             self.watch_list.takeItem(row)
             self.watch_list.insertItem(row + 1, item)
             self.watch_list.setCurrentItem(item)
-            # 注意：这里需要通过外部引用调用_update_move_buttons_state
-            # self._update_move_buttons_state()
+            self._update_move_buttons_state()
             
     def _update_move_buttons_state(self):
         """更新上移和下移按钮的状态"""
         selected_items = self.watch_list.selectedItems()
         if len(selected_items) != 1:
-            # 注意：这里需要通过外部引用访问move_up_button和move_down_button
-            # self.move_up_button.setEnabled(False)
-            # self.move_down_button.setEnabled(False)
+            self.move_up_button.setEnabled(False)
+            self.move_down_button.setEnabled(False)
             return
         
         item = selected_items[0]
         row = self.watch_list.row(item)
-        # 注意：这里需要通过外部引用访问move_up_button和move_down_button
-        # self.move_up_button.setEnabled(row > 0)
-        # self.move_down_button.setEnabled(row < self.watch_list.count() - 1)
+        self.move_up_button.setEnabled(row > 0)
+        self.move_down_button.setEnabled(row < self.watch_list.count() - 1)
 
 
 class ConfigManagerHandler:
@@ -476,16 +473,6 @@ class NewSettingsDialog(QDialog):
         from stock_monitor.core.container import container
         self.config_manager = container.get(ConfigManager)
         
-        # 初始化功能管理器
-        # self.stock_search_handler = StockSearchHandler(self.search_input, self.search_results)
-        # self.watch_list_manager = WatchListManager(self.watch_list)
-        # self.config_manager_handler = ConfigManagerHandler(self.config_manager)
-        
-        # 移除对不存在方法的调用
-        # self._setup_ui_components()
-        # self._load_config()
-        # self._setup_connections()
-        
         # 设置窗口标题和图标
         self.setWindowTitle('A股行情监控设置')
         icon_path = resource_path('icon.ico')
@@ -529,6 +516,61 @@ class NewSettingsDialog(QDialog):
         main_layout.setSpacing(15)
         self.setLayout(main_layout)
         
+        # 构建UI界面
+        self._setup_watchlist_ui(main_layout)
+        self._setup_display_settings_ui(main_layout)
+        self._setup_system_settings_ui(main_layout)
+        
+        # 初始化功能管理器（在UI组件创建之后）
+        self.stock_search_handler = StockSearchHandler(self.search_input, self.search_results, self.watch_list)
+        self.watch_list_manager = WatchListManager(self.watch_list, self.remove_button, self.move_up_button, self.move_down_button)
+        self.config_manager_handler = ConfigManagerHandler(self.config_manager)
+        
+        # 连接信号槽
+        self._connect_signals()
+        
+        # 加载配置
+        self.load_config()
+        
+        # 保存原始自选股列表，用于取消操作时恢复
+        self.original_watch_list = []
+        for i in range(self.watch_list.count()):
+            item = self.watch_list.item(i)
+            if item:
+                self.original_watch_list.append(item.text())
+
+    def _connect_signals(self):
+        """连接所有信号槽"""
+        # 连接搜索相关信号
+        self.search_input.textChanged.connect(self.stock_search_handler.on_search_text_changed)
+        self.search_input.returnPressed.connect(self.stock_search_handler._on_search_return_pressed)
+        self.search_results.itemDoubleClicked.connect(self.add_stock_from_search)
+        self.search_results.itemSelectionChanged.connect(
+            lambda: self.add_button.setEnabled(len(self.search_results.selectedItems()) > 0)
+        )
+        
+        # 连接自选股列表相关信号
+        self.remove_button.clicked.connect(self.watch_list_manager.remove_selected_stocks)
+        self.move_up_button.clicked.connect(self.watch_list_manager.move_up_selected_stock)
+        self.move_down_button.clicked.connect(self.watch_list_manager.move_down_selected_stock)
+        self.watch_list.itemSelectionChanged.connect(self.watch_list_manager._update_move_buttons_state)
+        self.watch_list.itemSelectionChanged.connect(
+            lambda: self.remove_button.setEnabled(len(self.watch_list.selectedItems()) > 0)
+        )
+        
+        # 连接按钮信号
+        self.add_button.clicked.connect(self.add_stock_from_search)
+        self.ok_button.clicked.connect(self.accept)
+        self.cancel_button.clicked.connect(self.reject)
+        self.check_update_button.clicked.connect(self.check_for_updates)
+        
+        # 连接设置相关信号
+        self.font_size_spinbox.valueChanged.connect(self.on_font_setting_changed)
+        self.font_family_combo.currentTextChanged.connect(self.on_font_setting_changed)
+        self.transparency_slider.valueChanged.connect(self.on_transparency_changed)
+
+    def _setup_watchlist_ui(self, main_layout):
+        """设置自选股管理UI"""
         # 自选股管理组
         watchlist_group = QGroupBox("自选股管理")
         watchlist_layout = QHBoxLayout()
@@ -546,8 +588,6 @@ class NewSettingsDialog(QDialog):
         search_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("输入股票代码或名称...")
-        self.search_input.textChanged.connect(self.on_search_text_changed)
-        self.search_input.returnPressed.connect(self._on_search_return_pressed)
         self.search_input.setStyleSheet("""
             QLineEdit {
                 padding: 8px;
@@ -584,12 +624,10 @@ class NewSettingsDialog(QDialog):
                 background-color: #0078d4;
             }
         """)
-        self.search_results.itemDoubleClicked.connect(self.add_stock_from_search)
         left_layout.addWidget(self.search_results)
         
         # 添加按钮
         self.add_button = QPushButton("添加")
-        self.add_button.clicked.connect(self.add_stock_from_search)
         self.add_button.setStyleSheet("""
             QPushButton {
                 background-color: #0078d4;
@@ -613,9 +651,6 @@ class NewSettingsDialog(QDialog):
             }
         """)
         self.add_button.setEnabled(False)
-        self.search_results.itemSelectionChanged.connect(
-            lambda: self.add_button.setEnabled(len(self.search_results.selectedItems()) > 0)
-        )
         
         # 创建按钮布局
         button_layout = QHBoxLayout()
@@ -649,7 +684,6 @@ class NewSettingsDialog(QDialog):
             QListWidget::item {
                 padding: 4px;
                 border-bottom: 1px solid #333333;
-
             }
             QListWidget::item:selected {
                 background-color: #0078d4;
@@ -672,7 +706,6 @@ class NewSettingsDialog(QDialog):
         # 删除按钮
         self.remove_button = QPushButton("删除")
         self.remove_button.setObjectName("removeButton")
-        self.remove_button.clicked.connect(self.remove_selected_stocks)
         self.remove_button.setStyleSheet("""
             QPushButton {
                 background-color: #dc3545;
@@ -696,13 +729,9 @@ class NewSettingsDialog(QDialog):
             }
         """)
         self.remove_button.setEnabled(False)
-        self.watch_list.itemSelectionChanged.connect(
-            lambda: self.remove_button.setEnabled(len(self.watch_list.selectedItems()) > 0)
-        )
         
         # 上移按钮
         self.move_up_button = QPushButton("上移")
-        self.move_up_button.clicked.connect(self.move_up_selected_stock)
         self.move_up_button.setStyleSheet("""
             QPushButton {
                 background-color: #28a745;
@@ -726,11 +755,9 @@ class NewSettingsDialog(QDialog):
             }
         """)
         self.move_up_button.setEnabled(False)
-        self.watch_list.itemSelectionChanged.connect(self._update_move_buttons_state)
         
         # 下移按钮
         self.move_down_button = QPushButton("下移")
-        self.move_down_button.clicked.connect(self.move_down_selected_stock)
         self.move_down_button.setStyleSheet("""
             QPushButton {
                 background-color: #28a745;
@@ -754,7 +781,6 @@ class NewSettingsDialog(QDialog):
             }
         """)
         self.move_down_button.setEnabled(False)
-        self.watch_list.itemSelectionChanged.connect(self._update_move_buttons_state)
         
         action_layout.addWidget(self.remove_button)
         action_layout.addStretch()
@@ -764,7 +790,9 @@ class NewSettingsDialog(QDialog):
         right_layout.addLayout(action_layout)
         watchlist_layout.addLayout(right_layout, 1)
         main_layout.addWidget(watchlist_group)
-        
+
+    def _setup_display_settings_ui(self, main_layout):
+        """设置显示设置UI"""
         # 显示设置组
         display_group = QGroupBox("显示设置")
         display_layout = QVBoxLayout()
@@ -820,7 +848,10 @@ class NewSettingsDialog(QDialog):
         display_row_layout.addStretch()
         
         display_layout.addLayout(display_row_layout)
-        
+        main_layout.addWidget(display_group)
+
+    def _setup_system_settings_ui(self, main_layout):
+        """设置系统设置UI"""
         # 系统设置行（移出分组框）
         system_layout = QHBoxLayout()
         system_layout.setContentsMargins(0, 0, 0, 0)  # 移除边距
@@ -885,29 +916,7 @@ class NewSettingsDialog(QDialog):
         bottom_layout.addLayout(system_layout, 1)
         bottom_layout.addLayout(button_layout)
 
-        main_layout.addWidget(display_group)
         main_layout.addLayout(bottom_layout)
-
-        # 连接信号槽
-        self.ok_button.clicked.connect(self.accept)
-        self.cancel_button.clicked.connect(self.reject)
-        self.check_update_button.clicked.connect(self.check_for_updates)
-        
-        # 连接字体设置变化信号，实现实时预览
-        self.font_size_spinbox.valueChanged.connect(self.on_font_setting_changed)
-        self.font_family_combo.currentTextChanged.connect(self.on_font_setting_changed)
-        # 连接透明度设置变化信号，实现实时预览
-        self.transparency_slider.valueChanged.connect(self.on_transparency_changed)
-        
-        # 加载配置
-        self.load_config()
-        
-        # 保存原始自选股列表，用于取消操作时恢复
-        self.original_watch_list = []
-        for i in range(self.watch_list.count()):
-            item = self.watch_list.item(i)
-            if item:
-                self.original_watch_list.append(item.text())
 
     def check_for_updates(self):
         """检查更新"""
@@ -1105,7 +1114,7 @@ class NewSettingsDialog(QDialog):
             display_text = f"{emoji} {code}"
             
         self.watch_list.addItem(display_text)
-        self.update_remove_button_state()
+        self.watch_list_manager.update_remove_button_state()
         
         # 取消自选股列表的选中状态
         self.watch_list.clearSelection()
@@ -1169,159 +1178,26 @@ class NewSettingsDialog(QDialog):
         
     def load_config(self):
         """加载配置"""
-        try:
-            # 使用依赖注入容器获取配置管理器
-            from stock_monitor.config.manager import ConfigManager
-            from stock_monitor.core.container import container
-            config_manager = container.get(ConfigManager)
-            
-            # 加载自选股列表
-            user_stocks = config_manager.get('user_stocks', [])
-            self.watch_list.clear()
-            
-            # 加载股票数据用于显示股票名称
-            from stock_monitor.data.stock.stocks import load_stock_data
-            all_stocks_list = load_stock_data()
-            all_stocks_dict = {stock['code']: stock for stock in all_stocks_list}
-            
-            for stock_code in user_stocks:
-                # 确保股票代码是干净的，不含额外文本
-                # 提取股票代码部分（处理可能存在的"code name"格式）
-                clean_code = stock_code.split()[0] if stock_code.split() else stock_code
-                
-                # 尝试查找股票的完整信息
-                stock_info = all_stocks_dict.get(clean_code)
-                if stock_info:
-                    from stock_monitor.utils.helpers import get_stock_emoji
-                    emoji = get_stock_emoji(clean_code, stock_info.get('name', ''))
-                    name = stock_info.get('name', '')
-                    if name:
-                        display_text = f"{emoji} {name} ({clean_code})"
-                    else:
-                        display_text = f"{emoji} {clean_code}"
-                else:
-                    # 如果找不到股票信息，只显示代码
-                    from stock_monitor.utils.helpers import get_stock_emoji
-                    emoji = get_stock_emoji(clean_code, "")
-                    display_text = f"{emoji} {clean_code}"
-                    
-                self.watch_list.addItem(display_text)
-        except Exception as e:
-            self.watch_list.clear()
-            
-        # 加载开机启动设置
-        try:
-            # 使用依赖注入容器获取配置管理器
-            from stock_monitor.core.container import container
-            from stock_monitor.config.manager import ConfigManager
-            config_manager = container.get(ConfigManager)
-            auto_start = config_manager.get("auto_start", False)
-            auto_start = _safe_bool_conversion(auto_start, False)
-            self.auto_start_checkbox.setChecked(auto_start)
-        except Exception as e:
-            self.auto_start_checkbox.setChecked(False)
-            
-        # 加载刷新频率设置
-        try:
-            # 使用依赖注入容器获取配置管理器
-            from stock_monitor.core.container import container
-            from stock_monitor.config.manager import ConfigManager
-            config_manager = container.get(ConfigManager)
-            refresh_interval = config_manager.get("refresh_interval", 5)
-            refresh_interval = _safe_int_conversion(refresh_interval, 5)
-            refresh_text = self._map_refresh_value_to_text(refresh_interval)
-            index = self.refresh_combo.findText(refresh_text)
-            if index >= 0:
-                self.refresh_combo.setCurrentIndex(index)
-        except Exception as e:
-            self.refresh_combo.setCurrentIndex(1)  # 默认5秒
-            
-        # 加载字体设置
-        try:
-            # 使用依赖注入容器获取配置管理器
-            from stock_monitor.core.container import container
-            from stock_monitor.config.manager import ConfigManager
-            config_manager = container.get(ConfigManager)
-            font_size = config_manager.get("font_size", 13)  # 默认改为13
-            font_size = _safe_int_conversion(font_size, 13)
-            self.font_size_spinbox.setValue(font_size)
-            
-            # 加载字体族设置
-            font_family = config_manager.get("font_family", "微软雅黑")
-            index = self.font_family_combo.findText(font_family)
-            if index >= 0:
-                self.font_family_combo.setCurrentIndex(index)
-            else:
-                self.font_family_combo.setCurrentIndex(0)  # 默认微软雅黑
-        except Exception as e:
-            self.font_size_spinbox.setValue(13)  # 默认13px
-            self.font_family_combo.setCurrentIndex(0)  # 默认微软雅黑
-            
-        # 加载透明度设置
-        try:
-            # 使用依赖注入容器获取配置管理器
-            from stock_monitor.core.container import container
-            from stock_monitor.config.manager import ConfigManager
-            config_manager = container.get(ConfigManager)
-            transparency = config_manager.get("transparency", 80)
-            transparency = _safe_int_conversion(transparency, 80)
-            self.transparency_slider.setValue(transparency)
-        except Exception as e:
-            self.transparency_slider.setValue(80)
-            
-        # 加载拖拽灵敏度设置
-        try:
-            # 使用依赖注入容器获取配置管理器
-            from stock_monitor.core.container import container
-            from stock_monitor.config.manager import ConfigManager
-            config_manager = container.get(ConfigManager)
-            drag_sensitivity = config_manager.get("drag_sensitivity", 5)
-            drag_sensitivity = _safe_int_conversion(drag_sensitivity, 5)
-        except Exception as e:
-            pass
-            
+        self.config_manager_handler.load_config(
+            self.watch_list,
+            self.auto_start_checkbox,
+            self.refresh_combo,
+            self.font_size_spinbox,
+            self.font_family_combo,
+            self.transparency_slider
+        )
+
     def save_config(self):
         """保存配置"""
-        try:
-            # 使用依赖注入容器获取配置管理器
-            from stock_monitor.core.container import container
-            from stock_monitor.config.manager import ConfigManager
-            config_manager = container.get(ConfigManager)
-            
-            # 保存自选股列表
-            user_stocks = self.get_stocks_from_list()
-            config_manager.set('user_stocks', user_stocks)
-            
-            # 保存开机启动设置
-            auto_start_enabled = self.auto_start_checkbox.isChecked()
-            config_manager.set("auto_start", auto_start_enabled)
-            
-            # 实际设置开机启动
-            self._set_auto_start(auto_start_enabled)
-            
-            # 保存刷新频率设置
-            refresh_text = self.refresh_combo.currentText()
-            refresh_interval = self._map_refresh_text_to_value(refresh_text)
-            config_manager.set("refresh_interval", refresh_interval)
-            
-            # 保存字体设置 - 直接使用spinbox的值
-            font_size = self.font_size_spinbox.value()
-            config_manager.set("font_size", font_size)
-            
-            # 保存字体族设置
-            font_family = self.font_family_combo.currentText()
-            config_manager.set("font_family", font_family)
-            
-            # 保存透明度设置
-            config_manager.set("transparency", self.transparency_slider.value())
-            
-            # 添加调试信息
-            from stock_monitor.utils.logger import app_logger
-            app_logger.info(f"保存设置时的自选股列表: {user_stocks}")
-        except Exception as e:
-            from stock_monitor.utils.logger import app_logger
-            app_logger.error(f"保存设置时出错: {e}")
-    
+        self.config_manager_handler.save_config(
+            self.watch_list,
+            self.auto_start_checkbox,
+            self.refresh_combo,
+            self.font_size_spinbox,
+            self.font_family_combo,
+            self.transparency_slider
+        )
+
     def _set_auto_start(self, enabled):
         """
         设置开机启动
@@ -1453,7 +1329,7 @@ class NewSettingsDialog(QDialog):
             
         # 隐藏窗口而不是关闭
         self.hide()
-        
+
     def showEvent(self, a0):  # type: ignore
         """重写showEvent以设置初始位置"""
         super().showEvent(a0)
