@@ -783,7 +783,6 @@ class MainWindow(QtWidgets.QWidget):
                 self._update_database_async()
                 # 更新配置中的最后更新时间
                 config_manager.set('last_db_update', current_time)
-                save_config(config_manager.config_data)
                 app_logger.info("启动时数据库更新已启动")
             else:
                 app_logger.debug("启动时数据库更新检查: 距离上次更新不足24小时，跳过更新")
@@ -881,7 +880,6 @@ class MainWindow(QtWidgets.QWidget):
                 self._update_database_async()
                 # 更新配置中的最后更新时间
                 config_manager.set('last_db_update', current_time)
-                save_config(config_manager.config_data)
                 app_logger.info("数据库更新检查完成并启动更新")
             else:
                 app_logger.debug("数据库更新检查: 距离上次更新不足24小时，跳过更新")
