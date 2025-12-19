@@ -472,8 +472,10 @@ class NewSettingsDialog(QDialog):
         # self.watch_list_manager = WatchListManager(self.watch_list)
         # self.config_manager_handler = ConfigManagerHandler(self.config_manager)
         
-        self._load_config()
-        self._setup_connections()
+        # 移除对不存在方法的调用
+        # self._setup_ui_components()
+        # self._load_config()
+        # self._setup_connections()
         
         # 设置窗口标题和图标
         self.setWindowTitle('A股行情监控设置')
