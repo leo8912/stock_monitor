@@ -72,6 +72,386 @@ class DraggableListWidget(QListWidget):
         super().mousePressEvent(e)
 
 
+class StockSearchHandler:
+    """股票搜索处理类"""
+    
+    def __init__(self, search_input, search_results):
+        self.search_input = search_input
+        self.search_results = search_results
+        self._setup_search_ui()
+        
+    def _setup_search_ui(self):
+        """设置搜索UI组件"""
+        self.search_input.setPlaceholderText("输入股票代码或名称...")
+        self.search_results.setStyleSheet("""
+            QListWidget {
+                background-color: #3d3d3d;
+                border: 1px solid #555555;
+                border-radius: 4px;
+                color: white;
+                font-size: 12px;
+                outline: 0;
+            }
+            QListWidget::item {
+                padding: 4px;
+                border-bottom: 1px solid #333333;
+            }
+            QListWidget::item:selected {
+                background-color: #0078d4;
+            }
+        """)
+    
+    def on_search_text_changed(self, text):
+        """
+        搜索框文本改变时的处理函数
+        
+        Args:
+            text (str): 输入的文本
+        """
+        text = text.strip()
+        if len(text) < 1:
+            self.search_results.clear()
+            return
+            
+        try:
+            # 从本地缓存加载股票数据
+            from stock_monitor.data.stock.stocks import load_stock_data
+            all_stocks_list = load_stock_data()
+            
+            # 转换为字典格式以匹配原有逻辑
+            all_stocks: Dict[str, Any] = {}
+            for stock in all_stocks_list:
+                all_stocks[stock['code']] = stock
+            
+            if not all_stocks:
+                return
+                
+            self.search_results.clear()
+            
+            # 过滤匹配的股票并计算优先级
+            matched_stocks = []
+            for code, stock in all_stocks.items():
+                if text.lower() in code.lower() or text.lower() in stock.get('name', '').lower():
+                    # 计算优先级，A股优先
+                    priority = 0
+                    if code.startswith(('sh', 'sz')) and not code.startswith(('sh000', 'sz399')):
+                        priority = 10  # A股最高优先级
+                    elif code.startswith(('sh000', 'sz399')):
+                        priority = 5   # 指数次优先级
+                    elif code.startswith('hk'):
+                        priority = 1   # 港股较低优先级
+                    matched_stocks.append((priority, code, stock))
+            
+            # 按优先级排序，优先级高的在前
+            matched_stocks.sort(key=lambda x: (-x[0], x[1]))
+            
+            # 显示前20个匹配结果，使用标准格式化显示
+            for _, code, stock in matched_stocks[:20]:
+                # 使用统一的格式化方法显示搜索结果
+                from stock_monitor.utils.helpers import get_stock_emoji
+                emoji = get_stock_emoji(code, stock.get('name', ''))
+                display_text = f"{emoji} {stock.get('name', '')} ({code})"
+                self.search_results.addItem(display_text)
+                
+            # 取消自选股列表的选中状态
+            # 注意：这里需要通过外部引用访问watch_list
+        except Exception as e:
+            from stock_monitor.utils.error_handler import app_logger
+            app_logger.error(f"搜索股票时出错: {e}")
+            
+    def _on_search_return_pressed(self):
+        """处理搜索框回车键按下事件"""
+        # 如果有搜索结果，添加第一个结果
+        if self.search_results.count() > 0:
+            item = self.search_results.item(0)
+            # 注意：这里需要通过外部引用调用add_stock_from_search
+            # self.add_stock_from_search(item)
+            # 清空搜索框
+            self.search_input.clear()
+            self.search_results.clear()
+            
+        # 取消自选股列表的选中状态
+        # 注意：这里需要通过外部引用访问watch_list
+        # self.watch_list.clearSelection()
+
+
+class WatchListManager:
+    """自选股列表管理类"""
+    
+    def __init__(self, watch_list):
+        self.watch_list = watch_list
+        self._setup_watch_list_ui()
+        
+    def _setup_watch_list_ui(self):
+        """设置自选股列表UI"""
+        self.watch_list.setStyleSheet("""
+            QListWidget {
+                background-color: #3d3d3d;
+                border: 1px solid #555555;
+                border-radius: 4px;
+                color: white;
+                font-size: 12px;
+                outline: 0;
+            }
+            QListWidget::item {
+                padding: 4px;
+                border-bottom: 1px solid #333333;
+            }
+            QListWidget::item:selected {
+                background-color: #0078d4;
+            }
+        """)
+        self.watch_list.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+        self.watch_list.setDefaultDropAction(Qt.DropAction.MoveAction)
+        self.watch_list.setDragEnabled(True)
+        self.watch_list.setAcceptDrops(True)
+        self.watch_list.setDropIndicatorShown(True)
+    
+    def remove_selected_stocks(self):
+        """删除选中的股票"""
+        selected_items = self.watch_list.selectedItems()
+        for item in selected_items:
+            row = self.watch_list.row(item)
+            self.watch_list.takeItem(row)
+        # 注意：这里需要通过外部引用调用update_remove_button_state
+        # self.update_remove_button_state()
+        
+        # 取消自选股列表的选中状态
+        self.watch_list.clearSelection()
+        
+    def update_remove_button_state(self):
+        """更新删除按钮的状态"""
+        # 注意：这里需要通过外部引用访问remove_button
+        # has_selection = len(self.watch_list.selectedItems()) > 0
+        # self.remove_button.setEnabled(has_selection)
+        
+    def move_up_selected_stock(self):
+        """将选中的股票上移"""
+        selected_items = self.watch_list.selectedItems()
+        if len(selected_items) != 1:
+            return
+        
+        item = selected_items[0]
+        row = self.watch_list.row(item)
+        if row > 0:
+            self.watch_list.takeItem(row)
+            self.watch_list.insertItem(row - 1, item)
+            self.watch_list.setCurrentItem(item)
+            # 注意：这里需要通过外部引用调用_update_move_buttons_state
+            # self._update_move_buttons_state()
+        
+    def move_down_selected_stock(self):
+        """将选中的股票下移"""
+        selected_items = self.watch_list.selectedItems()
+        if len(selected_items) != 1:
+            return
+        
+        item = selected_items[0]
+        row = self.watch_list.row(item)
+        if row < self.watch_list.count() - 1:
+            self.watch_list.takeItem(row)
+            self.watch_list.insertItem(row + 1, item)
+            self.watch_list.setCurrentItem(item)
+            # 注意：这里需要通过外部引用调用_update_move_buttons_state
+            # self._update_move_buttons_state()
+            
+    def _update_move_buttons_state(self):
+        """更新上移和下移按钮的状态"""
+        selected_items = self.watch_list.selectedItems()
+        if len(selected_items) != 1:
+            # 注意：这里需要通过外部引用访问move_up_button和move_down_button
+            # self.move_up_button.setEnabled(False)
+            # self.move_down_button.setEnabled(False)
+            return
+        
+        item = selected_items[0]
+        row = self.watch_list.row(item)
+        # 注意：这里需要通过外部引用访问move_up_button和move_down_button
+        # self.move_up_button.setEnabled(row > 0)
+        # self.move_down_button.setEnabled(row < self.watch_list.count() - 1)
+
+
+class ConfigManagerHandler:
+    """配置管理处理类"""
+    
+    def __init__(self, config_manager):
+        self.config_manager = config_manager
+        
+    def load_config(self, watch_list, auto_start_checkbox, refresh_combo, 
+                   font_size_spinbox, font_family_combo, transparency_slider):
+        """加载配置"""
+        # 加载自选股列表
+        try:
+            # 使用工具函数获取配置管理器
+            user_stocks = self.config_manager.get('user_stocks', [])
+            watch_list.clear()
+            
+            # 加载股票数据用于显示股票名称
+            from stock_monitor.data.stock.stocks import load_stock_data
+            all_stocks_list = load_stock_data()
+            all_stocks_dict = {stock['code']: stock for stock in all_stocks_list}
+            
+            for stock_code in user_stocks:
+                # 确保股票代码是干净的，不含额外文本
+                # 提取股票代码部分（处理可能存在的"code name"格式）
+                clean_code = stock_code.split()[0] if stock_code.split() else stock_code
+                
+                # 尝试查找股票的完整信息
+                stock_info = all_stocks_dict.get(clean_code)
+                if stock_info:
+                    from stock_monitor.utils.helpers import get_stock_emoji
+                    emoji = get_stock_emoji(clean_code, stock_info.get('name', ''))
+                    name = stock_info.get('name', '')
+                    if name:
+                        display_text = f"{emoji} {name} ({clean_code})"
+                    else:
+                        display_text = f"{emoji} {clean_code}"
+                else:
+                    # 如果找不到股票信息，只显示代码
+                    from stock_monitor.utils.helpers import get_stock_emoji
+                    emoji = get_stock_emoji(clean_code, "")
+                    display_text = f"{emoji} {clean_code}"
+                    
+                watch_list.addItem(display_text)
+        except Exception as e:
+            watch_list.clear()
+            
+        # 加载开机启动设置
+        try:
+            auto_start = self.config_manager.get("auto_start", False)
+            auto_start = _safe_bool_conversion(auto_start, False)
+            auto_start_checkbox.setChecked(auto_start)
+        except Exception as e:
+            auto_start_checkbox.setChecked(False)
+            
+        # 加载刷新频率设置
+        try:
+            refresh_interval = self.config_manager.get("refresh_interval", 5)
+            refresh_interval = _safe_int_conversion(refresh_interval, 5)
+            refresh_text = self._map_refresh_value_to_text(refresh_interval)
+            index = refresh_combo.findText(refresh_text)
+            if index >= 0:
+                refresh_combo.setCurrentIndex(index)
+        except Exception as e:
+            refresh_combo.setCurrentIndex(1)  # 默认5秒
+            
+        # 加载字体设置
+        try:
+            font_size = self.config_manager.get("font_size", 13)  # 默认改为13
+            font_size = _safe_int_conversion(font_size, 13)
+            font_size_spinbox.setValue(font_size)
+            
+            # 加载字体族设置
+            font_family = self.config_manager.get("font_family", "微软雅黑")
+            index = font_family_combo.findText(font_family)
+            if index >= 0:
+                font_family_combo.setCurrentIndex(index)
+            else:
+                font_family_combo.setCurrentIndex(0)  # 默认微软雅黑
+        except Exception as e:
+            font_size_spinbox.setValue(13)  # 默认13px
+            font_family_combo.setCurrentIndex(0)  # 默认微软雅黑
+            
+        # 加载透明度设置
+        try:
+            transparency = self.config_manager.get("transparency", 80)
+            transparency = _safe_int_conversion(transparency, 80)
+            transparency_slider.setValue(transparency)
+        except Exception as e:
+            transparency_slider.setValue(80)
+            
+        # 加载拖拽灵敏度设置
+        try:
+            drag_sensitivity = self.config_manager.get("drag_sensitivity", 5)
+            drag_sensitivity = _safe_int_conversion(drag_sensitivity, 5)
+        except Exception as e:
+            pass
+    
+    def save_config(self, watch_list, auto_start_checkbox, refresh_combo,
+                   font_size_spinbox, font_family_combo, transparency_slider):
+        """保存配置"""
+        try:
+            # 保存自选股列表
+            user_stocks = self.get_stocks_from_list(watch_list)
+            self.config_manager.set('user_stocks', user_stocks)
+            
+            # 保存开机启动设置
+            auto_start_enabled = auto_start_checkbox.isChecked()
+            self.config_manager.set("auto_start", auto_start_enabled)
+            
+            # 实际设置开机启动
+            # 注意：这里需要通过外部引用调用_set_auto_start
+            # self._set_auto_start(auto_start_enabled)
+            
+            # 保存刷新频率设置
+            refresh_text = refresh_combo.currentText()
+            refresh_interval = self._map_refresh_text_to_value(refresh_text)
+            self.config_manager.set("refresh_interval", refresh_interval)
+            
+            # 保存字体设置 - 直接使用spinbox的值
+            font_size = font_size_spinbox.value()
+            self.config_manager.set("font_size", font_size)
+            
+            # 保存字体族设置
+            font_family = font_family_combo.currentText()
+            self.config_manager.set("font_family", font_family)
+            
+            # 保存透明度设置
+            self.config_manager.set("transparency", transparency_slider.value())
+            
+            # 添加调试信息
+            from stock_monitor.utils.logger import app_logger
+            app_logger.info(f"保存设置时的自选股列表: {user_stocks}")
+        except Exception as e:
+            from stock_monitor.utils.logger import app_logger
+            app_logger.error(f"保存设置时出错: {e}")
+    
+    def get_stocks_from_list(self, watch_list):
+        """
+        从列表中提取股票代码
+        
+        Args:
+            watch_list: 自选股列表控件
+            
+        Returns:
+            list: 股票代码列表
+        """
+        stocks = []
+        for i in range(watch_list.count()):
+            item = watch_list.item(i)
+            if item:
+                text = item.text()
+                # 提取括号中的股票代码
+                import re
+                match = re.search(r'\(([^)]+)\)', text)
+                if match:
+                    stocks.append(match.group(1))
+                else:
+                    # 如果没有找到括号中的代码，使用整个文本
+                    stocks.append(text)
+        return stocks
+    
+    def _map_refresh_text_to_value(self, text):
+        """将刷新频率文本映射为数值"""
+        mapping = {
+            "2秒": 2,
+            "5秒": 5,
+            "10秒": 10,
+            "30秒": 30
+        }
+        return mapping.get(text, 5)  # 默认5秒
+    
+    def _map_refresh_value_to_text(self, value):
+        """将刷新频率数值映射为文本"""
+        mapping = {
+            2: "2秒",
+            5: "5秒",
+            10: "10秒",
+            30: "30秒"
+        }
+        return mapping.get(value, "5秒")  # 默认5秒
+
+
 class NewSettingsDialog(QDialog):
     """设置对话框类"""
     
@@ -86,6 +466,11 @@ class NewSettingsDialog(QDialog):
         # 使用工具函数获取配置管理器
         from stock_monitor.utils.helpers import get_config_manager
         self.config_manager = get_config_manager()
+        
+        # 初始化功能管理器
+        # self.stock_search_handler = StockSearchHandler(self.search_input, self.search_results)
+        # self.watch_list_manager = WatchListManager(self.watch_list)
+        # self.config_manager_handler = ConfigManagerHandler(self.config_manager)
         
         self._setup_ui()
         self._load_config()
