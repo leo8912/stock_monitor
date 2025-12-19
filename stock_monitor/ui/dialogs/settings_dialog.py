@@ -283,8 +283,8 @@ class ConfigManagerHandler:
         # 加载自选股列表
         try:
             # 使用依赖注入容器获取配置管理器
-            from stock_monitor.core.container import container
             from stock_monitor.config.manager import ConfigManager
+            from stock_monitor.core.container import container
             config_manager = container.get(ConfigManager)
             
             # 加载自选股列表
@@ -323,7 +323,11 @@ class ConfigManagerHandler:
             
         # 加载开机启动设置
         try:
-            auto_start = self.config_manager.get("auto_start", False)
+            # 使用依赖注入容器获取配置管理器
+            from stock_monitor.config.manager import ConfigManager
+            from stock_monitor.core.container import container
+            config_manager = container.get(ConfigManager)
+            auto_start = config_manager.get("auto_start", False)
             auto_start = _safe_bool_conversion(auto_start, False)
             auto_start_checkbox.setChecked(auto_start)
         except Exception as e:
@@ -331,12 +335,11 @@ class ConfigManagerHandler:
             
         # 加载刷新频率设置
         try:
-            refresh_interval = self.config_manager.get("refresh_interval", 5)
-            refresh_interval = _safe_int_conversion(refresh_interval, 5)
-            refresh_text = self._map_refresh_value_to_text(refresh_interval)
-            index = refresh_combo.findText(refresh_text)
-            if index >= 0:
-                refresh_combo.setCurrentIndex(index)
+            # 使用依赖注入容器获取配置管理器
+            from stock_monitor.config.manager import ConfigManager
+            from stock_monitor.core.container import container
+            config_manager = container.get(ConfigManager)
+            refresh_interval = config_manager.get("refresh_interval", 5)
         except Exception as e:
             refresh_combo.setCurrentIndex(1)  # 默认5秒
             
@@ -469,6 +472,7 @@ class NewSettingsDialog(QDialog):
         super().__init__(main_window)
         self.main_window = main_window
         # 使用依赖注入容器获取配置管理器
+        from stock_monitor.config.manager import ConfigManager
         from stock_monitor.core.container import container
         self.config_manager = container.get(ConfigManager)
         
@@ -1167,8 +1171,8 @@ class NewSettingsDialog(QDialog):
         """加载配置"""
         try:
             # 使用依赖注入容器获取配置管理器
-            from stock_monitor.core.container import container
             from stock_monitor.config.manager import ConfigManager
+            from stock_monitor.core.container import container
             config_manager = container.get(ConfigManager)
             
             # 加载自选股列表

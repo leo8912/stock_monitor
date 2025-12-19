@@ -128,6 +128,7 @@ class MainWindow(QtWidgets.QWidget):
         self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Preferred)  # type: ignore
 
         # 从配置中读取字体大小和字体族
+        from stock_monitor.config.manager import ConfigManager
         config_manager = self._container.get(ConfigManager)
         font_size = config_manager.get("font_size", 13)  # 默认13px
         font_family = config_manager.get("font_family", "微软雅黑")  # 默认微软雅黑
@@ -407,21 +408,13 @@ class MainWindow(QtWidgets.QWidget):
     def save_position(self):
         """保存窗口位置到配置文件"""
         pos = self.pos()
+        from stock_monitor.config.manager import ConfigManager
         config_manager = self._container.get(ConfigManager)
         config_manager.set('window_pos', [pos.x(), pos.y()])
         
-        # 同时更新会话缓存中的窗口位置
-        try:
-            from stock_monitor.utils.session_cache import load_session_cache, save_session_cache
-            cached_session = load_session_cache()
-            if cached_session:
-                cached_session['window_position'] = [pos.x(), pos.y()]
-                save_session_cache(cached_session)
-        except Exception as e:
-            app_logger.warning(f"更新会话缓存中的窗口位置失败: {e}")
-
     def load_position(self):
         """从配置文件加载窗口位置"""
+        from stock_monitor.config.manager import ConfigManager
         config_manager = self._container.get(ConfigManager)
         pos = config_manager.get('window_pos')
         if pos and isinstance(pos, list) and len(pos) == 2:
@@ -555,6 +548,7 @@ class MainWindow(QtWidgets.QWidget):
         """更新主窗口字体大小"""
         try:
             # 从配置中读取字体大小和字体族
+            from stock_monitor.config.manager import ConfigManager
             config_manager = self._container.get(ConfigManager)
             font_size = config_manager.get("font_size", 13)  # 默认13px
             font_family = config_manager.get("font_family", "微软雅黑")  # 默认微软雅黑
@@ -749,6 +743,7 @@ class MainWindow(QtWidgets.QWidget):
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)  # type: ignore
         rect = self.rect()
         # 从配置中读取透明度设置
+        from stock_monitor.config.manager import ConfigManager
         config_manager = self._container.get(ConfigManager)
         transparency = config_manager.get("transparency", 80)
         # 在实时预览时，使用滑块的当前值
@@ -769,6 +764,7 @@ class MainWindow(QtWidgets.QWidget):
         """启动时更新数据库"""
         try:
             # 使用依赖注入容器获取配置管理器
+            from stock_monitor.config.manager import ConfigManager
             config_manager = self._container.get(ConfigManager)
             last_update = config_manager.get('last_db_update', 0)
             current_time = time.time()
@@ -798,6 +794,7 @@ class MainWindow(QtWidgets.QWidget):
         """加载用户自选股列表"""
         try:
             # 使用依赖注入容器获取配置管理器
+            from stock_monitor.config.manager import ConfigManager
             config_manager = self._container.get(ConfigManager)
             stocks = config_manager.get('user_stocks', [])
             app_logger.info(f"加载自选股列表: {stocks}")
