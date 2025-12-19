@@ -157,6 +157,7 @@ class MainWindow(QtWidgets.QWidget):
         
         # 初始化数据
         self.settings_dialog = None
+        from stock_monitor.utils.helpers import get_config_manager
         config_manager = get_config_manager()
         self.refresh_interval = config_manager.get('refresh_interval', 5)
         self.current_user_stocks = self.load_user_stocks()
