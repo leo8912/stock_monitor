@@ -5,6 +5,7 @@
 该模块包含StockTable类，用于在GUI中展示实时股票行情数据。
 """
 
+from typing import List
 from PyQt6 import QtWidgets, QtGui, QtCore
 from PyQt6.QtCore import pyqtSlot
 
