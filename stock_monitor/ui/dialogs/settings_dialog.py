@@ -472,7 +472,6 @@ class NewSettingsDialog(QDialog):
         # self.watch_list_manager = WatchListManager(self.watch_list)
         # self.config_manager_handler = ConfigManagerHandler(self.config_manager)
         
-        self._setup_ui_components()
         self._load_config()
         self._setup_connections()
         
