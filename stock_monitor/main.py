@@ -183,7 +183,6 @@ class MainWindow(QtWidgets.QWidget):
         
         # 启动后台刷新线程
         self.refresh_worker.start(self.current_user_stocks, self.refresh_interval)
-        self._start_database_update_thread()
         
         # 启动时立即更新一次数据库
         self._update_database_on_startup()
