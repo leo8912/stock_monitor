@@ -282,8 +282,13 @@ class ConfigManagerHandler:
         """加载配置"""
         # 加载自选股列表
         try:
-            # 使用工具函数获取配置管理器
-            user_stocks = self.config_manager.get('user_stocks', [])
+            # 使用依赖注入容器获取配置管理器
+            from stock_monitor.core.container import container
+            from stock_monitor.config.manager import ConfigManager
+            config_manager = container.get(ConfigManager)
+            
+            # 加载自选股列表
+            user_stocks = config_manager.get('user_stocks', [])
             watch_list.clear()
             
             # 加载股票数据用于显示股票名称
@@ -463,9 +468,9 @@ class NewSettingsDialog(QDialog):
     def __init__(self, main_window=None):
         super().__init__(main_window)
         self.main_window = main_window
-        # 使用工具函数获取配置管理器
-        from stock_monitor.utils.helpers import get_config_manager
-        self.config_manager = get_config_manager()
+        # 使用依赖注入容器获取配置管理器
+        from stock_monitor.core.container import container
+        self.config_manager = container.get(ConfigManager)
         
         # 初始化功能管理器
         # self.stock_search_handler = StockSearchHandler(self.search_input, self.search_results)
@@ -1160,11 +1165,13 @@ class NewSettingsDialog(QDialog):
         
     def load_config(self):
         """加载配置"""
-        # 加载自选股列表
         try:
-            # 使用工具函数获取配置管理器
-            from stock_monitor.utils.helpers import get_config_manager
-            config_manager = get_config_manager()
+            # 使用依赖注入容器获取配置管理器
+            from stock_monitor.core.container import container
+            from stock_monitor.config.manager import ConfigManager
+            config_manager = container.get(ConfigManager)
+            
+            # 加载自选股列表
             user_stocks = config_manager.get('user_stocks', [])
             self.watch_list.clear()
             
@@ -1200,9 +1207,10 @@ class NewSettingsDialog(QDialog):
             
         # 加载开机启动设置
         try:
-            # 使用工具函数获取配置管理器
-            from stock_monitor.utils.helpers import get_config_manager
-            config_manager = get_config_manager()
+            # 使用依赖注入容器获取配置管理器
+            from stock_monitor.core.container import container
+            from stock_monitor.config.manager import ConfigManager
+            config_manager = container.get(ConfigManager)
             auto_start = config_manager.get("auto_start", False)
             auto_start = _safe_bool_conversion(auto_start, False)
             self.auto_start_checkbox.setChecked(auto_start)
@@ -1211,9 +1219,10 @@ class NewSettingsDialog(QDialog):
             
         # 加载刷新频率设置
         try:
-            # 使用工具函数获取配置管理器
-            from stock_monitor.utils.helpers import get_config_manager
-            config_manager = get_config_manager()
+            # 使用依赖注入容器获取配置管理器
+            from stock_monitor.core.container import container
+            from stock_monitor.config.manager import ConfigManager
+            config_manager = container.get(ConfigManager)
             refresh_interval = config_manager.get("refresh_interval", 5)
             refresh_interval = _safe_int_conversion(refresh_interval, 5)
             refresh_text = self._map_refresh_value_to_text(refresh_interval)
@@ -1225,9 +1234,10 @@ class NewSettingsDialog(QDialog):
             
         # 加载字体设置
         try:
-            # 使用工具函数获取配置管理器
-            from stock_monitor.utils.helpers import get_config_manager
-            config_manager = get_config_manager()
+            # 使用依赖注入容器获取配置管理器
+            from stock_monitor.core.container import container
+            from stock_monitor.config.manager import ConfigManager
+            config_manager = container.get(ConfigManager)
             font_size = config_manager.get("font_size", 13)  # 默认改为13
             font_size = _safe_int_conversion(font_size, 13)
             self.font_size_spinbox.setValue(font_size)
@@ -1245,9 +1255,10 @@ class NewSettingsDialog(QDialog):
             
         # 加载透明度设置
         try:
-            # 使用工具函数获取配置管理器
-            from stock_monitor.utils.helpers import get_config_manager
-            config_manager = get_config_manager()
+            # 使用依赖注入容器获取配置管理器
+            from stock_monitor.core.container import container
+            from stock_monitor.config.manager import ConfigManager
+            config_manager = container.get(ConfigManager)
             transparency = config_manager.get("transparency", 80)
             transparency = _safe_int_conversion(transparency, 80)
             self.transparency_slider.setValue(transparency)
@@ -1256,9 +1267,10 @@ class NewSettingsDialog(QDialog):
             
         # 加载拖拽灵敏度设置
         try:
-            # 使用工具函数获取配置管理器
-            from stock_monitor.utils.helpers import get_config_manager
-            config_manager = get_config_manager()
+            # 使用依赖注入容器获取配置管理器
+            from stock_monitor.core.container import container
+            from stock_monitor.config.manager import ConfigManager
+            config_manager = container.get(ConfigManager)
             drag_sensitivity = config_manager.get("drag_sensitivity", 5)
             drag_sensitivity = _safe_int_conversion(drag_sensitivity, 5)
         except Exception as e:
@@ -1267,9 +1279,10 @@ class NewSettingsDialog(QDialog):
     def save_config(self):
         """保存配置"""
         try:
-            # 使用工具函数获取配置管理器
-            from stock_monitor.utils.helpers import get_config_manager
-            config_manager = get_config_manager()
+            # 使用依赖注入容器获取配置管理器
+            from stock_monitor.core.container import container
+            from stock_monitor.config.manager import ConfigManager
+            config_manager = container.get(ConfigManager)
             
             # 保存自选股列表
             user_stocks = self.get_stocks_from_list()

@@ -37,6 +37,9 @@ from stock_monitor.utils.stock_utils import StockCodeProcessor
 from stock_monitor.utils.log_cleaner import schedule_log_cleanup
 from stock_monitor.core.updater import app_updater
 
+# 依赖注入容器
+from stock_monitor.core.container import container, DIContainer
+
 ICON_FILE = resource_path('icon.ico')  # 统一使用ICO格式图标
 
 # 修改导入语句，使用设置对话框
@@ -61,6 +64,8 @@ class MainWindow(QtWidgets.QWidget):
     
     def __init__(self):
         super().__init__()
+        # 初始化依赖注入容器
+        self._container = container
         self.setup_ui()
         # 尝试加载会话缓存
         if not self._try_load_session_cache():
@@ -123,8 +128,7 @@ class MainWindow(QtWidgets.QWidget):
         self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Preferred)  # type: ignore
 
         # 从配置中读取字体大小和字体族
-        from stock_monitor.utils.helpers import get_config_manager
-        config_manager = get_config_manager()
+        config_manager = self._container.get(ConfigManager)
         font_size = config_manager.get("font_size", 13)  # 默认13px
         font_family = config_manager.get("font_family", "微软雅黑")  # 默认微软雅黑
         
@@ -402,9 +406,8 @@ class MainWindow(QtWidgets.QWidget):
 
     def save_position(self):
         """保存窗口位置到配置文件"""
-        from stock_monitor.config.manager import ConfigManager
-        config_manager = ConfigManager()
         pos = self.pos()
+        config_manager = self._container.get(ConfigManager)
         config_manager.set('window_pos', [pos.x(), pos.y()])
         
         # 同时更新会话缓存中的窗口位置
@@ -419,8 +422,7 @@ class MainWindow(QtWidgets.QWidget):
 
     def load_position(self):
         """从配置文件加载窗口位置"""
-        from stock_monitor.config.manager import ConfigManager
-        config_manager = ConfigManager()
+        config_manager = self._container.get(ConfigManager)
         pos = config_manager.get('window_pos')
         if pos and isinstance(pos, list) and len(pos) == 2:
             self.move(pos[0], pos[1])
@@ -553,8 +555,7 @@ class MainWindow(QtWidgets.QWidget):
         """更新主窗口字体大小"""
         try:
             # 从配置中读取字体大小和字体族
-            from stock_monitor.config.manager import ConfigManager
-            config_manager = ConfigManager()
+            config_manager = self._container.get(ConfigManager)
             font_size = config_manager.get("font_size", 13)  # 默认13px
             font_family = config_manager.get("font_family", "微软雅黑")  # 默认微软雅黑
             
@@ -740,19 +741,15 @@ class MainWindow(QtWidgets.QWidget):
         error_stocks = [("网络连接异常", "--", "--", "#e6eaf3", "", "")] * max(3, len(self.current_user_stocks))
         self.update_table_signal.emit(error_stocks)
         
-    def paintEvent(self, a0):  # type: ignore
+    def paintEvent(self, event):
         """
-        绘制事件处理，用于绘制窗口背景
-        
-        Args:
-            a0: 绘制事件对象
+        窗口绘制事件，用于绘制半透明背景
         """
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)  # type: ignore
         rect = self.rect()
         # 从配置中读取透明度设置
-        from stock_monitor.config.manager import ConfigManager
-        config_manager = ConfigManager()
+        config_manager = self._container.get(ConfigManager)
         transparency = config_manager.get("transparency", 80)
         # 在实时预览时，使用滑块的当前值
         if hasattr(self, '_preview_transparency'):
@@ -771,9 +768,8 @@ class MainWindow(QtWidgets.QWidget):
     def _update_database_on_startup(self):
         """启动时更新数据库"""
         try:
-            # 使用工具函数获取配置管理器
-            from stock_monitor.utils.helpers import get_config_manager
-            config_manager = get_config_manager()
+            # 使用依赖注入容器获取配置管理器
+            config_manager = self._container.get(ConfigManager)
             last_update = config_manager.get('last_db_update', 0)
             current_time = time.time()
             
@@ -801,9 +797,8 @@ class MainWindow(QtWidgets.QWidget):
     def load_user_stocks(self):
         """加载用户自选股列表"""
         try:
-            # 使用工具函数获取配置管理器
-            from stock_monitor.utils.helpers import get_config_manager
-            config_manager = get_config_manager()
+            # 使用依赖注入容器获取配置管理器
+            config_manager = self._container.get(ConfigManager)
             stocks = config_manager.get('user_stocks', [])
             app_logger.info(f"加载自选股列表: {stocks}")
             return stocks
