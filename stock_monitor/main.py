@@ -68,6 +68,13 @@ class MainWindow(QtWidgets.QWidget):
         # 移除自动检查更新功能，只在设置中提供手动检查更新选项
 
     def setup_ui(self):
+        """设置主窗口UI"""
+        self._setup_window_properties()
+        self._setup_ui_components()
+        self._setup_event_handlers()
+        
+    def _setup_window_properties(self):
+        """设置窗口属性"""
         self.setWindowTitle('A股行情监控')
         self.setWindowFlags(
             QtCore.Qt.WindowType.WindowStaysOnTopHint |  # type: ignore
@@ -90,6 +97,8 @@ class MainWindow(QtWidgets.QWidget):
         # 启动日志定期清理任务
         schedule_log_cleanup(days_to_keep=7, interval_hours=24)
         
+    def _setup_ui_components(self):
+        """初始化UI组件"""
         # 初始化股市状态条，初始隐藏
         self.market_status_bar = MarketStatusBar(self)
         self.market_status_bar.hide()
@@ -190,6 +199,11 @@ class MainWindow(QtWidgets.QWidget):
         
         app_logger.info("主窗口初始化完成")
         app_logger.debug("主窗口UI组件初始化完成")
+        
+    def _setup_event_handlers(self):
+        """设置事件处理器"""
+        # 这里可以添加事件处理器的设置
+        pass
 
     def _update_market_status_immediately(self):
         """立即更新市场状态条，提高优先级"""
