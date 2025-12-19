@@ -435,7 +435,7 @@ class MainWindow(QtWidgets.QWidget):
     def open_settings(self):
         """打开设置对话框"""
         if self.settings_dialog is None:
-            self.settings_dialog = NewSettingsDialog(None, main_window=self)  # 不再将主窗口作为父窗口
+            self.settings_dialog = NewSettingsDialog(main_window=self)  # 不再将主窗口作为父窗口
             # 连接配置更改信号
             self.settings_dialog.config_changed.connect(self.on_config_changed)
         self.settings_dialog.show()
