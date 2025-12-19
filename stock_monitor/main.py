@@ -118,8 +118,8 @@ class MainWindow(QtWidgets.QWidget):
         self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Preferred)  # type: ignore
 
         # 从配置中读取字体大小和字体族
-        from stock_monitor.config.manager import ConfigManager
-        config_manager = ConfigManager()
+        from stock_monitor.utils.helpers import get_config_manager
+        config_manager = get_config_manager()
         font_size = config_manager.get("font_size", 13)  # 默认13px
         font_family = config_manager.get("font_family", "微软雅黑")  # 默认微软雅黑
         
@@ -147,8 +147,7 @@ class MainWindow(QtWidgets.QWidget):
         
         # 初始化数据
         self.settings_dialog = None
-        from stock_monitor.config.manager import ConfigManager
-        config_manager = ConfigManager()
+        config_manager = get_config_manager()
         self.refresh_interval = config_manager.get('refresh_interval', 5)
         self.current_user_stocks = self.load_user_stocks()
         
@@ -766,90 +765,47 @@ class MainWindow(QtWidgets.QWidget):
         painter.drawRect(rect)
 
     def _update_database_on_startup(self):
-        """在启动时更新数据库"""
-        def update_database():
-            try:
-                app_logger.info("应用启动时更新股票数据库...")
-                # 添加网络连接检查和延迟，确保网络就绪
-                time.sleep(10)  # 增加到10秒等待网络连接初始化
-                success = update_stock_database()
-                if success:
-                    app_logger.info("启动时股票数据库更新完成")
-                else:
-                    app_logger.warning("启动时股票数据库更新失败")
-            except Exception as e:
-                app_logger.error(f"启动时数据库更新出错: {e}")
-        
-        # 在后台线程中执行数据库更新，避免阻塞UI
-        update_thread = threading.Thread(target=update_database, daemon=True)
-        update_thread.start()
+        """启动时更新数据库"""
+        try:
+            # 使用工具函数获取配置管理器
+            from stock_monitor.utils.helpers import get_config_manager
+            config_manager = get_config_manager()
+            last_update = config_manager.get('last_db_update', 0)
+            current_time = time.time()
+            
+            # 检查是否超过24小时未更新，或者从未更新过
+            if current_time - last_update > 86400 or last_update == 0:
+                # 在新线程中更新数据库，避免阻塞UI
+                self._update_database_async()
+                # 更新配置中的最后更新时间
+                config_manager.set('last_db_update', current_time)
+                save_config(config_manager.config_data)
+                app_logger.info("启动时数据库更新已启动")
+            else:
+                app_logger.debug("启动时数据库更新检查: 距离上次更新不足24小时，跳过更新")
+        except Exception as e:
+            app_logger.error(f"启动时数据库更新检查失败: {e}")
 
-    def _start_database_update_thread(self):
-        """启动数据库更新线程"""
-        self._database_update_thread = threading.Thread(target=self._database_update_loop, daemon=True)
-        self._database_update_thread.start()
-
-    def _database_update_loop(self):
-        """数据库更新循环 - 每天更新一次股票数据库"""
-        # 等待应用启动完成
-        time.sleep(10)
-        
-        # 启动后立即更新一次市场状态
-        self.market_status_bar.update_market_status()
-        
-        while True:
-            try:
-                # 检查是否是凌晨时段（2:00-4:00之间）
-                now = datetime.datetime.now()
-                if now.hour >= 2 and now.hour < 4:
-                    app_logger.info("开始更新股票数据库...")
-                    success = update_stock_database()
-                    if success:
-                        app_logger.info("股票数据库更新完成")
-                        # 数据库更新完成后，更新市场状态
-                        self.market_status_bar.update_market_status()
-                    else:
-                        app_logger.warning("股票数据库更新失败")
-                    
-                    # 等待到明天同一时间
-                    tomorrow = now + datetime.timedelta(days=1)
-                    tomorrow_update = tomorrow.replace(hour=3, minute=0, second=0, microsecond=0)
-                    sleep_seconds = (tomorrow_update - now).total_seconds()
-                    time.sleep(sleep_seconds)
-                else:
-                    # 每30秒更新一次市场状态
-                    time.sleep(30)
-                    self.market_status_bar.update_market_status()
-            except Exception as e:
-                app_logger.error(f"数据库更新循环出错: {e}")
-                time.sleep(3600)  # 出错后等待1小时再重试
+    def _update_database_async(self):
+        """异步更新数据库"""
+        try:
+            from stock_monitor.data.market.updater import update_stock_database
+            update_thread = threading.Thread(target=update_stock_database, daemon=True)
+            update_thread.start()
+        except Exception as e:
+            app_logger.error(f"异步更新数据库时出错: {e}")
 
     def load_user_stocks(self):
-        """
-        加载用户自选股列表，包含完整的错误处理和格式规范化
-        
-        Returns:
-            list: 用户股票列表
-        """
+        """加载用户自选股列表"""
         try:
-            from stock_monitor.config.manager import ConfigManager
-            config_manager = ConfigManager()
-            stocks = config_manager.get('user_stocks', None)
-            
-            # 确保stocks是一个列表
-            if not isinstance(stocks, list):
-                app_logger.warning("配置文件中未找到有效的用户股票列表，使用默认值")
-                stocks = []
-            
-            # 使用统一的工具函数处理股票代码提取
-            from stock_monitor.utils import extract_stocks_from_list
-            processed_stocks = extract_stocks_from_list(stocks)
-            
-            return processed_stocks
-            
+            # 使用工具函数获取配置管理器
+            from stock_monitor.utils.helpers import get_config_manager
+            config_manager = get_config_manager()
+            stocks = config_manager.get('user_stocks', [])
+            app_logger.info(f"加载自选股列表: {stocks}")
+            return stocks
         except Exception as e:
-            app_logger.error(f"加载用户股票列表时发生严重错误: {e}")
-            # 返回空列表
+            app_logger.error(f"加载自选股列表失败: {e}")
             return []
 
     def _format_stock_code(self, code):
@@ -906,6 +862,36 @@ class MainWindow(QtWidgets.QWidget):
         
         # 更新窗口几何形状
         self.updateGeometry()
+
+    def _update_database_if_needed(self):
+        """根据更新时间判断是否需要更新数据库"""
+        try:
+            # 使用工具函数获取配置管理器
+            from stock_monitor.utils.helpers import get_config_manager
+            config_manager = get_config_manager()
+            last_update = config_manager.get('last_db_update', 0)
+            current_time = time.time()
+            
+            # 检查是否超过24小时(86400秒)未更新
+            if current_time - last_update > 86400:
+                self._update_database_async()
+                # 更新配置中的最后更新时间
+                config_manager.set('last_db_update', current_time)
+                save_config(config_manager.config_data)
+                app_logger.info("数据库更新检查完成并启动更新")
+            else:
+                app_logger.debug("数据库更新检查: 距离上次更新不足24小时，跳过更新")
+        except Exception as e:
+            app_logger.error(f"数据库更新检查失败: {e}")
+
+    def _update_database_async(self):
+        """异步更新数据库"""
+        try:
+            from stock_monitor.data.market.updater import update_stock_database
+            update_thread = threading.Thread(target=update_stock_database, daemon=True)
+            update_thread.start()
+        except Exception as e:
+            app_logger.error(f"异步更新数据库时出错: {e}")
 
 class SystemTray(QtWidgets.QSystemTrayIcon):
     """

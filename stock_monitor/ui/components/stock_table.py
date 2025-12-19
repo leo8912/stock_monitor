@@ -46,11 +46,11 @@ class StockTable(QtWidgets.QTableWidget):
         )
         
         # 从配置中读取字体大小
-        from stock_monitor.config.manager import ConfigManager
-        config_manager = ConfigManager()
-        font_size = config_manager.get("font_size", 13)  # 默认13px
+        from stock_monitor.utils.helpers import get_config_manager
+        config_manager = get_config_manager()
+        self.font_size = config_manager.get("font_size", 13)  # 默认13px
         
-        self._set_table_style(font_size)
+        self._set_table_style(self.font_size)
 
     def _set_table_style(self, font_size: int) -> None:
         """

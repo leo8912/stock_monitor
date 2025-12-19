@@ -41,6 +41,17 @@ def resource_path(relative_path):
     return os.path.join(resources_dir, relative_path)
 
 
+def get_config_manager():
+    """
+    获取配置管理器实例
+    
+    Returns:
+        ConfigManager: 配置管理器实例
+    """
+    from stock_monitor.config.manager import ConfigManager
+    return ConfigManager()
+
+
 def get_stock_emoji(code, name):
     """
     根据股票代码和名称返回对应的emoji
