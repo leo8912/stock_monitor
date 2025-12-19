@@ -238,13 +238,8 @@ class StockTable(QtWidgets.QTableWidget):
             if self.columnCount() != column_count:
                 self.setColumnCount(column_count)
             
-            # 获取当前所有项，用于比较是否需要更新
-            existing_items = {}
-            for row in range(self.rowCount()):
-                for col in range(self.columnCount()):
-                    item = self.item(row, col)
-                    if item:
-                        existing_items[(row, col)] = (item.text(), item.foreground().color().name())
+            # 批量更新开始
+            self.setUpdatesEnabled(False)
             
             for row, stock in enumerate(stocks):
                 name, price, change, color, seal_vol, seal_type = stock
@@ -252,49 +247,109 @@ class StockTable(QtWidgets.QTableWidget):
                 # 处理港股名称显示
                 name = self._format_hk_stock_name(name)
                 
-                # 检查各项是否需要更新
-                updates = {}
-                
-                # 检查名称项
-                name_text = f" {name}"
+                # 更新名称项
                 name_item = self.item(row, 0)
-                if not name_item or name_item.text() != name_text or name_item.foreground().color().name() != color:
-                    updates[0] = (name_text, color, seal_type)
+                if not name_item:
+                    name_item = self._create_table_item(f" {name}", color, seal_type)
+                    self._set_text_alignment(name_item, QtCore.Qt.AlignmentFlag.AlignLeft)
+                    self.setItem(row, 0, name_item)
+                else:
+                    # 只在需要时更新
+                    if name_item.text() != f" {name}":
+                        name_item.setText(f" {name}")
+                    
+                    # 更新颜色
+                    if name_item.foreground().color().name() != color:
+                        if seal_type == 'up':
+                            name_item.setBackground(QtGui.QColor('#ffecec'))
+                            name_item.setForeground(QtGui.QColor(color))
+                        elif seal_type == 'down':
+                            name_item.setBackground(QtGui.QColor('#e8f5e9'))
+                            name_item.setForeground(QtGui.QColor('#27ae60'))
+                        else:
+                            name_item.setBackground(QtGui.QColor(QtCore.Qt.GlobalColor.transparent))
+                            name_item.setForeground(QtGui.QColor(color))
                 
-                # 检查价格项
+                # 更新价格项
                 price_item = self.item(row, 1)
-                if not price_item or price_item.text() != price or price_item.foreground().color().name() != color:
-                    updates[1] = (price, color, seal_type)
+                if not price_item:
+                    price_item = self._create_table_item(price, color, seal_type)
+                    self._set_text_alignment(price_item, QtCore.Qt.AlignmentFlag.AlignRight)
+                    self.setItem(row, 1, price_item)
+                else:
+                    # 只在需要时更新
+                    if price_item.text() != price:
+                        price_item.setText(price)
+                        
+                    # 更新颜色
+                    if price_item.foreground().color().name() != color:
+                        if seal_type == 'up':
+                            price_item.setBackground(QtGui.QColor('#ffecec'))
+                            price_item.setForeground(QtGui.QColor(color))
+                        elif seal_type == 'down':
+                            price_item.setBackground(QtGui.QColor('#e8f5e9'))
+                            price_item.setForeground(QtGui.QColor('#27ae60'))
+                        else:
+                            price_item.setBackground(QtGui.QColor(QtCore.Qt.GlobalColor.transparent))
+                            price_item.setForeground(QtGui.QColor(color))
                 
-                # 检查涨跌项
+                # 更新涨跌项
                 change_text = self._format_change_text(change)
                 change_item = self.item(row, 2)
-                if not change_item or change_item.text() != change_text or change_item.foreground().color().name() != color:
-                    updates[2] = (change_text, color, seal_type)
+                if not change_item:
+                    change_item = self._create_table_item(change_text, color, seal_type)
+                    self._set_text_alignment(change_item, QtCore.Qt.AlignmentFlag.AlignRight)
+                    self.setItem(row, 2, change_item)
+                else:
+                    # 只在需要时更新
+                    if change_item.text() != change_text:
+                        change_item.setText(change_text)
+                        
+                    # 更新颜色
+                    if change_item.foreground().color().name() != color:
+                        if seal_type == 'up':
+                            change_item.setBackground(QtGui.QColor('#ffecec'))
+                            change_item.setForeground(QtGui.QColor(color))
+                        elif seal_type == 'down':
+                            change_item.setBackground(QtGui.QColor('#e8f5e9'))
+                            change_item.setForeground(QtGui.QColor('#27ae60'))
+                        else:
+                            change_item.setBackground(QtGui.QColor(QtCore.Qt.GlobalColor.transparent))
+                            change_item.setForeground(QtGui.QColor(color))
                 
-                # 检查封单项（如果有）
-                seal_item = self.item(row, 3) if show_seal_column else None
+                # 更新封单项（如果有）
                 if show_seal_column:
                     seal_text = f"{seal_vol} " if seal_vol and seal_type else ""
-                    if not seal_item or seal_item.text() != seal_text:
-                        updates[3] = (seal_text, color, seal_type)
-                
-                # 只有在需要更新时才创建新项
-                for col, (text, item_color, item_seal_type) in updates.items():
-                    if col == 3:  # 封单项
-                        item = self._create_seal_item(text.strip(), item_seal_type, item_color)
-                        self._set_text_alignment(item, QtCore.Qt.AlignmentFlag.AlignRight)
-                    else:  # 普通项
-                        item = self._create_table_item(text, item_color, item_seal_type)
-                        if col == 0:
-                            self._set_text_alignment(item, QtCore.Qt.AlignmentFlag.AlignLeft)
+                    seal_item = self.item(row, 3)
+                    if not seal_item:
+                        seal_item = self._create_seal_item(seal_vol, seal_type, color)
+                        self._set_text_alignment(seal_item, QtCore.Qt.AlignmentFlag.AlignRight)
+                        self.setItem(row, 3, seal_item)
+                    else:
+                        # 只在需要时更新
+                        if seal_item.text() != seal_text:
+                            seal_item.setText(seal_text)
+                            
+                        # 更新颜色
+                        if seal_type == 'up':
+                            seal_item.setBackground(QtGui.QColor('#ffecec'))
+                            seal_item.setForeground(QtGui.QColor(color))
+                        elif seal_type == 'down':
+                            seal_item.setBackground(QtGui.QColor('#e8f5e9'))
+                            seal_item.setForeground(QtGui.QColor('#27ae60'))
                         else:
-                            self._set_text_alignment(item, QtCore.Qt.AlignmentFlag.AlignRight)
-                    
-                    self.setItem(row, col, item)
+                            seal_item.setBackground(QtGui.QColor(QtCore.Qt.GlobalColor.transparent))
+                            seal_item.setForeground(QtGui.QColor('#888'))
             
+            # 调整列宽
             self._resize_columns()
-            self.updateGeometry()
+            
+            # 批量更新结束
+            self.setUpdatesEnabled(True)
+            
+            # 强制刷新
+            self.viewport().update()
+            
             app_logger.debug(f"表格数据更新完成，共{len(stocks)}行")
             
             # 通知父窗口调整大小
