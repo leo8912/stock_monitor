@@ -1,9 +1,10 @@
-"""
-股票管理模块
+"""股票管理模块
 负责处理股票相关的业务逻辑
 """
 
+import json
 from typing import List, Dict, Any, Optional, Tuple
+from functools import lru_cache
 from ..utils.logger import app_logger
 from ..core.stock_service import stock_data_service
 from ..utils.stock_utils import StockCodeProcessor
@@ -59,7 +60,8 @@ class StockManager:
             info = data_dict.get(code)
             
             if info:
-                stock_item = self._process_single_stock_data(code, info)
+                # 使用带缓存的方法处理单只股票数据
+                stock_item = self._process_single_stock_data_cached(code, json.dumps(info, sort_keys=True))
                 stocks.append(stock_item)
             else:
                 # 如果没有获取到数据，显示默认值
@@ -70,9 +72,29 @@ class StockManager:
         app_logger.debug(f"共处理 {len(stocks)} 只股票数据")
         return stocks
     
-    def _process_single_stock_data(self, code: str, info: Dict[str, Any]) -> tuple:
+    @lru_cache(maxsize=128)
+    def _process_single_stock_data_cached(self, code: str, info_json: str) -> tuple:
         """
-        处理单只股票的数据
+        带LRU缓存的单只股票数据处理方法
+        
+        Args:
+            code (str): 股票代码
+            info_json (str): 股票数据的JSON序列化字符串
+            
+        Returns:
+            tuple: 格式化后的股票数据元组
+        """
+        # 将JSON字符串转换回字典
+        try:
+            info = json.loads(info_json)
+        except:
+            info = {}
+        
+        return self._process_single_stock_data_impl(code, info)
+    
+    def _process_single_stock_data_impl(self, code: str, info: Dict[str, Any]) -> tuple:
+        """
+        处理单只股票的数据的实际实现
         
         Args:
             code (str): 股票代码
@@ -145,6 +167,19 @@ class StockManager:
         stock_item = (name, price, change_str, color, seal_vol, seal_type)
         app_logger.debug(f"股票 {code} 数据处理完成")
         return stock_item
+    
+    def _process_single_stock_data(self, code: str, info: Dict[str, Any]) -> tuple:
+        """
+        处理单只股票的数据
+        
+        Args:
+            code (str): 股票代码
+            info (Dict[str, Any]): 股票原始数据
+            
+        Returns:
+            tuple: 格式化后的股票数据元组
+        """
+        return self._process_single_stock_data_impl(code, info)
     
     def _calculate_seal_info(self, now: Any, high: Any, low: Any, bid1: Any, ask1: Any, 
                              bid1_vol: Any, ask1_vol: Any) -> Tuple[str, str]:
