@@ -1494,6 +1494,10 @@ class NewSettingsDialog(QDialog):
             font_size = self.font_size_spinbox.value()
             font_family = self.font_family_combo.currentText()
             
+            # 确保字体大小大于0
+            if font_size <= 0:
+                font_size = 13  # 默认字体大小
+            
             # 更新主窗口字体
             from PyQt6.QtGui import QFont
             font = QFont(font_family, font_size)
@@ -1543,7 +1547,7 @@ class NewSettingsDialog(QDialog):
                         border: none;
                     }}
                 ''')
-                
+
             # 更新加载标签字体
             if hasattr(self.main_window, 'loading_label') and self.main_window.loading_label:
                 self.main_window.loading_label.setStyleSheet(f"""
@@ -1555,7 +1559,7 @@ class NewSettingsDialog(QDialog):
                         padding: 10px;
                     }}
                 """)
-                
+
             # 调整主窗口高度
             self.main_window.adjust_window_height()
     

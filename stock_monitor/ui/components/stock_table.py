@@ -60,6 +60,10 @@ class StockTable(QtWidgets.QTableWidget):
         Args:
             font_size (int): 字体大小
         """
+        # 确保字体大小大于0
+        if font_size <= 0:
+            font_size = 13  # 默认字体大小
+            
         self.setStyleSheet(f'''
             QTableWidget {{
                 background: transparent;

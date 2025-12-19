@@ -133,6 +133,10 @@ class MainWindow(QtWidgets.QWidget):
         font_size = config_manager.get("font_size", 13)  # 默认13px
         font_family = config_manager.get("font_family", "微软雅黑")  # 默认微软雅黑
         
+        # 确保字体大小大于0
+        if font_size <= 0:
+            font_size = 13  # 默认字体大小
+            
         font = QtGui.QFont(font_family, font_size)
         self.setFont(font)
         # 只设置主窗口本身的字体，不使用全局样式表影响子控件
@@ -552,7 +556,10 @@ class MainWindow(QtWidgets.QWidget):
             from stock_monitor.config.manager import ConfigManager
             config_manager = self._container.get(ConfigManager)
             font_size = config_manager.get("font_size", 13)  # 默认13px
-            font_family = config_manager.get("font_family", "微软雅黑")  # 默认微软雅黑
+            font_family = config_manager.get("font_family", "微软雅黑")  # 默认微软雅黑            
+            # 确保字体大小大于0
+            if font_size <= 0:
+                font_size = 13  # 默认字体大小
             
             # 更新主窗口字体
             font = QtGui.QFont(font_family, font_size)
@@ -602,7 +609,7 @@ class MainWindow(QtWidgets.QWidget):
                         border: none;
                     }}
                 ''')
-                
+
             # 更新加载标签字体
             if hasattr(self, 'loading_label') and self.loading_label:
                 self.loading_label.setStyleSheet(f"""
@@ -614,7 +621,7 @@ class MainWindow(QtWidgets.QWidget):
                         padding: 10px;
                     }}
                 """)
-                
+
             # 调整主窗口高度
             self.adjust_window_height()
         except Exception as e:
