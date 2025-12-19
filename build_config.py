@@ -14,7 +14,6 @@ BUILD_OPTIONS = {
 
 # 需要添加的数据文件
 DATA_FILES = [
-    'stock_monitor/resources/stock_basic.json',
     'stock_monitor/resources/icon.ico',
     ('zhconv/zhcdict.json', 'zhconv')
 ]
@@ -23,9 +22,9 @@ DATA_FILES = [
 REQUIRED_FILES = [
     'stock_monitor/main.py',
     'requirements.txt',
-    'stock_monitor/resources/icon.ico',
-    'stock_monitor/resources/stock_basic.json'
+    'stock_monitor/resources/icon.ico'
 ]
+
 
 def get_build_command():
     """生成PyInstaller构建命令"""

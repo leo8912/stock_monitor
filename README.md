@@ -45,7 +45,7 @@ stock_monitor/
 │   └── manager.py         # 网络请求封装
 ├── resources/             # 资源文件目录
 │   ├── icon.ico           # 应用图标
-│   └── stock_basic.json   # 股票基础数据
+│   └── stocks.db          # SQLite数据库文件，包含股票基础数据
 ├── ui/                    # 用户界面模块
 │   ├── components/
 │   │   ├── __init__.py

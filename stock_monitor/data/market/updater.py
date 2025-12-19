@@ -1,8 +1,7 @@
 """
 股票数据库更新模块
-负责定期从网络获取最新的股票数据并更新本地 stock_basic.json 文件
+负责定期从网络获取最新的股票数据并更新本地 SQLite 数据库
 """
-
 import json
 import threading
 import time
@@ -135,17 +134,9 @@ def fetch_hk_stocks() -> List[Dict[str, str]]:
         app_logger.error(f"获取港股数据失败: {e}")
         import traceback
         app_logger.error(f"详细错误信息: {traceback.format_exc()}")
-        # 出错时返回本地缓存的港股数据
-        try:
-            with open(resource_path("stock_basic.json"), "r", encoding="utf-8") as f:
-                all_stocks = json.load(f)
-            hk_stocks = [stock for stock in all_stocks if stock["code"].startswith("hk")]
-            app_logger.info(f"使用本地缓存数据，获取到 {len(hk_stocks)} 只港股")
-            return hk_stocks
-        except Exception as local_e:
-            app_logger.error(f"获取本地港股数据也失败: {local_e}")
-            return []
-
+        # 出错时返回空列表
+        app_logger.warning("获取港股数据失败，返回空列表")
+        return []
 
 def fetch_all_stocks() -> List[Dict[str, str]]:
     """
@@ -295,17 +286,9 @@ def fetch_all_stocks() -> List[Dict[str, str]]:
         
     except Exception as e:
         app_logger.error(f"获取股票数据失败: {e}")
-        # 出错时使用本地缓存数据
-        try:
-            with open(resource_path("stock_basic.json"), "r", encoding="utf-8") as f:
-                stocks_data = json.load(f)
-            app_logger.info(f"使用本地缓存数据，获取到 {len(stocks_data)} 只股票")
-            return stocks_data
-        except Exception as local_e:
-            app_logger.error(f"获取本地股票数据也失败: {local_e}")
-            return []
-
-
+        # 出错时使用空列表
+        app_logger.warning("获取股票数据失败，返回空列表")
+        return []
 def update_stock_database() -> bool:
     """
     更新本地股票数据库文件
@@ -345,18 +328,17 @@ def update_stock_database() -> bool:
 
 def get_stock_list() -> List[Dict[str, str]]:
     """
-    获取股票列表，完全从本地文件读取
+    获取股票列表，从本地数据库读取
     
     Returns:
         List[Dict[str, str]]: 股票列表
     """
     try:
-        stock_file_path = resource_path("stock_basic.json")
-        with open(stock_file_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
+        from stock_monitor.data.stock.stock_db import stock_db
+        return stock_db.get_all_stocks()
     except Exception as e:
-        app_logger.error(f"无法从本地文件加载股票数据: {e}")
-        # 返回空列表而不是从网络获取
+        app_logger.error(f"无法从本地数据库加载股票数据: {e}")
+        # 返回空列表
         return []
 
 
