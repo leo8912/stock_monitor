@@ -238,32 +238,60 @@ class StockTable(QtWidgets.QTableWidget):
             if self.columnCount() != column_count:
                 self.setColumnCount(column_count)
             
+            # 获取当前所有项，用于比较是否需要更新
+            existing_items = {}
+            for row in range(self.rowCount()):
+                for col in range(self.columnCount()):
+                    item = self.item(row, col)
+                    if item:
+                        existing_items[(row, col)] = (item.text(), item.foreground().color().name())
+            
             for row, stock in enumerate(stocks):
                 name, price, change, color, seal_vol, seal_type = stock
                 
                 # 处理港股名称显示
                 name = self._format_hk_stock_name(name)
                 
-                # 创建并设置表格项
-                item_name = self._create_table_item(f" {name}", color, seal_type)
-                item_price = self._create_table_item(price, color, seal_type)
-                item_change = self._create_table_item(self._format_change_text(change), color, seal_type)
+                # 检查各项是否需要更新
+                updates = {}
                 
-                # 设置文本对齐
-                self._set_text_alignment(item_name, QtCore.Qt.AlignmentFlag.AlignLeft)
-                self._set_text_alignment(item_price, QtCore.Qt.AlignmentFlag.AlignRight)
-                self._set_text_alignment(item_change, QtCore.Qt.AlignmentFlag.AlignRight)
+                # 检查名称项
+                name_text = f" {name}"
+                name_item = self.item(row, 0)
+                if not name_item or name_item.text() != name_text or name_item.foreground().color().name() != color:
+                    updates[0] = (name_text, color, seal_type)
                 
-                # 设置项目
-                self.setItem(row, 0, item_name)
-                self.setItem(row, 1, item_price)
-                self.setItem(row, 2, item_change)
+                # 检查价格项
+                price_item = self.item(row, 1)
+                if not price_item or price_item.text() != price or price_item.foreground().color().name() != color:
+                    updates[1] = (price, color, seal_type)
                 
-                # 如果需要显示封单列
+                # 检查涨跌项
+                change_text = self._format_change_text(change)
+                change_item = self.item(row, 2)
+                if not change_item or change_item.text() != change_text or change_item.foreground().color().name() != color:
+                    updates[2] = (change_text, color, seal_type)
+                
+                # 检查封单项（如果有）
+                seal_item = self.item(row, 3) if show_seal_column else None
                 if show_seal_column:
-                    item_seal = self._create_seal_item(seal_vol, seal_type, color)
-                    self._set_text_alignment(item_seal, QtCore.Qt.AlignmentFlag.AlignRight)
-                    self.setItem(row, 3, item_seal)
+                    seal_text = f"{seal_vol} " if seal_vol and seal_type else ""
+                    if not seal_item or seal_item.text() != seal_text:
+                        updates[3] = (seal_text, color, seal_type)
+                
+                # 只有在需要更新时才创建新项
+                for col, (text, item_color, item_seal_type) in updates.items():
+                    if col == 3:  # 封单项
+                        item = self._create_seal_item(text.strip(), item_seal_type, item_color)
+                        self._set_text_alignment(item, QtCore.Qt.AlignmentFlag.AlignRight)
+                    else:  # 普通项
+                        item = self._create_table_item(text, item_color, item_seal_type)
+                        if col == 0:
+                            self._set_text_alignment(item, QtCore.Qt.AlignmentFlag.AlignLeft)
+                        else:
+                            self._set_text_alignment(item, QtCore.Qt.AlignmentFlag.AlignRight)
+                    
+                    self.setItem(row, col, item)
             
             self._resize_columns()
             self.updateGeometry()
