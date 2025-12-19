@@ -59,91 +59,8 @@ class StockManager:
             info = data_dict.get(code)
             
             if info:
-                name = info.get('name', code)
-                # 对于港股，只保留中文部分
-                if code.startswith('hk'):
-                    # 去除"-"及之后的部分，只保留中文名称
-                    if '-' in name:
-                        name = name.split('-')[0].strip()
-                
-                try:
-                    # 不同行情源的字段可能不同
-                    now = info.get('now') or info.get('price')
-                    close = info.get('close') or info.get('lastPrice') or now
-                    high = info.get('high', 0)
-                    low = info.get('low', 0)
-                    bid1 = info.get('bid1', 0)
-                    bid1_vol = info.get('bid1_volume', 0) or info.get('volume_2', 0)
-                    ask1 = info.get('ask1', 0)
-                    ask1_vol = info.get('ask1_volume', 0) or info.get('volume_3', 0)
-                    
-                    # 添加更严格的None值检查
-                    if now is None or close is None:
-                        app_logger.warning(f"股票 {code} 数据不完整: now={now}, close={close}")
-                        stocks.append((name, "--", "--", "#e6eaf3", "", ""))
-                        continue
-                        
-                    # 检查数据是否有效（防止获取到空字符串等无效数据）
-                    try:
-                        float(now)
-                        float(close)
-                    except (ValueError, TypeError):
-                        app_logger.warning(f"股票 {code} 数据无效: now={now}, close={close}")
-                        stocks.append((name, "--", "--", "#e6eaf3", "", ""))
-                        continue
-                        
-                    price = f"{float(now):.2f}" if now is not None else "--"
-                    
-                    percent = ((float(now) - float(close)) / float(close) * 100) if close and float(close) != 0 else 0
-                    # 修改颜色逻辑：超过5%的涨幅使用亮红色
-                    if percent >= 5:
-                        color = '#FF4500'  # 亮红色（更亮的红色）
-                    elif percent > 0:
-                        color = '#e74c3f'  # 红色
-                    elif percent < 0:
-                        color = '#27ae60'  # 绿色
-                    else:
-                        color = '#e6eaf3'  # 平盘
-                    change_str = f"{percent:+.2f}%"
-                except (ValueError, TypeError, ZeroDivisionError) as e:
-                    app_logger.warning(f"股票 {code} 数据计算错误: {e}")
-                    color = '#e6eaf3'
-                    change_str = "--"
-                    price = "--"
-                    # 为后续处理设置默认值
-                    now = 0
-                    high = 0
-                    low = 0
-                    bid1 = 0
-                    ask1 = 0
-                    bid1_vol = 0
-                    ask1_vol = 0
-                
-                # 检测涨停/跌停封单
-                seal_vol = ''
-                seal_type = ''
-                try:
-                    # 确保所有值都不是None
-                    if (now is not None and high is not None and bid1 is not None and 
-                        bid1_vol is not None and ask1 is not None and
-                        is_equal(str(now), str(high)) and is_equal(str(now), str(bid1)) and 
-                        bid1_vol > 0 and is_equal(str(ask1), "0.0")):
-                        # 将封单数转换为以"k"为单位，封单数/100000来算（万手转k）
-                        seal_vol = f"{int(bid1_vol/100000)}k" if bid1_vol >= 100000 else f"{int(bid1_vol)}"
-                        seal_type = 'up'
-                    elif (now is not None and low is not None and ask1 is not None and 
-                          ask1_vol is not None and bid1 is not None and
-                          is_equal(str(now), str(low)) and is_equal(str(now), str(ask1)) and 
-                          ask1_vol > 0 and is_equal(str(bid1), "0.0")):
-                        # 将封单数转换为以"k"为单位，封单数/100000来算（万手转k）
-                        seal_vol = f"{int(ask1_vol/100000)}k" if ask1_vol >= 100000 else f"{int(ask1_vol)}"
-                        seal_type = 'down'
-                except (ValueError, TypeError) as e:
-                    app_logger.debug(f"股票 {code} 封单计算错误: {e}")
-                    pass  # 忽略封单计算中的错误
-                    
-                stocks.append((name, price, change_str, color, seal_vol, seal_type))
-                app_logger.debug(f"股票 {code} 数据处理完成")
+                stock_item = self._process_single_stock_data(code, info)
+                stocks.append(stock_item)
             else:
                 # 如果没有获取到数据，显示默认值
                 name = code
@@ -152,6 +69,123 @@ class StockManager:
                 
         app_logger.debug(f"共处理 {len(stocks)} 只股票数据")
         return stocks
+    
+    def _process_single_stock_data(self, code: str, info: Dict[str, Any]) -> tuple:
+        """
+        处理单只股票的数据
+        
+        Args:
+            code (str): 股票代码
+            info (Dict[str, Any]): 股票原始数据
+            
+        Returns:
+            tuple: 格式化后的股票数据元组
+        """
+        name = info.get('name', code)
+        # 对于港股，只保留中文部分
+        if code.startswith('hk'):
+            # 去除"-"及之后的部分，只保留中文名称
+            if '-' in name:
+                name = name.split('-')[0].strip()
+        
+        try:
+            # 不同行情源的字段可能不同
+            now = info.get('now') or info.get('price')
+            close = info.get('close') or info.get('lastPrice') or now
+            high = info.get('high', 0)
+            low = info.get('low', 0)
+            bid1 = info.get('bid1', 0)
+            bid1_vol = info.get('bid1_volume', 0) or info.get('volume_2', 0)
+            ask1 = info.get('ask1', 0)
+            ask1_vol = info.get('ask1_volume', 0) or info.get('volume_3', 0)
+            
+            # 添加更严格的None值检查
+            if now is None or close is None:
+                app_logger.warning(f"股票 {code} 数据不完整: now={now}, close={close}")
+                return (name, "--", "--", "#e6eaf3", "", "")
+                
+            # 检查数据是否有效（防止获取到空字符串等无效数据）
+            try:
+                float(now)
+                float(close)
+            except (ValueError, TypeError):
+                app_logger.warning(f"股票 {code} 数据无效: now={now}, close={close}")
+                return (name, "--", "--", "#e6eaf3", "", "")
+                
+            price = f"{float(now):.2f}" if now is not None else "--"
+            
+            percent = ((float(now) - float(close)) / float(close) * 100) if close and float(close) != 0 else 0
+            # 修改颜色逻辑：超过5%的涨幅使用亮红色
+            if percent >= 5:
+                color = '#FF4500'  # 亮红色（更亮的红色）
+            elif percent > 0:
+                color = '#e74c3f'  # 红色
+            elif percent < 0:
+                color = '#27ae60'  # 绿色
+            else:
+                color = '#e6eaf3'  # 平盘
+            change_str = f"{percent:+.2f}%"
+        except (ValueError, TypeError, ZeroDivisionError) as e:
+            app_logger.warning(f"股票 {code} 数据计算错误: {e}")
+            color = '#e6eaf3'
+            change_str = "--"
+            price = "--"
+            # 为后续处理设置默认值
+            now = 0
+            high = 0
+            low = 0
+            bid1 = 0
+            ask1 = 0
+            bid1_vol = 0
+            ask1_vol = 0
+        
+        # 检测涨停/跌停封单
+        seal_vol, seal_type = self._calculate_seal_info(now, high, low, bid1, ask1, bid1_vol, ask1_vol)
+            
+        stock_item = (name, price, change_str, color, seal_vol, seal_type)
+        app_logger.debug(f"股票 {code} 数据处理完成")
+        return stock_item
+    
+    def _calculate_seal_info(self, now: Any, high: Any, low: Any, bid1: Any, ask1: Any, 
+                             bid1_vol: Any, ask1_vol: Any) -> Tuple[str, str]:
+        """
+        计算股票的封单信息（涨停/跌停封单量）
+        
+        Args:
+            now: 当前价格
+            high: 最高价
+            low: 最低价
+            bid1: 买一价
+            ask1: 卖一价
+            bid1_vol: 买一量
+            ask1_vol: 卖一量
+            
+        Returns:
+            Tuple[str, str]: 封单量和封单类型
+        """
+        seal_vol = ''
+        seal_type = ''
+        try:
+            # 确保所有值都不是None
+            if (now is not None and high is not None and bid1 is not None and 
+                bid1_vol is not None and ask1 is not None and
+                is_equal(str(now), str(high)) and is_equal(str(now), str(bid1)) and 
+                bid1_vol > 0 and is_equal(str(ask1), "0.0")):
+                # 将封单数转换为以"k"为单位，封单数/100000来算（万手转k）
+                seal_vol = f"{int(bid1_vol/100000)}k" if bid1_vol >= 100000 else f"{int(bid1_vol)}"
+                seal_type = 'up'
+            elif (now is not None and low is not None and ask1 is not None and 
+                  ask1_vol is not None and bid1 is not None and
+                  is_equal(str(now), str(low)) and is_equal(str(now), str(ask1)) and 
+                  ask1_vol > 0 and is_equal(str(bid1), "0.0")):
+                # 将封单数转换为以"k"为单位，封单数/100000来算（万手转k）
+                seal_vol = f"{int(ask1_vol/100000)}k" if ask1_vol >= 100000 else f"{int(ask1_vol)}"
+                seal_type = 'down'
+        except (ValueError, TypeError) as e:
+            app_logger.debug(f"封单计算错误: {e}")
+            pass  # 忽略封单计算中的错误
+            
+        return seal_vol, seal_type
 
 
 # 创建全局股票管理器实例
