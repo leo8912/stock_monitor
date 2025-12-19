@@ -196,7 +196,10 @@ class StockTable(QtWidgets.QTableWidget):
         return f"{change} "
 
     def _resize_columns(self) -> None:
-        """调整列宽"""
+        """
+        调整列宽
+        根据内容自动调整每列的宽度
+        """
         h_header = self.horizontalHeader()
         if h_header is not None:
             # 设置列宽自适应内容
@@ -205,7 +208,10 @@ class StockTable(QtWidgets.QTableWidget):
             h_header.setStretchLastSection(False)
 
     def _notify_parent_window_height_adjustment(self) -> None:
-        """通知父窗口调整高度"""
+        """
+        通知父窗口调整高度
+        当表格数据更新后，通知父窗口重新计算和调整其高度
+        """
         if self.parent():
             parent = self.parent()
             if hasattr(parent, 'adjust_window_height') and callable(getattr(parent, 'adjust_window_height')):
