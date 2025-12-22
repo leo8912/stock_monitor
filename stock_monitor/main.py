@@ -699,44 +699,39 @@ class MainWindow(QtWidgets.QWidget):
             all_failed: 是否所有股票都获取失败
         """
         try:
-            # 如果所有股票都获取失败，显示错误信息
-            if all_failed:
-                from stock_monitor.utils.logger import app_logger
-                app_logger.error("所有股票数据获取失败")
-                error_stocks = [("数据加载失败", "--", "--", "#e6eaf3", "", "")] * len(data)
-                self.update_table_signal.emit(error_stocks)
-            else:
-                # 更新表格数据
-                self.update_table_signal.emit(data)
+            # 更新表格数据
+            self.update_table_signal.emit(data)
             
-            # 缓存数据以便下次快速启动
-            try:
-                from stock_monitor.utils.cache import cache_set
-                cache_set("last_stock_data", data, expire=60)  # 缓存1分钟
-                
-                # 保存会话缓存
-                from stock_monitor.utils.session_cache import save_session_cache
-                session_data = {
-                    'window_position': [self.x(), self.y()],
-                    'stock_data': data
-                }
-                save_session_cache(session_data)
-            except Exception as e:
-                from stock_monitor.utils.logger import app_logger
-                app_logger.warning(f"缓存数据失败: {e}")
-            
-            # 第一次数据加载完成后显示窗口
+            # 显示窗口和所有组件
             if not self.isVisible():
                 self.show()
-                self.table.show()  # 确保表格也显示
-                self.loading_label.hide()  # 隐藏加载标签
                 self.load_position()
                 self.raise_()
                 self.activateWindow()
+            
+            self.market_status_bar.show()
+            self.table.show()
+            
+            # 隐藏加载状态
+            self.loading_label.hide()
+            
+            # 调整窗口大小
+            self.adjust_window_height()
+            
+            # 保存会话缓存
+            try:
+                from stock_monitor.utils.session_cache import save_session_cache
+                session_data = {
+                    'window_position': [self.pos().x(), self.pos().y()],
+                    'stock_data': data
+                }
+                save_session_cache(session_data)
+                app_logger.info("会话缓存保存成功")
+            except Exception as e:
+                app_logger.warning(f"保存会话缓存失败: {e}")
         except Exception as e:
-            from stock_monitor.utils.logger import app_logger
-            app_logger.error(f"更新界面时出错: {e}")
-
+            app_logger.error(f"刷新更新处理失败: {e}")
+            
     def _on_refresh_error(self):
         """刷新错误回调函数"""
         app_logger.error("连续多次刷新失败")
