@@ -69,8 +69,8 @@ class MainWindow(QtWidgets.QWidget):
         self.setup_ui()
         # 尝试加载会话缓存
         if not self._try_load_session_cache():
-            # 如果没有加载到缓存，则隐藏窗口直到数据加载完成
-            self.hide()
+            # 如果没有加载到缓存，确保窗口最终会显示
+            pass
         # 移除这里重复的初始化和刷新调用
         # self.current_user_stocks = []
         # self.refresh_interval = 2
@@ -245,9 +245,9 @@ class MainWindow(QtWidgets.QWidget):
     def _on_refresh_error(self):
         """刷新错误回调函数"""
         try:
-            # 显示错误信息到状态栏
-            self.status_label.setText("❌ 数据刷新失败")
-            app_logger.error("行情数据刷新失败")
+            app_logger.error("连续多次刷新失败")
+            error_stocks = [("网络连接异常", "--", "--", "#e6eaf3", "", "")] * max(3, len(self.current_user_stocks))
+            self.update_table_signal.emit(error_stocks)
             
             # 即使出错也要显示窗口，避免一直隐藏
             if not self.isVisible():
@@ -257,7 +257,50 @@ class MainWindow(QtWidgets.QWidget):
                 self.activateWindow()
         except Exception as e:
             app_logger.error(f"处理刷新错误时出错: {e}")
-
+            
+    def _on_refresh_update(self, data, all_failed=False):
+        """
+        刷新更新回调函数
+        当后台线程获取到新数据时调用此函数更新UI
+        
+        Args:
+            data: 股票数据列表
+            all_failed: 是否所有股票都获取失败
+        """
+        try:
+            # 更新表格数据
+            self.update_table_signal.emit(data)
+            
+            # 显示窗口和所有组件
+            if not self.isVisible():
+                self.show()
+                self.load_position()
+                self.raise_()
+                self.activateWindow()
+            
+            self.market_status_bar.show()
+            self.table.show()
+            
+            # 隐藏加载状态
+            self.loading_label.hide()
+            
+            # 调整窗口大小
+            self.adjust_window_height()
+            
+            # 保存会话缓存
+            try:
+                from stock_monitor.utils.session_cache import save_session_cache
+                session_data = {
+                    'window_position': [self.pos().x(), self.pos().y()],
+                    'stock_data': data
+                }
+                save_session_cache(session_data)
+                app_logger.info("会话缓存保存成功")
+            except Exception as e:
+                app_logger.warning(f"保存会话缓存失败: {e}")
+        except Exception as e:
+            app_logger.error(f"刷新更新处理失败: {e}")
+            
     def _try_show_cached_data(self):
         """尝试显示缓存的数据以加快启动速度"""
         try:
@@ -313,7 +356,24 @@ class MainWindow(QtWidgets.QWidget):
             # 同时隐藏所有组件
             self.market_status_bar.hide()
             self.table.hide()
+        
+        # 确保在没有缓存的情况下也能最终显示窗口
+        # 使用 QTimer 在短时间内显示窗口，确保初始化完成
+        QtCore.QTimer.singleShot(100, self._ensure_window_visible)
         return False
+    
+    def _ensure_window_visible(self):
+        """确保窗口可见"""
+        try:
+            # 如果窗口仍然隐藏，则显示它
+            if not self.isVisible():
+                self.show()
+                self.load_position()
+                self.raise_()
+                self.activateWindow()
+                app_logger.info("窗口已强制显示")
+        except Exception as e:
+            app_logger.error(f"强制显示窗口时出错: {e}")
 
     def install_event_filters(self, widget):
         """
@@ -734,10 +794,19 @@ class MainWindow(QtWidgets.QWidget):
             
     def _on_refresh_error(self):
         """刷新错误回调函数"""
-        app_logger.error("连续多次刷新失败")
-        error_stocks = [("网络连接异常", "--", "--", "#e6eaf3", "", "")] * max(3, len(self.current_user_stocks))
-        self.update_table_signal.emit(error_stocks)
-        
+        try:
+            app_logger.error("连续多次刷新失败")
+            error_stocks = [("网络连接异常", "--", "--", "#e6eaf3", "", "")] * max(3, len(self.current_user_stocks))
+            self.update_table_signal.emit(error_stocks)
+            
+            # 即使出错也要显示窗口，避免一直隐藏
+            if not self.isVisible():
+                self.show()
+                self.load_position()
+                self.raise_()
+                self.activateWindow()
+        except Exception as e:
+            app_logger.error(f"处理刷新错误时出错: {e}")
     def paintEvent(self, event):
         """
         窗口绘制事件，用于绘制半透明背景
