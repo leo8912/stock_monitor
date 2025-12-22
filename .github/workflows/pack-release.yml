@@ -36,8 +36,6 @@ jobs:
         Get-ChildItem stock_monitor/resources/
         echo "图标文件是否存在:"
         Test-Path stock_monitor/resources/icon.ico
-        echo "股票数据文件是否存在:"
-        Test-Path stock_monitor/resources/stock_basic.json
 
     - name: 查找easyquotation的stock_codes.conf文件 # Find easyquotation stock_codes.conf
       id: find_eq
@@ -62,7 +60,6 @@ jobs:
         pyinstaller -y -w -i stock_monitor/resources/icon.ico -n stock_monitor stock_monitor/main.py `
           --add-data "$env:EQPATH\stock_codes.conf;easyquotation" `
           --add-data "$env:ZHCONVPATH\zhcdict.json;zhconv" `
-          --add-data "stock_monitor/resources/stock_basic.json;stock_monitor/resources" `
           --add-data "stock_monitor/resources/icon.ico;stock_monitor/resources" `
           --hidden-import=pypinyin `
           --hidden-import=pypinyin.style
