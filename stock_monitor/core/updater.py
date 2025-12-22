@@ -345,11 +345,11 @@ class AppUpdater:
             parent, 
             '发现新版本', 
             message,
-            QMessageBox.Yes | QMessageBox.No, 
-            QMessageBox.Yes
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, 
+            QMessageBox.StandardButton.Yes
         )
         
-        return reply == QMessageBox.Yes
+        return reply == QMessageBox.StandardButton.Yes
 
     def perform_update(self, parent=None) -> bool:
         """
@@ -378,14 +378,14 @@ class AppUpdater:
                             parent, 
                             "更新失败", 
                             "应用更新失败，请稍后重试或手动更新。",
-                            QMessageBox.Ok
+                            QMessageBox.StandardButton.Ok
                         )
                 else:
                     QMessageBox.warning(
                         parent, 
                         "下载失败", 
                         "更新包下载失败，请检查网络连接后重试。",
-                        QMessageBox.Ok
+                        QMessageBox.StandardButton.Ok
                     )
             return False
         except Exception as e:
@@ -394,7 +394,7 @@ class AppUpdater:
                 parent,
                 "更新失败",
                 f"更新过程中发生错误: {str(e)}",
-                QMessageBox.Ok
+                QMessageBox.StandardButton.Ok
             )
             return False
 
