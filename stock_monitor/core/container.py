@@ -45,7 +45,9 @@ class DIContainer:
             if service_type == ConfigManager:
                 self._services[service_type] = ConfigManager()
             elif service_type == StockManager:
-                self._services[service_type] = StockManager()
+                # 为StockManager注入StockDataService依赖
+                stock_data_service = self.get(StockDataService)
+                self._services[service_type] = StockManager(stock_data_service=stock_data_service)
             elif service_type == StockDataService:
                 self._services[service_type] = StockDataService()
             else:

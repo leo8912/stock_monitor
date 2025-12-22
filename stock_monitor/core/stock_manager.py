@@ -14,14 +14,62 @@ from ..utils.helpers import is_equal
 # LRU缓存大小常量
 LRU_CACHE_SIZE = 128
 
+# 添加动态调整LRU缓存大小的函数
+def get_dynamic_lru_cache_size():
+    """
+    根据系统资源和使用情况动态调整LRU缓存大小
+    在资源受限环境中减小缓存大小以节省内存
+    """
+    try:
+        import psutil
+        # 获取可用内存（GB）
+        available_memory_gb = psutil.virtual_memory().available / (1024**3)
+        
+        # 根据可用内存动态调整缓存大小
+        if available_memory_gb < 1:  # 可用内存小于1GB
+            return 64
+        elif available_memory_gb < 2:  # 可用内存小于2GB
+            return 128
+        elif available_memory_gb < 4:  # 可用内存小于4GB
+            return 256
+        else:  # 可用内存大于等于4GB
+            return 512
+    except ImportError:
+        # 如果无法导入psutil，则使用默认值
+        return LRU_CACHE_SIZE
+
 
 class StockManager:
     """股票管理器"""
     
-    def __init__(self):
+    def __init__(self, stock_data_service=None):
         """初始化股票管理器"""
         self._processor = StockCodeProcessor()
         self._data_change_detector = DataChangeDetector()
+        # 使用依赖注入，如果没有提供则使用全局实例
+        from ..core.stock_service import stock_data_service as global_stock_data_service
+        self._stock_data_service = stock_data_service or global_stock_data_service
+        # 初始化动态LRU缓存
+        self._init_dynamic_lru_cache()
+    
+    def _init_dynamic_lru_cache(self):
+        """初始化动态LRU缓存"""
+        # 获取动态缓存大小
+        dynamic_cache_size = get_dynamic_lru_cache_size()
+        
+        # 定义处理股票数据的核心函数
+        def process_single_stock_data_core(code: str, info_json: str) -> tuple:
+            # 将JSON字符串转换回字典
+            try:
+                info = json.loads(info_json)
+            except:
+                info = {}
+            return self._process_single_stock_data_impl(code, info)
+        
+        # 应用LRU缓存装饰器
+        self._process_single_stock_data_cached = lru_cache(maxsize=dynamic_cache_size)(
+            process_single_stock_data_core
+        )
     
     def has_stock_data_changed(self, stocks: List[tuple]) -> bool:
         """
@@ -54,8 +102,8 @@ class StockManager:
         Returns:
             List[tuple]: 格式化后的股票数据列表
         """
-        # 使用批量获取方式获取所有股票数据
-        data_dict = stock_data_service.get_multiple_stocks_data(stock_codes)
+        # 使用依赖注入的服务获取所有股票数据
+        data_dict = self._stock_data_service.get_multiple_stocks_data(stock_codes)
         
         # 处理股票数据
         stocks = []

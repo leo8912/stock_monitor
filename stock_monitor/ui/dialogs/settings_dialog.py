@@ -75,10 +75,11 @@ class DraggableListWidget(QListWidget):
 class StockSearchHandler:
     """股票搜索处理类"""
     
-    def __init__(self, search_input, search_results, watch_list):
+    def __init__(self, search_input, search_results, watch_list, parent_dialog=None):
         self.search_input = search_input
         self.search_results = search_results
         self.watch_list = watch_list
+        self.parent_dialog = parent_dialog
         self._setup_search_ui()
         
     def _setup_search_ui(self):
@@ -165,8 +166,9 @@ class StockSearchHandler:
         # 如果有搜索结果，添加第一个结果
         if self.search_results.count() > 0:
             item = self.search_results.item(0)
-            # 注意：这里需要通过外部引用调用add_stock_from_search
-            # self.add_stock_from_search(item)
+            # 通过外部引用来调用add_stock_from_search方法
+            if self.parent_dialog:
+                self.parent_dialog.add_stock_from_search(item)
             # 清空搜索框
             self.search_input.clear()
             self.search_results.clear()
@@ -384,10 +386,6 @@ class ConfigManagerHandler:
             auto_start_enabled = auto_start_checkbox.isChecked()
             self.config_manager.set("auto_start", auto_start_enabled)
             
-            # 实际设置开机启动
-            # 注意：这里需要通过外部引用调用_set_auto_start
-            # self._set_auto_start(auto_start_enabled)
-            
             # 保存刷新频率设置
             refresh_text = refresh_combo.currentText()
             refresh_interval = self._map_refresh_text_to_value(refresh_text)
@@ -522,7 +520,7 @@ class NewSettingsDialog(QDialog):
         self._setup_system_settings_ui(main_layout)
         
         # 初始化功能管理器（在UI组件创建之后）
-        self.stock_search_handler = StockSearchHandler(self.search_input, self.search_results, self.watch_list)
+        self.stock_search_handler = StockSearchHandler(self.search_input, self.search_results, self.watch_list, self)
         self.watch_list_manager = WatchListManager(self.watch_list, self.remove_button, self.move_up_button, self.move_down_button)
         self.config_manager_handler = ConfigManagerHandler(self.config_manager)
         
@@ -1281,6 +1279,10 @@ class NewSettingsDialog(QDialog):
         """点击确定按钮时保存设置"""
         self.save_config()
         
+        # 实际设置开机启动
+        auto_start_enabled = self.auto_start_checkbox.isChecked()
+        self._set_auto_start(auto_start_enabled)
+        
         # 清除预览透明度并恢复主窗口的默认状态
         if self.main_window:
             if hasattr(self.main_window, '_preview_transparency'):
@@ -1298,6 +1300,9 @@ class NewSettingsDialog(QDialog):
             from stock_monitor.utils.logger import app_logger
             app_logger.info(f"发送配置更改信号: 股票列表={stocks}, 刷新间隔={refresh_interval}")
             self.config_changed.emit(stocks, refresh_interval)
+            
+            # 立即刷新数据
+            self.main_window.refresh_now(stocks)
             
         # 更新原始列表为当前列表
         self.original_watch_list = []
@@ -1429,7 +1434,7 @@ class NewSettingsDialog(QDialog):
                 self.main_window.loading_label.setStyleSheet(f"""
                     QLabel {{
                         color: #fff;
-                        font-size: {font_size}px;
+                        font-size: {max(1, font_size)}px;  # 确保字体大小至少为1
                         background: rgba(30, 30, 30, 0.8);
                         border-radius: 10px;
                         padding: 10px;
