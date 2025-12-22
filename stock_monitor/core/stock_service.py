@@ -7,7 +7,7 @@ import time
 from typing import List, Dict, Any, Optional, Tuple
 import easyquotation
 from ..utils.logger import app_logger
-from ..utils.error_handler import retry_on_failure
+from ..utils.error_handler import retry_on_failure, safe_call
 from ..utils.helpers import is_equal
 from typing import Tuple
 
@@ -17,11 +17,14 @@ class StockDataService:
     
     def __init__(self):
         """初始化股票数据服务"""
-        try:
-            self.sina_quotation = easyquotation.use('sina')
-        except Exception as e:
-            app_logger.error(f"初始化新浪行情引擎失败: {e}")
-            self.sina_quotation = None
+        def init_sina_quotation():
+            return easyquotation.use('sina')
+        
+        self.sina_quotation = safe_call(
+            init_sina_quotation, 
+            default_return=None,
+            exception_handler=lambda e, error_type: app_logger.error(f"初始化新浪行情引擎失败: {e}") or None
+        )
     
     @retry_on_failure(max_attempts=3, delay=1.0)
     def get_stock_data(self, code: str) -> Optional[Dict[str, Any]]:
@@ -171,19 +174,27 @@ class StockDataService:
         """
         # 根据股票代码类型选择不同的行情引擎
         if code.startswith('hk'):
-            try:
-                quotation_engine = easyquotation.use('hkquote')
+            def init_hk_quotation():
+                return easyquotation.use('hkquote')
+                
+            quotation_engine = safe_call(
+                init_hk_quotation,
+                default_return=None,
+                exception_handler=lambda e, error_type: app_logger.error(f"初始化港股行情引擎失败: {e}") or None
+            )
+            if quotation_engine:
                 app_logger.debug(f"使用 hkquote 引擎获取港股 {code} 数据")
-            except Exception as e:
-                app_logger.error(f"初始化港股行情引擎失败: {e}")
-                return None
+            return quotation_engine
         else:
             if self.sina_quotation is None:
-                try:
-                    self.sina_quotation = easyquotation.use('sina')
-                except Exception as e:
-                    app_logger.error(f"重新初始化新浪行情引擎失败: {e}")
-                    return None
+                def init_sina_quotation():
+                    return easyquotation.use('sina')
+                    
+                self.sina_quotation = safe_call(
+                    init_sina_quotation,
+                    default_return=None,
+                    exception_handler=lambda e, error_type: app_logger.error(f"重新初始化新浪行情引擎失败: {e}") or None
+                )
             quotation_engine = self.sina_quotation
             app_logger.debug(f"使用 sina 引擎获取股票 {code} 数据")
         return quotation_engine
@@ -276,19 +287,30 @@ class StockDataService:
             result (dict): 结果字典
             sina_codes (List[str]): A股代码列表
         """
-        try:
+        def init_sina_if_needed():
             if self.sina_quotation is None:
                 self.sina_quotation = easyquotation.use('sina')
             
+        safe_call(
+            init_sina_if_needed,
+            exception_handler=lambda e, error_type: app_logger.error(f"初始化新浪行情引擎失败: {e}") or None
+        )
+        
+        def fetch_sina_stocks():
             # 使用prefix=True参数批量获取A股数据，确保sh000001和sz000001等指数正确处理
-            sina_data = self.sina_quotation.stocks(sina_codes, prefix=True)
-            if isinstance(sina_data, dict):
-                result.update(sina_data)
-                app_logger.debug(f"批量获取 {len(sina_codes)} 只A股数据成功")
-            else:
-                app_logger.warning("A股批量数据获取返回格式异常")
-        except Exception as e:
-            app_logger.error(f"批量获取A股数据失败: {e}")
+            return self.sina_quotation.stocks(sina_codes, prefix=True) if self.sina_quotation else None
+            
+        sina_data = safe_call(
+            fetch_sina_stocks,
+            default_return=None,
+            exception_handler=lambda e, error_type: app_logger.error(f"批量获取A股数据失败: {e}") or None
+        )
+        
+        if isinstance(sina_data, dict):
+            result.update(sina_data)
+            app_logger.debug(f"批量获取 {len(sina_codes)} 只A股数据成功")
+        else:
+            app_logger.warning("A股批量数据获取返回格式异常")
             # 如果批量获取失败，逐个获取
             for code in sina_codes:
                 result[code] = self.get_stock_data(code)
@@ -301,21 +323,40 @@ class StockDataService:
             result (dict): 结果字典
             hk_codes (List[str]): 港股代码列表
         """
-        try:
-            hk_quotation = easyquotation.use('hkquote')
+        def init_hk_quotation():
+            return easyquotation.use('hkquote')
+            
+        hk_quotation = safe_call(
+            init_hk_quotation,
+            default_return=None,
+            exception_handler=lambda e, error_type: app_logger.error(f"初始化港股行情引擎失败: {e}") or None
+        )
+        
+        if not hk_quotation:
+            app_logger.warning("港股行情引擎初始化失败，无法获取港股数据")
+            # 如果初始化失败，逐个获取
+            for code in hk_codes:
+                result[code] = self.get_stock_data(code)
+            return
+            
+        def fetch_hk_stocks():
             # 港股代码需要去掉'hk'前缀
             pure_hk_codes = [code[2:] for code in hk_codes]
-            hk_data = hk_quotation.stocks(pure_hk_codes)
+            return hk_quotation.stocks(pure_hk_codes)
             
-            if isinstance(hk_data, dict):
-                # 将数据映射回带'hk'前缀的代码
-                for pure_code, data in hk_data.items():
-                    result[f"hk{pure_code}"] = data
-                app_logger.debug(f"批量获取 {len(hk_codes)} 只港股数据成功")
-            else:
-                app_logger.warning("港股批量数据获取返回格式异常")
-        except Exception as e:
-            app_logger.error(f"批量获取港股数据失败: {e}")
+        hk_data = safe_call(
+            fetch_hk_stocks,
+            default_return=None,
+            exception_handler=lambda e, error_type: app_logger.error(f"批量获取港股数据失败: {e}") or None
+        )
+        
+        if isinstance(hk_data, dict):
+            # 将数据映射回带'hk'前缀的代码
+            for pure_code, data in hk_data.items():
+                result[f"hk{pure_code}"] = data
+            app_logger.debug(f"批量获取 {len(hk_codes)} 只港股数据成功")
+        else:
+            app_logger.warning("港股批量数据获取返回格式异常")
             # 如果批量获取失败，逐个获取
             for code in hk_codes:
                 result[code] = self.get_stock_data(code)
@@ -394,6 +435,85 @@ class StockDataService:
             if '-' in name:
                 name = name.split('-')[0].strip()
         return name
+    
+    def _validate_price_data(self, code: str, now: Any, close: Any) -> bool:
+        """
+        验证价格数据的有效性
+        
+        Args:
+            code (str): 股票代码
+            now: 当前价格
+            close: 收盘价格
+            
+        Returns:
+            bool: 数据是否有效
+        """
+        # 添加更严格的None值检查
+        if now is None or close is None:
+            app_logger.warning(f"股票 {code} 数据不完整: now={now}, close={close}")
+            return False
+            
+        # 检查数据是否有效（防止获取到空字符串等无效数据）
+        try:
+            float(now)
+            float(close)
+            return True
+        except (ValueError, TypeError):
+            app_logger.warning(f"股票 {code} 数据无效: now={now}, close={close}")
+            return False
+    
+    def _calculate_price_change(self, now: float, close: float) -> Tuple[str, str, str]:
+        """
+        计算价格变化和颜色
+        
+        Args:
+            now (float): 当前价格
+            close (float): 收盘价格
+            
+        Returns:
+            Tuple[str, str, str]: 价格、变化百分比和颜色
+        """
+        price = f"{now:.2f}"
+        percent = ((now - close) / close * 100) if close != 0 else 0
+        
+        # 修改颜色逻辑：超过5%的涨幅使用亮红色
+        if percent >= 5:
+            color = '#FF4500'  # 亮红色（更亮的红色）
+        elif percent > 0:
+            color = '#e74c3f'  # 红色
+        elif percent < 0:
+            color = '#27ae60'  # 绿色
+        else:
+            color = '#e6eaf3'  # 平盘
+            
+        change_str = f"{percent:+.2f}%"
+        return price, change_str, color
+    
+    def _extract_price_data(self, code: str, info: Dict[str, Any]) -> Optional[Tuple[str, str, str]]:
+        """
+        提取并处理价格数据
+        
+        Args:
+            code (str): 股票代码
+            info (Dict[str, Any]): 股票原始数据
+            
+        Returns:
+            Optional[Tuple[str, str, str]]: 价格、变化百分比和颜色，如果数据无效则返回None
+        """
+        try:
+            # 不同行情源的字段可能不同
+            now = info.get('now') or info.get('price')
+            close = info.get('close') or info.get('lastPrice') or now
+            
+            # 验证价格数据
+            if not self._validate_price_data(code, now, close):
+                return None
+                
+            return self._calculate_price_change(float(now), float(close))
+        except (ValueError, TypeError, ZeroDivisionError) as e:
+            app_logger.warning(f"股票 {code} 数据计算错误: {e}")
+            return None
+    
     def _process_price_info(self, info: Dict[str, Any], code: str) -> Optional[Tuple[str, str, str]]:
         """
         处理股票价格和涨跌幅信息
@@ -405,41 +525,12 @@ class StockDataService:
         Returns:
             Optional[Tuple[str, str, str]]: 价格、涨跌幅和颜色的元组，处理失败时返回None
         """
-        try:
-            # 不同行情源的字段可能不同
-            now = info.get('now') or info.get('price')
-            close = info.get('close') or info.get('lastPrice') or now
-            
-            # 添加更严格的None值检查
-            if now is None or close is None:
-                app_logger.warning(f"股票 {code} 数据不完整: now={now}, close={close}")
-                return None
-                
-            # 检查数据是否有效（防止获取到空字符串等无效数据）
-            try:
-                float(now)
-                float(close)
-            except (ValueError, TypeError):
-                app_logger.warning(f"股票 {code} 数据无效: now={now}, close={close}")
-                return None
-                
-            price = f"{float(now):.2f}" if now is not None else "--"
-            
-            percent = ((float(now) - float(close)) / float(close) * 100) if close and float(close) != 0 else 0
-            # 修改颜色逻辑：超过5%的涨幅使用亮红色
-            if percent >= 5:
-                color = '#FF4500'  # 亮红色（更亮的红色）
-            elif percent > 0:
-                color = '#e74c3f'  # 红色
-            elif percent < 0:
-                color = '#27ae60'  # 绿色
-            else:
-                color = '#e6eaf3'  # 平盘
-            change_str = f"{percent:+.2f}%"
-            return price, change_str, color
-        except (ValueError, TypeError, ZeroDivisionError) as e:
-            app_logger.warning(f"股票 {code} 数据计算错误: {e}")
+        price_data = self._extract_price_data(code, info)
+        
+        if price_data is None:
             return "--", "--", "#e6eaf3"
+            
+        return price_data
     
     def _detect_limit_info(self, info: Dict[str, Any], code: str, price: str) -> Tuple[str, str]:
         """

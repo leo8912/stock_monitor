@@ -11,14 +11,65 @@ from ..utils.stock_utils import StockCodeProcessor
 from ..core.data_change_detector import DataChangeDetector
 from ..utils.helpers import is_equal
 
+# LRU缓存大小常量
+LRU_CACHE_SIZE = 128
+
+# 添加动态调整LRU缓存大小的函数
+def get_dynamic_lru_cache_size():
+    """
+    根据系统资源和使用情况动态调整LRU缓存大小
+    在资源受限环境中减小缓存大小以节省内存
+    """
+    try:
+        import psutil
+        # 获取可用内存（GB）
+        available_memory_gb = psutil.virtual_memory().available / (1024**3)
+        
+        # 根据可用内存动态调整缓存大小
+        if available_memory_gb < 1:  # 可用内存小于1GB
+            return 64
+        elif available_memory_gb < 2:  # 可用内存小于2GB
+            return 128
+        elif available_memory_gb < 4:  # 可用内存小于4GB
+            return 256
+        else:  # 可用内存大于等于4GB
+            return 512
+    except ImportError:
+        # 如果无法导入psutil，则使用默认值
+        return LRU_CACHE_SIZE
+
 
 class StockManager:
     """股票管理器"""
     
-    def __init__(self):
+    def __init__(self, stock_data_service=None):
         """初始化股票管理器"""
         self._processor = StockCodeProcessor()
         self._data_change_detector = DataChangeDetector()
+        # 使用依赖注入，如果没有提供则使用全局实例
+        from ..core.stock_service import stock_data_service as global_stock_data_service
+        self._stock_data_service = stock_data_service or global_stock_data_service
+        # 初始化动态LRU缓存
+        self._init_dynamic_lru_cache()
+    
+    def _init_dynamic_lru_cache(self):
+        """初始化动态LRU缓存"""
+        # 获取动态缓存大小
+        dynamic_cache_size = get_dynamic_lru_cache_size()
+        
+        # 定义处理股票数据的核心函数
+        def process_single_stock_data_core(code: str, info_json: str) -> tuple:
+            # 将JSON字符串转换回字典
+            try:
+                info = json.loads(info_json)
+            except:
+                info = {}
+            return self._process_single_stock_data_impl(code, info)
+        
+        # 应用LRU缓存装饰器
+        self._process_single_stock_data_cached = lru_cache(maxsize=dynamic_cache_size)(
+            process_single_stock_data_core
+        )
     
     def has_stock_data_changed(self, stocks: List[tuple]) -> bool:
         """
@@ -51,8 +102,8 @@ class StockManager:
         Returns:
             List[tuple]: 格式化后的股票数据列表
         """
-        # 使用批量获取方式获取所有股票数据
-        data_dict = stock_data_service.get_multiple_stocks_data(stock_codes)
+        # 使用依赖注入的服务获取所有股票数据
+        data_dict = self._stock_data_service.get_multiple_stocks_data(stock_codes)
         
         # 处理股票数据
         stocks = []
@@ -72,7 +123,7 @@ class StockManager:
         app_logger.debug(f"共处理 {len(stocks)} 只股票数据")
         return stocks
     
-    @lru_cache(maxsize=128)
+    @lru_cache(maxsize=LRU_CACHE_SIZE)
     def _process_single_stock_data_cached(self, code: str, info_json: str) -> tuple:
         """
         带LRU缓存的单只股票数据处理方法
@@ -103,66 +154,15 @@ class StockManager:
         Returns:
             tuple: 格式化后的股票数据元组
         """
-        name = info.get('name', code)
-        # 对于港股，只保留中文部分
-        if code.startswith('hk'):
-            # 去除"-"及之后的部分，只保留中文名称
-            if '-' in name:
-                name = name.split('-')[0].strip()
+        name = self._extract_stock_name(code, info)
+        price_data = self._extract_price_data(code, info)
         
-        try:
-            # 不同行情源的字段可能不同
-            now = info.get('now') or info.get('price')
-            close = info.get('close') or info.get('lastPrice') or now
-            high = info.get('high', 0)
-            low = info.get('low', 0)
-            bid1 = info.get('bid1', 0)
-            bid1_vol = info.get('bid1_volume', 0) or info.get('volume_2', 0)
-            ask1 = info.get('ask1', 0)
-            ask1_vol = info.get('ask1_volume', 0) or info.get('volume_3', 0)
-            
-            # 添加更严格的None值检查
-            if now is None or close is None:
-                app_logger.warning(f"股票 {code} 数据不完整: now={now}, close={close}")
-                return (name, "--", "--", "#e6eaf3", "", "")
-                
-            # 检查数据是否有效（防止获取到空字符串等无效数据）
-            try:
-                float(now)
-                float(close)
-            except (ValueError, TypeError):
-                app_logger.warning(f"股票 {code} 数据无效: now={now}, close={close}")
-                return (name, "--", "--", "#e6eaf3", "", "")
-                
-            price = f"{float(now):.2f}" if now is not None else "--"
-            
-            percent = ((float(now) - float(close)) / float(close) * 100) if close and float(close) != 0 else 0
-            # 修改颜色逻辑：超过5%的涨幅使用亮红色
-            if percent >= 5:
-                color = '#FF4500'  # 亮红色（更亮的红色）
-            elif percent > 0:
-                color = '#e74c3f'  # 红色
-            elif percent < 0:
-                color = '#27ae60'  # 绿色
-            else:
-                color = '#e6eaf3'  # 平盘
-            change_str = f"{percent:+.2f}%"
-        except (ValueError, TypeError, ZeroDivisionError) as e:
-            app_logger.warning(f"股票 {code} 数据计算错误: {e}")
-            color = '#e6eaf3'
-            change_str = "--"
-            price = "--"
-            # 为后续处理设置默认值
-            now = 0
-            high = 0
-            low = 0
-            bid1 = 0
-            ask1 = 0
-            bid1_vol = 0
-            ask1_vol = 0
+        if price_data is None:
+            # 数据不完整或无效
+            return (name, "--", "--", "#e6eaf3", "", "")
         
-        # 检测涨停/跌停封单
-        seal_vol, seal_type = self._calculate_seal_info(now, high, low, bid1, ask1, bid1_vol, ask1_vol)
+        price, change_str, color = price_data
+        seal_vol, seal_type = self._calculate_seal_info(**self._extract_seal_calculation_params(info))
             
         stock_item = (name, price, change_str, color, seal_vol, seal_type)
         app_logger.debug(f"股票 {code} 数据处理完成")
@@ -221,7 +221,123 @@ class StockManager:
             pass  # 忽略封单计算中的错误
             
         return seal_vol, seal_type
-
+    
+    def _extract_stock_name(self, code: str, info: Dict[str, Any]) -> str:
+        """
+        提取并格式化股票名称
+        
+        Args:
+            code (str): 股票代码
+            info (Dict[str, Any]): 股票原始数据
+            
+        Returns:
+            str: 格式化后的股票名称
+        """
+        name = info.get('name', code)
+        # 对于港股，只保留中文部分
+        if code.startswith('hk'):
+            # 去除"-"及之后的部分，只保留中文名称
+            if '-' in name:
+                name = name.split('-')[0].strip()
+        return name
+    
+    def _validate_price_data(self, code: str, now: Any, close: Any) -> bool:
+        """
+        验证价格数据的有效性
+        
+        Args:
+            code (str): 股票代码
+            now: 当前价格
+            close: 收盘价格
+            
+        Returns:
+            bool: 数据是否有效
+        """
+        # 添加更严格的None值检查
+        if now is None or close is None:
+            app_logger.warning(f"股票 {code} 数据不完整: now={now}, close={close}")
+            return False
+            
+        # 检查数据是否有效（防止获取到空字符串等无效数据）
+        try:
+            float(now)
+            float(close)
+            return True
+        except (ValueError, TypeError):
+            app_logger.warning(f"股票 {code} 数据无效: now={now}, close={close}")
+            return False
+    
+    def _calculate_price_change(self, now: float, close: float) -> Tuple[str, str, str]:
+        """
+        计算价格变化和颜色
+        
+        Args:
+            now (float): 当前价格
+            close (float): 收盘价格
+            
+        Returns:
+            Tuple[str, str, str]: 价格、变化百分比和颜色
+        """
+        price = f"{now:.2f}"
+        percent = ((now - close) / close * 100) if close != 0 else 0
+        
+        # 修改颜色逻辑：超过5%的涨幅使用亮红色
+        if percent >= 5:
+            color = '#FF4500'  # 亮红色（更亮的红色）
+        elif percent > 0:
+            color = '#e74c3f'  # 红色
+        elif percent < 0:
+            color = '#27ae60'  # 绿色
+        else:
+            color = '#e6eaf3'  # 平盘
+            
+        change_str = f"{percent:+.2f}%"
+        return price, change_str, color
+    
+    def _extract_price_data(self, code: str, info: Dict[str, Any]) -> Optional[Tuple[str, str, str]]:
+        """
+        提取并处理价格数据
+        
+        Args:
+            code (str): 股票代码
+            info (Dict[str, Any]): 股票原始数据
+            
+        Returns:
+            Optional[Tuple[str, str, str]]: 价格、变化百分比和颜色，如果数据无效则返回None
+        """
+        try:
+            # 不同行情源的字段可能不同
+            now = info.get('now') or info.get('price')
+            close = info.get('close') or info.get('lastPrice') or now
+            
+            # 验证价格数据
+            if not self._validate_price_data(code, now, close):
+                return None
+                
+            return self._calculate_price_change(float(now), float(close))
+        except (ValueError, TypeError, ZeroDivisionError) as e:
+            app_logger.warning(f"股票 {code} 数据计算错误: {e}")
+            return None
+    
+    def _extract_seal_calculation_params(self, info: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        提取封单计算所需参数
+        
+        Args:
+            info (Dict[str, Any]): 股票原始数据
+            
+        Returns:
+            Dict[str, Any]: 封单计算参数
+        """
+        return {
+            'now': info.get('now') or info.get('price'),
+            'high': info.get('high', 0),
+            'low': info.get('low', 0),
+            'bid1': info.get('bid1', 0),
+            'ask1': info.get('ask1', 0),
+            'bid1_vol': info.get('bid1_volume', 0) or info.get('volume_2', 0),
+            'ask1_vol': info.get('ask1_volume', 0) or info.get('volume_3', 0)
+        }
 
 # 创建全局股票管理器实例
 stock_manager = StockManager()

@@ -615,7 +615,7 @@ class MainWindow(QtWidgets.QWidget):
                 self.loading_label.setStyleSheet(f"""
                     QLabel {{
                         color: #fff;
-                        font-size: {font_size}px;
+                        font-size: {max(1, font_size)}px;  # 确保字体大小至少为1
                         background: rgba(30, 30, 30, 0.8);
                         border-radius: 10px;
                         padding: 10px;
@@ -1028,6 +1028,9 @@ def main():
         tray_icon.show()
         # 保存托盘图标引用到主窗口
         window.tray_icon = tray_icon
+        
+        # 设置开机自启动
+        _setup_auto_start()
         
         # 不再在这里显示窗口，而是等数据加载完成后再显示
         
