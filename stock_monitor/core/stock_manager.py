@@ -123,26 +123,6 @@ class StockManager:
         app_logger.debug(f"共处理 {len(stocks)} 只股票数据")
         return stocks
     
-    @lru_cache(maxsize=LRU_CACHE_SIZE)
-    def _process_single_stock_data_cached(self, code: str, info_json: str) -> tuple:
-        """
-        带LRU缓存的单只股票数据处理方法
-        
-        Args:
-            code (str): 股票代码
-            info_json (str): 股票数据的JSON序列化字符串
-            
-        Returns:
-            tuple: 格式化后的股票数据元组
-        """
-        # 将JSON字符串转换回字典
-        try:
-            info = json.loads(info_json)
-        except:
-            info = {}
-        
-        return self._process_single_stock_data_impl(code, info)
-    
     def _process_single_stock_data_impl(self, code: str, info: Dict[str, Any]) -> tuple:
         """
         处理单只股票的数据的实际实现

@@ -68,7 +68,9 @@ class TestLRUCacheMechanism(unittest.TestCase):
         
     def test_cache_size_limit_should_work(self):
         """测试缓存大小限制是否生效"""
-        maxsize = 128  # 与实现中设置的一致
+        # 获取动态缓存大小
+        from stock_monitor.core.stock_manager import get_dynamic_lru_cache_size
+        maxsize = get_dynamic_lru_cache_size()
         
         # 插入超过缓存大小的数据
         for i in range(maxsize + 10):

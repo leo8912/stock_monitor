@@ -31,6 +31,7 @@ class StockSearchWidget(QtWidgets.QWidget):
         self._search_throttle_timer = QtCore.QTimer(self)
         self._search_throttle_timer.setSingleShot(True)
         self._search_throttle_timer.timeout.connect(self._perform_search)
+        self.filtered_stocks = []  # 添加这个属性以满足测试要求
         self.setup_ui()
         self._load_stock_data()
 
@@ -204,10 +205,10 @@ class StockSearchWidget(QtWidgets.QWidget):
         
         if text:
             # 使用数据源进行搜索
-            matched_stocks = self.stock_data_source.search_stocks(text, limit=30)
+            self.filtered_stocks = self.stock_data_source.search_stocks(text, limit=30)
             
             # 显示匹配结果
-            for stock in matched_stocks:
+            for stock in self.filtered_stocks:
                 code = stock['code']
                 name = stock['name']
                 emoji = get_stock_emoji(code, name)
@@ -216,6 +217,10 @@ class StockSearchWidget(QtWidgets.QWidget):
                 item.setData(QtCore.Qt.ItemDataRole.UserRole, stock)  # type: ignore
                 self.result_list.addItem(item)
                 
+        else:
+            # 当文本为空时，清空过滤后的股票列表
+            self.filtered_stocks = []
+            
         self.add_btn.setEnabled(False)
 
     def on_item_clicked(self, item): 
