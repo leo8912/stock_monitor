@@ -8,6 +8,10 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 
+# 导入UI常量
+from stock_monitor.ui.constants import WINDOW, COLORS
+
+
 class ModernProgressDialog(QDialog):
     """现代化进度对话框"""
     

@@ -1,25 +1,31 @@
-
 import sys
 import os
 import threading
 import time
 import datetime
-from PyQt6 import QtWidgets, QtGui, QtCore
-from PyQt6.QtCore import pyqtSignal, pyqtSlot
 
-# 导入应用组件
-from stock_monitor.utils.logger import app_logger
-from stock_monitor.utils.helpers import resource_path
-from stock_monitor.utils.log_cleaner import schedule_log_cleanup
+from PyQt6 import QtWidgets, QtGui, QtCore
+from PyQt6.QtWidgets import QApplication
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, pyqtSlot, QPoint, QPropertyAnimation, QEasingCurve
+from PyQt6.QtGui import QIcon, QAction, QFont, QColor, QPainter
+
+from stock_monitor.config.manager import ConfigManager
 from stock_monitor.core.container import container
-from stock_monitor.core.refresh_worker import RefreshWorker
 from stock_monitor.core.market_worker import MarketStatsWorker
-from stock_monitor.ui.widgets.market_status import MarketStatusBar
+from stock_monitor.core.refresh_worker import RefreshWorker
+from stock_monitor.core.stock_manager import stock_manager
+from stock_monitor.core.market_manager import market_manager
+from stock_monitor.core.updater import app_updater
 from stock_monitor.ui.components.stock_table import StockTable
-from stock_monitor.ui.widgets.context_menu import AppContextMenu
+from stock_monitor.ui.constants import WINDOW, COLORS, ALPHA
 from stock_monitor.ui.dialogs.settings_dialog import NewSettingsDialog
 from stock_monitor.ui.styles import get_main_window_style, get_table_style, get_loading_label_style
-from stock_monitor.config.manager import ConfigManager
+from stock_monitor.ui.widgets.context_menu import AppContextMenu
+from stock_monitor.ui.widgets.market_status import MarketStatusBar
+from stock_monitor.utils.error_handler import safe_call
+from stock_monitor.utils.helpers import resource_path
+from stock_monitor.utils.log_cleaner import schedule_log_cleanup
+from stock_monitor.utils.logger import app_logger
 from stock_monitor.utils.stock_utils import StockCodeProcessor
 
 # 定义常量
@@ -240,7 +246,7 @@ class MainWindow(QtWidgets.QWidget):
         """处理刷新错误 - 在主线程中执行"""
         try:
             app_logger.error("连续多次刷新失败")
-            error_stocks = [("网络连接异常", "--", "--", "#e6eaf3", "", "")] * max(3, len(self.current_user_stocks))
+            error_stocks = [("网络连接异常", "--", "--", COLORS.STOCK_NEUTRAL, "", "")] * max(3, len(self.current_user_stocks))
             self.update_table_signal.emit(error_stocks)
             
             # 即使出错也要显示窗口，避免一直隐藏
@@ -621,7 +627,7 @@ class MainWindow(QtWidgets.QWidget):
             self.table.show()
         except Exception as e:
             app_logger.error(f'行情刷新异常: {e}')
-            error_stocks = [("数据加载异常", "--", "--", "#e6eaf3", "", "")] * max(3, len(stocks_list) if stocks_list else 3)
+            error_stocks = [("数据加载异常", "--", "--", COLORS.STOCK_NEUTRAL, "", "")] * max(3, len(stocks_list) if stocks_list else 3)
             self.table.setRowCount(0)
             self.table.clearContents()
             self.table.update_data(error_stocks)  # type: ignore

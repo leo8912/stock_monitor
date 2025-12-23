@@ -9,6 +9,14 @@ import sys
 import subprocess
 from pathlib import Path
 
+# 获取项目根目录 (假设脚本在 scripts/ 目录下)
+SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = SCRIPT_DIR.parent
+
+# 切换到项目根目录
+os.chdir(PROJECT_ROOT)
+print(f"📂 工作目录已切换至: {PROJECT_ROOT}")
+
 def check_required_files():
     """检查必需的文件是否存在"""
     required_files = [
@@ -135,7 +143,7 @@ def build_executable():
     cmd.extend(['--add-data', f'{paths["easyquotation"]}{os.sep}stock_codes.conf;easyquotation'])
     cmd.extend(['--add-data', f'{paths["zhconv"]}{os.sep}zhcdict.json;zhconv'])
     cmd.extend(['--add-data', 'stock_monitor/resources/icon.ico;stock_monitor/resources'])
-    cmd.extend(['--add-data', 'stock_monitor/resources/stocks.db;stock_monitor/resources'])
+    cmd.extend(['--add-data', 'stock_monitor/resources/stocks_base.db;stock_monitor/resources'])
     
     # 添加updater.exe
     updater_exe_path = 'dist/updater.exe'

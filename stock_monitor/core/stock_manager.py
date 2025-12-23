@@ -190,7 +190,7 @@ class StockManager:
         Returns:
             tuple: 格式化后的股票数据元组
         """
-        from ..core.processor import stock_processor
+        from ..core.stock_data_processor import stock_processor
         result = stock_processor.process_raw_data(code, info)
         app_logger.debug(f"股票 {code} 数据处理完成")
         return result

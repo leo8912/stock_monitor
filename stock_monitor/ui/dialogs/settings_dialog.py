@@ -2,19 +2,33 @@
 设置对话框模块
 """
 
-from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton, 
-                             QListWidget, QLineEdit, QLabel, QWidget, QCheckBox,
-                             QComboBox, QAbstractItemView, QGroupBox, QFormLayout,
-                             QSpinBox, QSlider, QGridLayout, QRadioButton, QButtonGroup,
-                             QApplication)
-from PyQt6.QtCore import Qt, QSize, pyqtSignal, QPoint
-from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QFont, QIcon, QColor
-import easyquotation
-import os
 import ctypes
-from typing import Dict, Any
-from stock_monitor.utils.helpers import resource_path  # 导入获取配置文件路径的工具函数
-from stock_monitor.version import __version__  # 导入版本号
+import os
+import sys
+from typing import Any, Dict
+
+import easyquotation
+from PyQt6.QtCore import QPoint, QSize, Qt, pyqtSignal
+from PyQt6.QtGui import QColor, QDragEnterEvent, QDropEvent, QFont, QIcon
+from PyQt6.QtWidgets import (QAbstractItemView, QApplication, QButtonGroup,
+                             QCheckBox, QComboBox, QDialog, QFormLayout,
+                             QGridLayout, QGroupBox, QHBoxLayout, QLabel,
+                             QLineEdit, QListWidget, QListWidgetItem,
+                             QMessageBox, QPushButton, QRadioButton,
+                             QScrollArea, QSlider, QSpinBox, QVBoxLayout,
+                             QWidget)
+
+from stock_monitor.config.manager import ConfigManager
+from stock_monitor.core.container import container
+from stock_monitor.data.market.quotation import get_name_by_code
+from stock_monitor.data.stock.stocks import load_stock_data
+from stock_monitor.ui.constants import ALPHA, COLORS, SPACING, WINDOW
+from stock_monitor.ui.styles import (get_button_style, get_danger_button_style,
+                                     get_success_button_style)
+from stock_monitor.utils.error_handler import app_logger, safe_call
+from stock_monitor.utils.helpers import get_stock_emoji, resource_path
+from stock_monitor.utils.stock_utils import StockCodeProcessor
+from stock_monitor.version import __version__
 
 
 def _safe_bool_conversion(value, default=False):
@@ -483,6 +497,9 @@ class ConfigManagerHandler:
             30: "30秒"
         }
         return mapping.get(value, "5秒")  # 默认5秒
+
+
+
 
 
 class NewSettingsDialog(QDialog):
