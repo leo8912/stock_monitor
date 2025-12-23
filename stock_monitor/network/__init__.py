@@ -2,4 +2,4 @@
 
 from .manager import NetworkManager
 
-__all__ = ['NetworkManager']
+__all__ = ["NetworkManager"]

@@ -2,4 +2,4 @@
 
 from .settings_dialog import NewSettingsDialog
 
-__all__ = ['NewSettingsDialog']
+__all__ = ["NewSettingsDialog"]

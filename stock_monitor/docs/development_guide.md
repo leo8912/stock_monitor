@@ -59,16 +59,16 @@
 def function_name(param1: type, param2: type) -> return_type:
     """
     函数功能简述
-    
+
     详细描述函数的作用、参数说明和返回值
-    
+
     Args:
         param1: 参数1的说明
         param2: 参数2的说明
-        
+
     Returns:
         返回值的说明
-        
+
     Raises:
         ExceptionType: 异常说明
     """

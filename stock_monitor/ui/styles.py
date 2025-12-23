@@ -1,11 +1,11 @@
 def get_table_style(font_family, font_size):
     """
     Generate CSS for the main stock table.
-    
+
     Args:
         font_family (str): Font family name.
         font_size (int): Font size in pixels.
-        
+
     Returns:
         str: CSS stylesheet string.
     """
@@ -50,13 +50,14 @@ def get_table_style(font_family, font_size):
         }}
     """
 
+
 def get_loading_label_style(font_size):
     """
     Generate CSS for the loading label.
-    
+
     Args:
         font_size (int): Font size in pixels.
-        
+
     Returns:
         str: CSS stylesheet string.
     """
@@ -70,27 +71,37 @@ def get_loading_label_style(font_size):
         }}
     """
 
+
 def get_main_window_style(font_family, font_size):
     """
     Generate CSS for the main window container.
-    
+
     Args:
         font_family (str): Font family name.
         font_size (int): Font size in pixels.
-        
+
     Returns:
         str: CSS stylesheet string.
     """
     return f'font-family: "{font_family}"; font-size: {font_size}px;'
 
-def get_button_style(bg_color='#0078d4', hover_color='#108de6', 
-                     pressed_color='#005a9e', disabled_bg='#555555',
-                     disabled_color='#888888', text_color='white',
-                     border_radius='4px', padding='6px 12px',
-                     font_size='14px', min_width='60px', min_height='20px'):
+
+def get_button_style(
+    bg_color="#0078d4",
+    hover_color="#108de6",
+    pressed_color="#005a9e",
+    disabled_bg="#555555",
+    disabled_color="#888888",
+    text_color="white",
+    border_radius="4px",
+    padding="6px 12px",
+    font_size="14px",
+    min_width="60px",
+    min_height="20px",
+):
     """
     生成通用按钮样式
-    
+
     Args:
         bg_color: 背景颜色
         hover_color: 悬停时颜色
@@ -103,7 +114,7 @@ def get_button_style(bg_color='#0078d4', hover_color='#108de6',
         font_size: 字体大小
         min_width: 最小宽度
         min_height: 最小高度
-        
+
     Returns:
         str: CSS样式字符串
     """
@@ -130,22 +141,21 @@ def get_button_style(bg_color='#0078d4', hover_color='#108de6',
         }}
     """
 
+
 def get_primary_button_style():
     """获取主要按钮样式（蓝色）"""
     return get_button_style()
 
+
 def get_success_button_style():
     """获取成功按钮样式（绿色）"""
     return get_button_style(
-        bg_color='#28a745',
-        hover_color='#218838',
-        pressed_color='#1e7e34'
+        bg_color="#28a745", hover_color="#218838", pressed_color="#1e7e34"
     )
+
 
 def get_danger_button_style():
     """获取危险按钮样式（红色）"""
     return get_button_style(
-        bg_color='#dc3545',
-        hover_color='#c82333',
-        pressed_color='#bd2130'
+        bg_color="#dc3545", hover_color="#c82333", pressed_color="#bd2130"
     )

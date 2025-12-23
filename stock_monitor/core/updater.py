@@ -1,27 +1,27 @@
 import os
-import sys
-import json
-import tempfile
 import shutil
 import subprocess
-from typing import Optional, Dict, Any
-import requests
-from PyQt6.QtWidgets import QMessageBox, QProgressDialog, QApplication
-from PyQt6.QtCore import Qt
-from packaging import version
+import sys
+import tempfile
+from typing import Any, Dict, Optional
 
-from stock_monitor.version import __version__
+import requests
+from packaging import version
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QApplication, QMessageBox, QProgressDialog
+
 from stock_monitor.network.manager import NetworkManager
 from stock_monitor.utils.logger import app_logger
+from stock_monitor.version import __version__
 
 
 class AppUpdater:
     """应用程序更新器"""
-    
+
     def __init__(self, github_repo: str = "leo8912/stock_monitor"):
         """
         初始化更新器
-        
+
         Args:
             github_repo: GitHub仓库路径，格式为"user/repo"
         """
@@ -29,36 +29,42 @@ class AppUpdater:
         self.network_manager = NetworkManager()
         self.current_version = __version__
         self.latest_release_info: Optional[Dict[Any, Any]] = None
-        
+
     def check_for_updates(self) -> Optional[bool]:
         """
         检查是否有新版本可用
-        
+
         Returns:
             bool: 如果有新版本返回True，如果没有新版本返回False，如果网络错误返回None
         """
         try:
             app_logger.info("开始检查更新...")
-            
+
             # 首先尝试使用原始GitHub地址
             api_url = f"https://api.github.com/repos/{self.github_repo}/releases/latest"
             release_info = self.network_manager.github_api_request(api_url)
-            
+
             # 如果失败，尝试使用镜像源
             if not release_info:
                 app_logger.warning("使用GitHub原始地址检查更新失败，尝试使用镜像源...")
-                release_info = self.network_manager.github_api_request(api_url, use_mirror=True)
-            
+                release_info = self.network_manager.github_api_request(
+                    api_url, use_mirror=True
+                )
+
             if not release_info:
                 app_logger.warning("无法获取最新的release信息")
                 # 区分是网络问题还是其他问题
                 return None  # 网络问题，无法确定是否有新版本
-                
+
             self.latest_release_info = release_info
-            latest_version = release_info.get('tag_name', '').replace('stock_monitor_', '').replace('v', '')
-            
+            latest_version = (
+                release_info.get("tag_name", "")
+                .replace("stock_monitor_", "")
+                .replace("v", "")
+            )
+
             app_logger.info(f"当前版本: {self.current_version}, 最新版本: {latest_version}")
-            
+
             # 比较版本号
             if version.parse(latest_version) > version.parse(self.current_version):
                 app_logger.info("发现新版本")
@@ -66,51 +72,51 @@ class AppUpdater:
             else:
                 app_logger.info("当前已是最新版本")
                 return False
-                
+
         except Exception as e:
             app_logger.error(f"检查更新时发生错误: {e}")
             return None  # 网络错误或其他异常
-    
+
     def download_update(self, parent=None) -> Optional[str]:
         """
         下载更新包
-        
+
         Args:
             parent: 父窗口，用于显示进度对话框
-            
+
         Returns:
             str: 下载文件的路径，如果失败返回None
         """
         if not self.latest_release_info:
             app_logger.error("没有可用的更新信息")
             return None
-            
+
         try:
             # 查找zip文件资产
-            assets = self.latest_release_info.get('assets', [])
+            assets = self.latest_release_info.get("assets", [])
             zip_asset = None
             for asset in assets:
-                if asset.get('name', '').endswith('.zip'):
+                if asset.get("name", "").endswith(".zip"):
                     zip_asset = asset
                     break
-                    
+
             if not zip_asset:
                 app_logger.error("未找到zip格式的更新包")
                 return None
-                
-            download_url = zip_asset.get('browser_download_url')
-            file_name = zip_asset.get('name', 'update.zip')
-            
+
+            download_url = zip_asset.get("browser_download_url")
+            file_name = zip_asset.get("name", "update.zip")
+
             if not download_url:
                 app_logger.error("未找到下载链接")
                 return None
-                
+
             app_logger.info(f"开始下载更新: {file_name}")
-            
+
             # 创建临时目录用于下载
             temp_dir = tempfile.mkdtemp()
             download_path = os.path.join(temp_dir, file_name)
-            
+
             # 显示进度对话框
             progress_dialog = QProgressDialog("正在下载更新...", "取消", 0, 100, parent)
             progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
@@ -118,7 +124,7 @@ class AppUpdater:
             progress_dialog.setAutoClose(True)
             progress_dialog.setAutoReset(True)
             progress_dialog.show()
-            
+
             # 首先尝试使用原始URL下载
             try:
                 response = requests.get(download_url, stream=True, timeout=30)
@@ -128,23 +134,23 @@ class AppUpdater:
                 mirror_url = f"https://ghfast.top/{download_url}"
                 app_logger.info(f"使用镜像URL: {mirror_url}")
                 response = requests.get(mirror_url, stream=True, timeout=30)
-                
+
             response.raise_for_status()
-            
-            total_size = int(response.headers.get('content-length', 0))
+
+            total_size = int(response.headers.get("content-length", 0))
             downloaded_size = 0
-            
-            with open(download_path, 'wb') as f:
+
+            with open(download_path, "wb") as f:
                 for chunk in response.iter_content(chunk_size=8192):
                     if chunk:
                         f.write(chunk)
                         downloaded_size += len(chunk)
-                        
+
                         # 更新进度
                         if total_size > 0:
                             progress = int((downloaded_size / total_size) * 100)
                             progress_dialog.setValue(progress)
-                            
+
                         # 处理取消操作
                         QApplication.processEvents()
                         if progress_dialog.wasCanceled():
@@ -152,11 +158,80 @@ class AppUpdater:
                             os.rmdir(temp_dir)
                             app_logger.info("用户取消了下载")
                             return None
-            
+
             progress_dialog.close()
+
+            # --- Hash Check ---
+            try:
+                # 1. Try to get hash from assets (preferred)
+                hash_asset = next(
+                    (a for a in assets if a.get("name") == "sha256.txt"), None
+                )
+                expected_hash = ""
+
+                if hash_asset and hash_asset.get("browser_download_url"):
+                    import requests
+
+                    try:
+                        app_logger.info("Downloading hash file...")
+                        hash_resp = requests.get(
+                            hash_asset["browser_download_url"], timeout=10
+                        )
+                        if hash_resp.status_code == 200:
+                            expected_hash = hash_resp.text.strip()
+                    except Exception as e:
+                        app_logger.warning(f"Failed to download hash file: {e}")
+
+                # 2. If no file, try to parse from body
+                if not expected_hash and self.latest_release_info.get("body"):
+                    import re
+
+                    # Look for SHA256: `hash` or similar patterns
+                    body = self.latest_release_info["body"]
+                    match = re.search(r"SHA256: `?([a-fA-F0-9]{64})`?", body)
+                    if match:
+                        expected_hash = match.group(1)
+
+                if expected_hash:
+                    app_logger.info(
+                        f"Verifying Hash... Expected: {expected_hash[:8]}..."
+                    )
+                    import hashlib
+
+                    sha256_hash = hashlib.sha256()
+                    with open(download_path, "rb") as f:
+                        for byte_block in iter(lambda: f.read(4096), b""):
+                            sha256_hash.update(byte_block)
+                    calculated_hash = sha256_hash.hexdigest().upper()
+                    expected_hash = expected_hash.upper()
+
+                    if calculated_hash != expected_hash:
+                        app_logger.error(
+                            f"Hash mismatch! Downloaded: {calculated_hash}, Expected: {expected_hash}"
+                        )
+                        os.remove(download_path)
+                        QMessageBox.critical(
+                            parent,
+                            "Verify Failed",
+                            "Security check failed: File hash mismatch.\nThe file may be corrupted or tampered with.",
+                            QMessageBox.StandardButton.Ok,
+                        )
+                        return None
+                    app_logger.info("Hash verification passed.")
+                else:
+                    app_logger.warning(
+                        "No hash found for verification, skipping security check."
+                    )
+
+            except Exception as e:
+                app_logger.error(f"Error during hash verification: {e}")
+                # We don't block update if verification logic itself fails, but ideally we should warning.
+                # For safety, let's allow proceed but log it, unless it was a mismatch which is handled above.
+            # ------------------
+
             app_logger.info(f"更新包下载完成: {download_path}")
             return download_path
-            
+
         except requests.exceptions.Timeout:
             app_logger.error("下载更新时发生超时错误")
             return None
@@ -166,41 +241,43 @@ class AppUpdater:
         except Exception as e:
             app_logger.error(f"下载更新时发生错误: {e}")
             return None
-    
+
     def apply_update(self, update_file_path: str) -> bool:
         """
         应用更新 - 启动updater.exe并退出主程序
-        
+
         Args:
             update_file_path: 更新包文件路径
-            
+
         Returns:
             bool: 是否成功启动更新程序
         """
         try:
             app_logger.info("准备启动更新程序...")
-            
+
             # 获取当前程序目录
-            if hasattr(sys, '_MEIPASS'):
+            if hasattr(sys, "_MEIPASS"):
                 # 打包环境
                 current_dir = os.path.dirname(sys.executable)
                 main_exe = "stock_monitor.exe"
             else:
                 # 开发环境
-                current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                current_dir = os.path.dirname(
+                    os.path.dirname(os.path.abspath(__file__))
+                )
                 main_exe = "stock_monitor.exe"  # 假设开发环境也会测试exe
-                
+
             app_logger.info(f"当前程序目录: {current_dir}")
-            
+
             # 查找updater.exe
             updater_exe = os.path.join(current_dir, "updater.exe")
-            
+
             # 如果updater.exe不存在,尝试从资源中提取
             if not os.path.exists(updater_exe):
                 app_logger.warning(f"未找到updater.exe: {updater_exe}")
-                
+
                 # 尝试从打包的资源中提取
-                if hasattr(sys, '_MEIPASS'):
+                if hasattr(sys, "_MEIPASS"):
                     # PyInstaller打包环境,从_MEIPASS提取
                     resource_updater = os.path.join(sys._MEIPASS, "updater.exe")
                     if os.path.exists(resource_updater):
@@ -214,7 +291,7 @@ class AppUpdater:
                                 None,
                                 "更新失败",
                                 f"无法提取更新程序,请手动更新。\n错误: {e}",
-                                QMessageBox.StandardButton.Ok
+                                QMessageBox.StandardButton.Ok,
                             )
                             return False
                     else:
@@ -223,7 +300,7 @@ class AppUpdater:
                             None,
                             "更新失败",
                             "更新程序缺失,请重新下载完整安装包。",
-                            QMessageBox.StandardButton.Ok
+                            QMessageBox.StandardButton.Ok,
                         )
                         return False
                 else:
@@ -235,78 +312,88 @@ class AppUpdater:
                     else:
                         app_logger.error("开发环境中未找到updater.exe")
                         return False
-            
+
             # 获取当前进程ID
             current_pid = os.getpid()
-            
+
             # 构建updater.exe的命令行参数
             updater_args = [
                 updater_exe,
-                "--update-package", update_file_path,
-                "--target-dir", current_dir,
-                "--main-exe", main_exe,
-                "--pid", str(current_pid)
+                "--update-package",
+                update_file_path,
+                "--target-dir",
+                current_dir,
+                "--main-exe",
+                main_exe,
+                "--pid",
+                str(current_pid),
             ]
-            
+
             app_logger.info(f"启动更新程序: {' '.join(updater_args)}")
-            
+
             # 启动updater.exe(分离进程)
             subprocess.Popen(
                 updater_args,
-                creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
-                cwd=current_dir
+                creationflags=subprocess.DETACHED_PROCESS
+                | subprocess.CREATE_NEW_PROCESS_GROUP,
+                cwd=current_dir,
             )
-            
+
             app_logger.info("更新程序已启动,主程序即将退出")
-            
+
             # 延迟一下确保updater启动
             import time
+
             time.sleep(1)
-            
+
             # 退出主程序
             QApplication.quit()
-            
+
             return True
-            
+
         except Exception as e:
             app_logger.error(f"启动更新程序时发生错误: {e}")
             return False
-    
+
     def show_update_dialog(self, parent=None) -> bool:
         """
         显示更新对话框
-        
+
         Args:
             parent: 父窗口
-            
+
         Returns:
             bool: 用户是否同意更新
         """
         if not self.latest_release_info:
             return False
-            
-        latest_version = self.latest_release_info.get('tag_name', '').replace('stock_monitor_', '').replace('v', '')
-        release_body = self.latest_release_info.get('body', '暂无更新说明')
-        
-        message = f"发现新版本!\n\n当前版本: {self.current_version}\n最新版本: {latest_version}\n\n更新说明:\n{release_body}\n\n是否现在更新?"
-        
-        reply = QMessageBox.question(
-            parent, 
-            '发现新版本', 
-            message,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, 
-            QMessageBox.StandardButton.Yes
+
+        latest_version = (
+            self.latest_release_info.get("tag_name", "")
+            .replace("stock_monitor_", "")
+            .replace("v", "")
         )
-        
+        release_body = self.latest_release_info.get("body", "暂无更新说明")
+
+        message = f"发现新版本!\n\n当前版本: {self.current_version}\n最新版本: {latest_version}\n\n更新说明:\n{release_body}\n\n是否现在更新?"
+
+        reply = QMessageBox.question(
+            parent,
+            "发现新版本",
+            message,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+
         return reply == QMessageBox.StandardButton.Yes
 
     def perform_update(self, parent=None) -> bool:
         """
         执行完整的更新流程
-        
+
         Args:
             parent: 父窗口
-            
+
         Returns:
             bool: 更新是否成功
         """
@@ -320,10 +407,10 @@ class AppUpdater:
                     return self.apply_update(update_file)
                 else:
                     QMessageBox.warning(
-                        parent, 
-                        "下载失败", 
+                        parent,
+                        "下载失败",
                         "更新包下载失败,请检查网络连接后重试。",
-                        QMessageBox.StandardButton.Ok
+                        QMessageBox.StandardButton.Ok,
                     )
             return False
         except Exception as e:
@@ -332,39 +419,38 @@ class AppUpdater:
                 parent,
                 "更新失败",
                 f"更新过程中发生错误: {str(e)}",
-                QMessageBox.StandardButton.Ok
+                QMessageBox.StandardButton.Ok,
             )
             return False
 
-
-    
     def _run_post_update_hooks(self):
         """
         运行更新后钩子
-        
+
         执行更新完成后需要的操作，如数据库迁移、配置升级等
         """
         try:
             app_logger.info("执行更新后钩子...")
-            
+
             # 检查并初始化数据库
             from stock_monitor.data.stock.stock_db import stock_db
-            
+
             if stock_db.is_empty():
                 app_logger.info("检测到空数据库，正在初始化...")
                 stock_db._populate_base_data()
             else:
                 stock_count = stock_db.get_stock_count()
                 app_logger.info(f"数据库检查完成，当前有 {stock_count} 只股票")
-            
+
             # 未来可以在这里添加更多钩子
             # - 配置文件升级
             # - 缓存清理
             # - 日志轮转
-            
+
             app_logger.info("更新后钩子执行完成")
         except Exception as e:
             app_logger.error(f"执行更新后钩子失败: {e}")
+
 
 # 创建全局更新器实例
 app_updater = AppUpdater()

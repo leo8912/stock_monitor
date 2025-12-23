@@ -22,6 +22,7 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
+        cache: 'pip' # 启用 pip 缓存
 
     - name: 安装依赖项 # Install dependencies
       run: |
@@ -47,21 +48,21 @@ jobs:
     - name: 运行测试 # Run tests
       run: |
         python -m pytest tests/
-    
+
     - name: 查找zhconv的zhcdict.json文件 # Find zhconv zhcdict.json
       id: find_zhconv
       run: |
         python -c "import zhconv, os; print(os.path.dirname(zhconv.__file__))" > zhconv_path.txt
         $ZHCONVPATH = Get-Content zhconv_path.txt | Select-Object -First 1
         echo "ZHCONVPATH=$ZHCONVPATH" | Out-File -FilePath $env:GITHUB_ENV -Append
-    
+
     - name: 编译updater.exe # Build updater.exe
       run: |
         echo "开始编译updater.exe..."
         pyinstaller --onefile --windowed --name=updater updater.py
         echo "updater.exe编译完成"
         ls dist/updater.exe
-    
+
     - name: 使用PyInstaller构建主程序 # Build main program with PyInstaller
       run: |
         pyinstaller -y -w -i stock_monitor/resources/icon.ico -n stock_monitor stock_monitor/main.py `
@@ -82,11 +83,21 @@ jobs:
       run: |
         powershell Compress-Archive -Path dist/stock_monitor/* -DestinationPath stock_monitor.zip
 
+    - name: 计算 SHA256 哈希值 # Calculate SHA256 Hash
+      id: get_hash
+      run: |
+        $hash = (Get-FileHash stock_monitor.zip -Algorithm SHA256).Hash
+        echo "SHA256: $hash"
+        echo "$hash" | Out-File -FilePath sha256.txt -NoNewline
+        echo "hash=$hash" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
     - name: 上传产物 # Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: stock-monitor
-        path: stock_monitor.zip
+        path: |
+          stock_monitor.zip
+          sha256.txt
 
     - name: 编写版本提取脚本 # Write version extract script
       shell: bash
@@ -110,7 +121,7 @@ jobs:
         import re
         import os
         import sys
-        
+
         # 设置编码
         if sys.platform == "win32":
             os.environ["PYTHONIOENCODING"] = "utf-8"
@@ -119,29 +130,29 @@ jobs:
                 sys.stdout.reconfigure(encoding='utf-8')
             if hasattr(sys.stderr, 'reconfigure'):
                 sys.stderr.reconfigure(encoding='utf-8')
-        
+
         # 读取版本号
         version = "${{ steps.get_version.outputs.version }}"
         print(f"处理版本号: {version}")
-        
+
         # 去掉开头的'v'字符，确保匹配
         if version.startswith('v'):
             version = version[1:]
-        
+
         # 读取CHANGELOG.md文件并提取指定版本的更新日志
         with open('CHANGELOG.md', 'r', encoding='utf-8') as f:
             content = f.read()
-        
+
         print(f"处理后的版本号: {version}")
         print("CHANGELOG.md 文件内容前200字符:")
         print(content[:200])
-        
+
         # 构造正则表达式匹配特定版本的日志
         # 同时支持 ## [2.4.0] 和 ## [v2.4.0] 两种格式
         pattern = r"## \[v?" + re.escape(version) + r"\](.*?)(?=## \[v?|\Z)"
         print(f"使用的正则表达式: {pattern}")
         match = re.search(pattern, content, re.DOTALL)
-        
+
         if match:
             changelog = match.group(1).strip()
             print("成功提取日志:")
@@ -149,7 +160,7 @@ jobs:
         else:
             changelog = "暂无详细更新日志"
             print("未找到匹配的日志")
-        
+
         # 安全地输出到GitHub Actions，避免编码问题
         try:
             # 输出到GitHub Actions
@@ -168,14 +179,18 @@ jobs:
     - name: 创建发布 # Create Release
       uses: softprops/action-gh-release@v1
       with:
-        files: stock_monitor.zip
+        files: |
+          stock_monitor.zip
+          sha256.txt
         tag_name: stock_monitor_${{ steps.get_version.outputs.version }}
         name: stock_monitor_${{ steps.get_version.outputs.version }}
         body: |
           🤖 stock_monitor_${{ steps.get_version.outputs.version }} 发布说明
-          
+
           > **本软件完全由AI自动开发。**
-          
+
+          **SHA256**: `${{ steps.get_hash.outputs.hash }}`
+
           ${{ steps.extract_changelog.outputs.changelog }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

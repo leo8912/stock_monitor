@@ -1,6 +1,6 @@
 # A股行情监控系统
 
-本软件是一个用于实时监控A股行情的桌面应用程序，采用Python和PyQt5开发，具有简洁美观的界面和丰富的功能。
+本软件是一个用于实时监控A股行情的桌面应用程序，采用Python和PyQt6开发，具有简洁美观的界面和丰富的功能。
 
 ![A股行情监控系统界面示意图](image.png)
 
@@ -70,7 +70,6 @@ stock_monitor/
 └── main.py                # 主程序入口
 
 其他文件:
-├── API.md                 # API文档
 ├── build.py               # 构建脚本
 ├── build_config.py        # 构建配置
 ├── requirements.txt       # 生产环境依赖列表

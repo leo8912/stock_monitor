@@ -5,15 +5,18 @@
 该模块包含获取行情数据、处理行情数据等功能。
 """
 
-import easyquotation
 import datetime
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
+import easyquotation
+
 from stock_monitor.utils.logger import app_logger
 
-def get_quotation_engine(market_type='sina'):
+
+def get_quotation_engine(market_type: str = "sina") -> Optional[Any]:
     """获取行情引擎实例"""
     try:
-        engine = easyquotation.use(market_type)
+        engine: Any = easyquotation.use(market_type)
         app_logger.debug(f"行情引擎初始化成功: {market_type}")
         return engine
     except Exception as e:
@@ -25,13 +28,14 @@ def get_quotation_engine(market_type='sina'):
 def is_market_open() -> bool:
     """检查A股是否开市"""
     # 复用config/manager.py中的实现
-    import datetime
+
     now = datetime.datetime.now()
     if now.weekday() >= 5:  # 周末
         return False
     t = now.time()
-    return ((datetime.time(9,30) <= t <= datetime.time(11,30)) or 
-            (datetime.time(13,0) <= t <= datetime.time(15,0)))
+    return (datetime.time(9, 30) <= t <= datetime.time(11, 30)) or (
+        datetime.time(13, 0) <= t <= datetime.time(15, 0)
+    )
 
 
 def get_name_by_code(code: str) -> str:
@@ -39,14 +43,15 @@ def get_name_by_code(code: str) -> str:
     # 从SQLite数据库获取股票名称
     try:
         from stock_monitor.data.stock.stock_db import stock_db
+
         stock_info = stock_db.get_stock_by_code(code)
         if stock_info:
-            name = stock_info['name']
+            name = stock_info["name"]
             # 对于港股，只保留中文部分
-            if code.startswith('hk'):
+            if code.startswith("hk"):
                 # 去除"-"及之后的部分，只保留中文名称
-                if '-' in name:
-                    name = name.split('-')[0].strip()
+                if "-" in name:
+                    name = name.split("-")[0].strip()
             return name
     except Exception as e:
         app_logger.warning(f"从SQLite数据库获取股票 {code} 名称失败: {e}")
@@ -58,11 +63,12 @@ def get_stock_info_by_code(code: str) -> Optional[Dict[str, str]]:
     # 从SQLite数据库获取股票信息
     try:
         from stock_monitor.data.stock.stock_db import stock_db
+
         stock_info = stock_db.get_stock_by_code(code)
         if stock_info:
             # 对于港股，只保留中文部分
-            if code.startswith('hk') and '-' in stock_info['name']:
-                stock_info['name'] = stock_info['name'].split('-')[0].strip()
+            if code.startswith("hk") and "-" in stock_info["name"]:
+                stock_info["name"] = stock_info["name"].split("-")[0].strip()
             return stock_info
     except Exception as e:
         app_logger.warning(f"从SQLite数据库获取股票 {code} 信息失败: {e}")

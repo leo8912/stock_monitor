@@ -121,7 +121,7 @@ print(data)
         'price': '97.20',       # 股票当前价格
         'lastPrice': '97.75',   # 股票昨天收盘价格
         'openPrice': '97.75',   # 股票今天开盘价格
-        'amount': '1641463.0',  # 股票成交量 
+        'amount': '1641463.0',  # 股票成交量
         'time': '2017/11/29 15:38:58',  # 当前时间
         'high': '98.05',        # 当天最高价格
         'low': '97.15'          # 当天最低价格
@@ -256,13 +256,13 @@ CACHE_TTL = 60  # 缓存60秒
 def get_stock_data_with_cache(stock_codes):
     cache_key = ','.join(stock_codes)
     current_time = time.time()
-    
+
     # 检查缓存是否存在且未过期
     if cache_key in cache:
         data, timestamp = cache[cache_key]
         if current_time - timestamp < CACHE_TTL:
             return data
-    
+
     # 缓存未命中或已过期，重新获取数据
     try:
         data = quotation.stocks(stock_codes)
@@ -279,7 +279,7 @@ def get_stock_data_with_cache(stock_codes):
 ```python
 def get_all_stocks_batch(stock_codes, batch_size=50):
     all_data = {}
-    
+
     for i in range(0, len(stock_codes), batch_size):
         batch = stock_codes[i:i+batch_size]
         try:
@@ -288,7 +288,7 @@ def get_all_stocks_batch(stock_codes, batch_size=50):
         except Exception as e:
             print(f"获取批次数据失败: {e}")
             continue
-    
+
     return all_data
 ```
 
