@@ -170,8 +170,6 @@ class AppUpdater:
                 expected_hash = ""
 
                 if hash_asset and hash_asset.get("browser_download_url"):
-                    import requests
-
                     try:
                         app_logger.info("Downloading hash file...")
                         hash_resp = requests.get(
