@@ -24,8 +24,8 @@ from stock_monitor.utils.stock_utils import StockCodeProcessor
 
 # 定义常量
 ICON_FILE = resource_path('icon.ico')
-MIN_BACKGROUND_ALPHA = 200
-MAX_BACKGROUND_ALPHA = 255
+MIN_BACKGROUND_ALPHA = 1
+MAX_BACKGROUND_ALPHA = 240 # 略微降低最大值，保证一点点透
 ALPHA_RANGE = MAX_BACKGROUND_ALPHA - MIN_BACKGROUND_ALPHA
 
 class MainWindow(QtWidgets.QWidget):
@@ -149,11 +149,11 @@ class MainWindow(QtWidgets.QWidget):
         if font_size <= 0:
             font_size = 13  # 默认字体大小
             
-        font = QtGui.QFont(font_family, font_size)
-        self.setFont(font)
-        
-        # 只设置主窗口本身的字体，不使用全局样式表影响子控件
+        # 统一使用CSS设置字体，避免与QFont冲突
+        # 不使用 setFont()，只使用样式表
         self.setStyleSheet(get_main_window_style(font_family, font_size))
+        
+        app_logger.debug(f"主窗口字体设置: {font_family}, {font_size}px")
         
         # 初始化菜单
         # 创建右键菜单，使用独立的菜单类确保样式不会被其他界面影响
@@ -264,15 +264,19 @@ class MainWindow(QtWidgets.QWidget):
             # 更新表格数据
             self.update_table_signal.emit(data)
             
-            # 显示窗口和所有组件
-            if not self.isVisible():
-                self.show()
-                self.load_position()
-                self.raise_()
-                self.activateWindow()
+            # 仅在首次加载数据且窗口未显示时才强制显示
+            if not hasattr(self, '_first_show_done') or not self._first_show_done:
+                if not self.isVisible():
+                    self.show()
+                    self.load_position()
+                    self.raise_()
+                    self.activateWindow()
+                self._first_show_done = True
             
-            self.market_status_bar.show()
-            self.table.show()
+            # 如果窗口可见，确保子组件也可见
+            if self.isVisible():
+                self.market_status_bar.show()
+                self.table.show()
             
             # 隐藏加载状态
             self.loading_label.hide()
@@ -367,7 +371,12 @@ class MainWindow(QtWidgets.QWidget):
         事件过滤器，处理鼠标事件
         """
         event = a1
-        if event is not None and event.type() == QtCore.QEvent.Type.MouseButtonPress:  # type: ignore
+        if event is not None and event.type() == QtCore.QEvent.Type.MouseButtonDblClick:
+             if event.button() == QtCore.Qt.MouseButton.LeftButton:
+                 self.hide()
+                 event.accept()
+                 return True
+        elif event is not None and event.type() == QtCore.QEvent.Type.MouseButtonPress:  # type: ignore
             if event.button() == QtCore.Qt.MouseButton.LeftButton:  # type: ignore
                 cursor_pos = QtGui.QCursor.pos()
                 frame_top_left = self.frameGeometry().topLeft()
@@ -400,6 +409,12 @@ class MainWindow(QtWidgets.QWidget):
     def mousePressEvent(self, event):
         super().mousePressEvent(event)
 
+    def mouseDoubleClickEvent(self, event):
+        """双击隐藏窗口"""
+        if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            self.hide()
+            event.accept()
+
     def mouseMoveEvent(self, event):
         if event.buttons() == QtCore.Qt.MouseButton.LeftButton and self.drag_position is not None:  # type: ignore
             self.move(event.globalPos() - self.drag_position)
@@ -408,7 +423,9 @@ class MainWindow(QtWidgets.QWidget):
     def mouseReleaseEvent(self, event):
         self.drag_position = None
         self.setCursor(QtCore.Qt.CursorShape.ArrowCursor)  # type: ignore
-        self.save_position()
+        # 只在没有隐藏的情况下保存位置
+        if self.isVisible():
+            self.save_position()
 
     def closeEvent(self, event):
         """处理窗口关闭事件"""
@@ -485,11 +502,9 @@ class MainWindow(QtWidgets.QWidget):
                     stock_item = []
                     # 遍历每一列
                     for col in range(self.table.columnCount()):
-                        item = self.table.item(row, col)
-                        if item:
-                            stock_item.append(item.text())
-                        else:
-                            stock_item.append("")
+                        # 使用新的兼容性方法
+                        text = self.table.get_data_at(row, col)
+                        stock_item.append(text)
                     
                     # 确保数据格式正确（6个字段）
                     while len(stock_item) < 6:
@@ -510,9 +525,8 @@ class MainWindow(QtWidgets.QWidget):
                     # 添加颜色信息（第4列）- 从前台颜色获取
                     if len(stock_item) >= 4:
                         # 获取单元格的前台颜色（文字颜色）
-                        item = self.table.item(row, 0)
-                        if item:
-                            fg_color = item.foreground().color().name()
+                        fg_color = self.table.get_foreground_color_at(row, 0)
+                        if fg_color:
                             stock_item[3] = fg_color
                     
                     stock_data.append(stock_item)
@@ -559,15 +573,18 @@ class MainWindow(QtWidgets.QWidget):
             if font_size <= 0:
                 font_size = 13
             
-            # 更新主窗口字体
-            font = QtGui.QFont(font_family, font_size)
-            self.setFont(font)
+            app_logger.info(f"更新主窗口字体: {font_family}, {font_size}px")
             
+            # 统一使用CSS设置字体
             self.setStyleSheet(get_main_window_style(font_family, font_size))
             
             # 更新表格字体
             if hasattr(self, 'table') and self.table:
                 self.table.setStyleSheet(get_table_style(font_family, font_size))
+                # 强制刷新表格样式
+                self.table.style().unpolish(self.table)
+                self.table.style().polish(self.table)
+                self.table.update()
 
             # 更新加载标签字体
             if hasattr(self, 'loading_label') and self.loading_label:
@@ -595,12 +612,10 @@ class MainWindow(QtWidgets.QWidget):
             from stock_monitor.core.stock_manager import stock_manager
             stocks = stock_manager.get_stock_list_data(stocks_list)
             
-            self.table.setRowCount(0)
-            self.table.clearContents()
-            self.table.update_data(stocks)  # type: ignore
+            # 使用 update_data 更新数据，不需要手动清理
+            self.table.update_data(stocks)
             
-            self.table.viewport().update()
-            self.table.repaint()
+            # self.table.viewport().update() # update_data 已经调用了 view update
             self.adjust_window_height()
             
             self.loading_label.hide()
@@ -645,8 +660,19 @@ class MainWindow(QtWidgets.QWidget):
             current_time = time.time()
             
             if current_time - last_update > 86400 or last_update == 0:
+                should_update = True
+            else:
+                # 检查数据库是否为空（应对路径变更情况）
+                from stock_monitor.data.stock.stock_db import stock_db
+                if stock_db.get_all_stocks_count() == 0:
+                    app_logger.warning("检测到股票数据库为空，强制启动更新")
+                    should_update = True
+                else:
+                    should_update = False
+            
+            if should_update:
                 self._update_database_async()
-                config_manager.set('last_db_update', current_time)
+                # 不在这里保存时间戳，等更新完成后再保存
                 app_logger.info("启动时数据库更新已启动")
         except Exception as e:
             app_logger.error(f"启动时数据库更新检查失败: {e}")
@@ -665,8 +691,43 @@ class MainWindow(QtWidgets.QWidget):
         try:
             config_manager = self._container.get(ConfigManager)
             stocks = config_manager.get('user_stocks', [])
-            app_logger.info(f"加载自选股列表: {stocks}")
-            return stocks
+            
+            # 清理可能的损坏数据（如含"⭐️"的项）
+            cleaned_stocks = []
+            has_changes = False
+            
+            from stock_monitor.utils.stock_utils import StockCodeProcessor
+            processor = StockCodeProcessor()
+            
+            for stock in stocks:
+                original_stock = stock
+                # 移除 "⭐️"
+                if "⭐️" in stock:
+                    stock = stock.replace("⭐️", "").strip()
+                    
+                # 尝试只保留第一部分（如果是 "code name" 格式）
+                if stock.split():
+                    code_part = stock.split()[0]
+                    # 如果这部分看起来像代码，就用它
+                    formatted = processor.format_stock_code(code_part)
+                    if formatted:
+                        stock = formatted
+                    else:
+                        # 否则尝试整个字符串
+                        formatted = processor.format_stock_code(stock)
+                        if formatted:
+                            stock = formatted
+                            
+                cleaned_stocks.append(stock)
+                if stock != original_stock:
+                    has_changes = True
+            
+            if has_changes:
+                app_logger.warning(f"检测到自选股列表包含脏数据，已自动修复: {stocks} -> {cleaned_stocks}")
+                config_manager.set('user_stocks', cleaned_stocks)
+                
+            app_logger.info(f"加载自选股列表: {cleaned_stocks}")
+            return cleaned_stocks
         except Exception as e:
             app_logger.error(f"加载自选股列表失败: {e}")
             return []

@@ -96,11 +96,12 @@ class StockTableModel(QtCore.QAbstractTableModel):
             else:
                 return QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter
                 
-        # 字体
-        elif role == QtCore.Qt.ItemDataRole.FontRole:
-            font = QtGui.QFont("微软雅黑", self._font_size)
-            font.setBold(True)
-            return font
+        # 不再通过FontRole设置字体，让CSS样式表接管
+        # 这样可以避免QFont与CSS的优先级冲突
+        # elif role == QtCore.Qt.ItemDataRole.FontRole:
+        #     font = QtGui.QFont("微软雅黑", self._font_size)
+        #     font.setBold(True)
+        #     return font
             
         return None
         

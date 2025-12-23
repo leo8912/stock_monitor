@@ -297,10 +297,22 @@ class ConfigManagerHandler:
             
             for stock_code in user_stocks:
                 # 确保股票代码是干净的，不含额外文本
-                # 提取股票代码部分（处理可能存在的"code name"格式）
-                clean_code = stock_code.split()[0] if stock_code.split() else stock_code
+                # 提取股票代码部分（处理可能存在的"code name"格式或"⭐️ code"格式）
+                clean_code = stock_code
+                if "⭐️" in stock_code:
+                    clean_code = stock_code.replace("⭐️", "").strip()
+                
+                # 再次尝试清理，提取第一部分
+                if clean_code.split():
+                    clean_code = clean_code.split()[0]
                 
                 # 尝试查找股票的完整信息
+                from stock_monitor.utils.stock_utils import StockCodeProcessor
+                processor = StockCodeProcessor()
+                formatted_code = processor.format_stock_code(clean_code)
+                if formatted_code:
+                    clean_code = formatted_code
+                
                 stock_info = all_stocks_dict.get(clean_code)
                 if stock_info:
                     from stock_monitor.utils.helpers import get_stock_emoji
@@ -315,8 +327,12 @@ class ConfigManagerHandler:
                     from stock_monitor.utils.helpers import get_stock_emoji
                     emoji = get_stock_emoji(clean_code, "")
                     display_text = f"{emoji} {clean_code}"
-                    
-                watch_list.addItem(display_text)
+                
+                # 创建Item并存储原始代码到UserRole
+                from PyQt6.QtWidgets import QListWidgetItem
+                item = QListWidgetItem(display_text)
+                item.setData(Qt.ItemDataRole.UserRole, clean_code)
+                watch_list.addItem(item)
         except Exception as e:
             watch_list.clear()
             
@@ -426,6 +442,12 @@ class ConfigManagerHandler:
         for i in range(watch_list.count()):
             item = watch_list.item(i)
             if item:
+                # 优先从UserRole获取代码
+                user_data = item.data(Qt.ItemDataRole.UserRole)
+                if user_data:
+                    stocks.append(user_data)
+                    continue
+
                 text = item.text()
                 # 提取括号中的股票代码
                 import re
@@ -433,8 +455,13 @@ class ConfigManagerHandler:
                 if match:
                     stocks.append(match.group(1))
                 else:
-                    # 如果没有找到括号中的代码，使用整个文本
-                    stocks.append(text)
+                    # 如果没有找到括号中的代码，尝试清理文本
+                    clean_text = text.replace("⭐️", "").strip()
+                    parts = clean_text.split()
+                    if parts:
+                         stocks.append(parts[0])
+                    else:
+                         stocks.append(text)
         return stocks
     
     def _map_refresh_text_to_value(self, text):
@@ -511,6 +538,19 @@ class NewSettingsDialog(QDialog):
         except:
             pass
             
+        # 为设置对话框设置固定字体，避免继承主窗口的动态字体
+        # 使用独立的样式表覆盖继承的样式
+        self.setStyleSheet("""
+            QDialog {
+                font-family: "Microsoft YaHei";
+                font-size: 12px;
+            }
+            QLabel, QPushButton, QLineEdit, QListWidget, QGroupBox, QCheckBox, QComboBox, QSpinBox {
+                font-family: "Microsoft YaHei";
+                font-size: 12px;
+            }
+        """)
+            
         # 创建主布局
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(20, 20, 20, 20)
@@ -526,6 +566,14 @@ class NewSettingsDialog(QDialog):
         self.stock_search_handler = StockSearchHandler(self.search_input, self.search_results, self.watch_list, self)
         self.watch_list_manager = WatchListManager(self.watch_list, self.remove_button, self.move_up_button, self.move_down_button)
         self.config_manager_handler = ConfigManagerHandler(self.config_manager)
+        
+        # 添加字体预览防抖定时器
+        from PyQt6.QtCore import QTimer
+        self._font_preview_timer = QTimer()
+        self._font_preview_timer.setSingleShot(True)
+        self._font_preview_timer.timeout.connect(self._apply_font_preview)
+        self._pending_font_family = None
+        self._pending_font_size = None
         
         # 连接信号槽
         self._connect_signals()
@@ -833,6 +881,28 @@ class NewSettingsDialog(QDialog):
         self.transparency_slider.setRange(0, 100)
         self.transparency_slider.setValue(80)
         self.transparency_slider.setFixedWidth(130)  # 缩小宽度
+        
+        # 极简滑块样式
+        self.transparency_slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                border: none;
+                height: 4px;
+                background: #3d3d3d;
+                border-radius: 2px;
+            }
+            QSlider::handle:horizontal {
+                background: #0078d4;
+                border: none;
+                width: 12px;
+                height: 12px;
+                margin: -4px 0;
+                border-radius: 6px;
+            }
+            QSlider::handle:horizontal:hover {
+                background: #1084d8;
+            }
+        """)
+        
         self.transparency_value_label = QLabel("80%")
         self.transparency_slider.valueChanged.connect(
             lambda v: self.transparency_value_label.setText(f"{v}%")
@@ -846,6 +916,30 @@ class NewSettingsDialog(QDialog):
         display_row_layout.addLayout(font_family_layout)
         display_row_layout.addSpacing(10)
         display_row_layout.addLayout(transparency_layout)
+        display_row_layout.addSpacing(15)
+        
+        # 添加恢复默认值按钮
+        self.reset_display_button = QPushButton("恢复默认")
+        self.reset_display_button.setFixedWidth(80)
+        self.reset_display_button.setStyleSheet("""
+            QPushButton {
+                background-color: #555;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 4px 8px;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #666;
+            }
+            QPushButton:pressed {
+                background-color: #444;
+            }
+        """)
+        self.reset_display_button.clicked.connect(self.reset_display_settings)
+        display_row_layout.addWidget(self.reset_display_button)
+        
         display_row_layout.addStretch()
         
         display_layout.addLayout(display_row_layout)
@@ -971,43 +1065,31 @@ class NewSettingsDialog(QDialog):
             return
             
         try:
-            # 从本地缓存加载股票数据
-            from stock_monitor.data.stock.stocks import load_stock_data
-            all_stocks_list = load_stock_data()
+            # 使用数据库直接搜索，无需加载全部数据
+            from stock_monitor.data.stock.stock_db import stock_db
+            matched_stocks = stock_db.search_stocks(text, limit=30)
             
-            # 转换为字典格式以匹配原有逻辑
-            all_stocks: Dict[str, Any] = {}
-            for stock in all_stocks_list:
-                all_stocks[stock['code']] = stock
-            
-            if not all_stocks:
-                return
-                
             self.search_results.clear()
             
-            # 过滤匹配的股票并计算优先级
-            matched_stocks = []
-            for code, stock in all_stocks.items():
-                if text.lower() in code.lower() or text.lower() in stock.get('name', '').lower():
-                    # 计算优先级，A股优先
-                    priority = 0
-                    if code.startswith(('sh', 'sz')) and not code.startswith(('sh000', 'sz399')):
-                        priority = 10  # A股最高优先级
-                    elif code.startswith(('sh000', 'sz399')):
-                        priority = 5   # 指数次优先级
-                    elif code.startswith('hk'):
-                        priority = 1   # 港股较低优先级
-                    matched_stocks.append((priority, code, stock))
+            if not matched_stocks:
+                # 显示"无结果"提示
+                from PyQt6.QtWidgets import QListWidgetItem
+                from PyQt6.QtCore import Qt
+                from PyQt6 import QtGui
+                no_result_item = QListWidgetItem("未找到匹配的股票")
+                no_result_item.setFlags(Qt.ItemFlag.NoItemFlags)  # 不可选中
+                no_result_item.setForeground(QtGui.QColor("#888"))  # 灰色文字
+                self.search_results.addItem(no_result_item)
+                return
             
-            # 按优先级排序，优先级高的在前
-            matched_stocks.sort(key=lambda x: (-x[0], x[1]))
-            
-            # 显示前20个匹配结果，使用标准格式化显示
-            for _, code, stock in matched_stocks[:20]:
+            # 显示搜索结果
+            for stock in matched_stocks:
+                code = stock['code']
+                name = stock['name']
                 # 使用统一的格式化方法显示搜索结果
                 from stock_monitor.utils.helpers import get_stock_emoji
-                emoji = get_stock_emoji(code, stock.get('name', ''))
-                display_text = f"{emoji} {stock.get('name', '')} ({code})"
+                emoji = get_stock_emoji(code, name)
+                display_text = f"{emoji} {name} ({code})"
                 self.search_results.addItem(display_text)
                 
             # 取消自选股列表的选中状态
@@ -1114,7 +1196,10 @@ class NewSettingsDialog(QDialog):
         else:
             display_text = f"{emoji} {code}"
             
-        self.watch_list.addItem(display_text)
+        from PyQt6.QtWidgets import QListWidgetItem
+        new_item = QListWidgetItem(display_text)
+        new_item.setData(Qt.ItemDataRole.UserRole, code)
+        self.watch_list.addItem(new_item)
         self.watch_list_manager.update_remove_button_state()
         
         # 取消自选股列表的选中状态
@@ -1372,86 +1457,55 @@ class NewSettingsDialog(QDialog):
         pass
     
     def on_font_setting_changed(self):
-        """字体设置变化时的处理函数，用于实时预览"""
-        if self.main_window:
-            # 临时更新主窗口的字体设置
+        """字体设置变化时的处理函数，用于实时预览（带防抖）"""
+        if not self.main_window:
+            return
+            
+        try:
+            # 获取当前字体设置
             font_size = self.font_size_spinbox.value()
             font_family = self.font_family_combo.currentText()
+            
+            # 保存待预览的值
+            self._pending_font_family = font_family
+            self._pending_font_size = font_size
+            
+            # 重启防抖定时器（300ms延迟）
+            self._font_preview_timer.stop()
+            self._font_preview_timer.start(300)
+            
+        except Exception as e:
+            from stock_monitor.utils.logger import app_logger
+            app_logger.error(f"字体设置变化处理失败: {e}")
+    
+    def _apply_font_preview(self):
+        """应用字体预览（防抖后实际执行）"""
+        if not self.main_window or self._pending_font_family is None:
+            return
+            
+        try:
+            font_family = self._pending_font_family
+            font_size = self._pending_font_size
             
             from stock_monitor.utils.logger import app_logger
             if font_size <= 0:
                 app_logger.warning(f"检测到非法的字体大小: {font_size}，自动修正为 13")
-            else:
-                app_logger.debug(f"预览字体设置: 大小={font_size}, 字体={font_family}")
+            app_logger.debug(f"预览字体设置: {font_family}, {font_size}px")
             
-            # 确保字体大小大于0
-            if font_size <= 0:
-                font_size = 13  # 默认字体大小
+            # 保存当前字体设置到配置（临时，用于预览）
+            from stock_monitor.config.manager import ConfigManager
+            config_manager = ConfigManager()
             
-            # 更新主窗口字体
-            from PyQt6.QtGui import QFont
-            font = QFont(font_family, font_size)
-            self.main_window.setFont(font)
-            # 只更新主窗口本身的字体，不使用全局样式表影响子控件
-            self.main_window.setStyleSheet(f'font-family: "{font_family}"; font-size: {font_size}px;')
+            # 临时设置新字体
+            config_manager.set("font_family", font_family)
+            config_manager.set("font_size", font_size)
             
-            # 更新表格字体
-            if hasattr(self.main_window, 'table') and self.main_window.table:
-                self.main_window.table.setStyleSheet(f'''
-                    QTableWidget {{
-                        background: transparent;
-                        border: none;
-                        outline: none;
-                        gridline-color: #aaa;
-                        selection-background-color: transparent;
-                        selection-color: #fff;
-                        font-family: "{font_family}";
-                        font-size: {font_size}px;
-                        font-weight: bold;
-                        color: #fff;
-                    }}
-                    QTableWidget::item {{
-                        border: none;
-                        padding: 0px;
-                        background: transparent;
-                    }}
-                    QTableWidget::item:selected {{
-                        background: transparent;
-                        color: #fff;
-                    }}
-                    QHeaderView::section {{
-                        background: transparent;
-                        border: none;
-                        color: transparent;
-                    }}
-                    QScrollBar {{
-                        background: transparent;
-                        width: 0px;
-                        height: 0px;
-                    }}
-                    QScrollBar::handle {{
-                        background: transparent;
-                    }}
-                    QScrollBar::add-line, QScrollBar::sub-line {{
-                        background: transparent;
-                        border: none;
-                    }}
-                ''')
-
-            # 更新加载标签字体
-            if hasattr(self.main_window, 'loading_label') and self.main_window.loading_label:
-                self.main_window.loading_label.setStyleSheet(f"""
-                    QLabel {{
-                        color: #fff;
-                        font-size: {max(1, font_size)}px;
-                        background: rgba(30, 30, 30, 0.8);
-                        border-radius: 10px;
-                        padding: 10px;
-                    }}
-                """)
-
-            # 调整主窗口高度
-            self.main_window.adjust_window_height()
+            # 调用主窗口的字体更新方法（会更新所有组件）
+            self.main_window.update_font_size()
+            
+        except Exception as e:
+            from stock_monitor.utils.logger import app_logger
+            app_logger.error(f"应用字体预览失败: {e}")
     
     def on_transparency_changed(self):
         """透明度设置变化时的处理函数，用于实时预览"""
@@ -1460,6 +1514,29 @@ class NewSettingsDialog(QDialog):
             # 这样可以确保只改变背景透明度，不影响文字清晰度
             self.main_window._preview_transparency = self.transparency_slider.value()
             self.main_window.update()
+    
+    def reset_display_settings(self):
+        """恢复显示设置为默认值"""
+        try:
+            from stock_monitor.utils.logger import app_logger
+            app_logger.info("恢复显示设置为默认值")
+            
+            # 恢复默认值
+            self.font_size_spinbox.setValue(13)
+            self.font_family_combo.setCurrentText("微软雅黑")
+            self.transparency_slider.setValue(80)
+            
+            # 显示提示（可选）
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.information(
+                self,
+                "恢复默认",
+                "显示设置已恢复为默认值",
+                QMessageBox.StandardButton.Ok
+            )
+        except Exception as e:
+            from stock_monitor.utils.logger import app_logger
+            app_logger.error(f"恢复默认设置失败: {e}")
     
     def _extract_stock_code(self, text: str) -> str:
         """
@@ -1504,6 +1581,12 @@ class NewSettingsDialog(QDialog):
         for i in range(self.watch_list.count()):
             item = self.watch_list.item(i)
             if item:
+                # 优先从UserRole获取代码
+                user_data = item.data(Qt.ItemDataRole.UserRole)
+                if user_data:
+                    stocks.append(user_data)
+                    continue
+
                 code = self._extract_stock_code(item.text())
                 stocks.append(code)
         return stocks

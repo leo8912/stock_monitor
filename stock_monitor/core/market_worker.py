@@ -15,6 +15,8 @@ class MarketStatsWorker(QtCore.QThread):
         super().__init__()
         self._is_running = False
         self.interval = 60  # 默认60秒刷新一次
+        self._last_data_time = None  # 记录上次数据时间戳
+        self._market_closed_fetched = False  # 闭市数据已获取标志
         
     def start_worker(self):
         """启动工作线程"""
@@ -37,29 +39,35 @@ class MarketStatsWorker(QtCore.QThread):
         while self._is_running:
             try:
                 # 检查市场是否开市，闭市期间延长刷新间隔
-                if not is_market_open():
-                     # 闭市期间每5分钟检查一次，或者直接sleep
-                     # 为了响应停止信号，使用循环sleep
-                     for _ in range(60): 
-                         if not self._is_running: return
-                         self.sleep(5)
-                     continue
+                market_open = is_market_open()
+                app_logger.info(f"[市场统计] 市场状态检查: {'开市' if market_open else '闭市'}")
+                
+                # 临时注释：即使闭市也获取数据，用于调试
+                # if not market_open:
+                #      # 闭市期间每5分钟检查一次，或者直接sleep
+                #      # 为了响应停止信号，使用循环sleep
+                #      for _ in range(60): 
+                #          if not self._is_running: return
+                #          self.sleep(5)
+                #      continue
 
-                app_logger.debug("开始获取全市场数据...")
+                app_logger.info("[市场统计] 开始获取全市场数据...")
                 from stock_monitor.core.stock_manager import stock_manager
                 market_data = stock_manager.get_all_market_data()
                 
                 if market_data:
+                    app_logger.info(f"[市场统计] 成功获取数据，共 {len(market_data)} 只股票")
                     stats = self._calculate_stats(market_data)
+                    app_logger.info(f"[市场统计] 统计结果: 上涨={stats['up_count']}, 下跌={stats['down_count']}, 平盘={stats['flat_count']}, 总计={stats['total_count']}")
                     self.stats_updated.emit(
                         stats['up_count'], 
                         stats['down_count'], 
                         stats['flat_count'], 
                         stats['total_count']
                     )
-                    app_logger.debug(f"市场统计更新: {stats}")
+                    app_logger.info("[市场统计] 已发送更新信号")
                 else:
-                    app_logger.warning("获取全市场数据失败")
+                    app_logger.warning("[市场统计] 获取全市场数据失败，返回None")
                 
                 # 休眠
                 for _ in range(self.interval):
@@ -110,3 +118,22 @@ class MarketStatsWorker(QtCore.QThread):
             'flat_count': flat,
             'total_count': total
         }
+    
+    def _get_data_timestamp(self, data: Dict[str, Any]) -> str:
+        """
+        获取市场数据的时间戳
+        
+        Args:
+            data: 市场数据字典
+            
+        Returns:
+            str: 时间戳字符串，格式为 "YYYY-MM-DD HH:MM:SS"
+        """
+        # 从任意一只股票获取时间
+        for code, info in data.items():
+            if isinstance(info, dict):
+                date = info.get('date', '')
+                time = info.get('time', '')
+                if date and time:
+                    return f"{date} {time}"
+        return ""

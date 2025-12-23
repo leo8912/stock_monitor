@@ -52,12 +52,22 @@ def incremental_update_stock_database() -> bool:
         
         app_logger.info("拼音信息处理完成")
         
-        # 4. 批量更新数据库
-        inserted_count = stock_db.insert_stocks(stocks_data)
+        # 4. 批量插入/更新数据库
+        app_logger.info(f"开始更新股票数据库，共 {len(stocks_data)} 条记录...")
+        count = stock_db.insert_stocks(stocks_data)
+        app_logger.info(f"股票数据库更新完成，共处理/更新 {count} 条记录")
         
-        app_logger.info(f"股票数据库更新完成，共处理/更新 {inserted_count} 条记录")
+        # 5. 更新成功后保存时间戳
+        try:
+            import time
+            from stock_monitor.config.manager import ConfigManager
+            config_manager = ConfigManager()
+            config_manager.set('last_db_update', time.time())
+            app_logger.info("数据库更新时间戳已保存")
+        except Exception as e:
+            app_logger.warning(f"保存数据库更新时间戳失败: {e}")
+        
         return True
-        
     except Exception as e:
         app_logger.error(f"更新股票数据库失败: {e}")
         return False

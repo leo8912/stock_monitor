@@ -430,7 +430,7 @@ class StockDataService:
             return None
             
         def fetch_all():
-            return self.sina_quotation.all
+            return self.sina_quotation.market_snapshot(prefix=True)
             
         market_data = safe_call(
             fetch_all,

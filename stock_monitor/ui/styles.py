@@ -10,7 +10,7 @@ def get_table_style(font_family, font_size):
         str: CSS stylesheet string.
     """
     return f"""
-        QTableWidget {{
+        QTableView {{
             background: transparent;
             border: none;
             outline: none;
@@ -22,12 +22,12 @@ def get_table_style(font_family, font_size):
             font-weight: bold;
             color: #fff;
         }}
-        QTableWidget::item {{
+        QTableView::item {{
             border: none;
             padding: 0px;
             background: transparent;
         }}
-        QTableWidget::item:selected {{
+        QTableView::item:selected {{
             background: transparent;
             color: #fff;
         }}
