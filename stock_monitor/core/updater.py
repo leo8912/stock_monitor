@@ -310,7 +310,11 @@ class AppUpdater:
             # 清理可能遗留的.tmp文件
             self._cleanup_tmp_files(current_dir)
             
-            app_logger.info("更新应用完成")
+            app_logger.info("更新应用成功")
+            
+            # 执行更新后钩子
+            self._run_post_update_hooks()
+            
             return True
             
         except Exception as e:
@@ -470,6 +474,34 @@ class AppUpdater:
                             app_logger.warning(f"无法删除临时文件 {tmp_file}: {e}")
         except Exception as e:
             app_logger.error(f"清理临时文件时发生错误: {e}")
+    
+    def _run_post_update_hooks(self):
+        """
+        运行更新后钩子
+        
+        执行更新完成后需要的操作，如数据库迁移、配置升级等
+        """
+        try:
+            app_logger.info("执行更新后钩子...")
+            
+            # 检查并初始化数据库
+            from stock_monitor.data.stock.stock_db import stock_db
+            
+            if stock_db.is_empty():
+                app_logger.info("检测到空数据库，正在初始化...")
+                stock_db._populate_base_data()
+            else:
+                stock_count = stock_db.get_stock_count()
+                app_logger.info(f"数据库检查完成，当前有 {stock_count} 只股票")
+            
+            # 未来可以在这里添加更多钩子
+            # - 配置文件升级
+            # - 缓存清理
+            # - 日志轮转
+            
+            app_logger.info("更新后钩子执行完成")
+        except Exception as e:
+            app_logger.error(f"执行更新后钩子失败: {e}")
 
 # 创建全局更新器实例
 app_updater = AppUpdater()

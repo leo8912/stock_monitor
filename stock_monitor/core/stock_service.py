@@ -429,16 +429,47 @@ class StockDataService:
         if not self.sina_quotation:
             return None
             
-        def fetch_all():
+        def fetch_market_snapshot():
+            # 使用market_snapshot获取更完整的市场数据（约5500+只股票）
             return self.sina_quotation.market_snapshot(prefix=True)
             
         market_data = safe_call(
-            fetch_all,
+            fetch_market_snapshot,
             default_return=None,
             exception_handler=lambda e, error_type: app_logger.error(f"获取全市场数据失败: {e}") or None
         )
         
+        if market_data:
+            app_logger.info(f"成功获取全市场数据，共 {len(market_data)} 只股票")
+        else:
+            app_logger.warning("获取全市场数据失败，返回空数据")
+            
         return market_data
+    
+    def get_stock_data(self, code: str) -> Optional[Dict[str, Any]]:
+        """
+        获取单只股票数据，带重试机制
+        
+        Args:
+            code (str): 股票代码
+            
+        Returns:
+            Optional[Dict[str, Any]]: 股票数据，获取失败则返回None
+        """
+        try:
+            return self._get_stock_data_with_retry(code)
+        except (ConnectionError, TimeoutError) as e:
+            # 网络相关错误
+            app_logger.error(f"网络错误，获取股票 {code} 数据失败: {e}")
+            return None
+        except (ValueError, KeyError) as e:
+            # 数据解析错误
+            app_logger.error(f"数据解析错误，股票 {code}: {e}")
+            return None
+        except Exception as e:
+            # 其他未预期的错误
+            app_logger.error(f"未知错误，获取股票 {code} 数据失败: {e}", exc_info=True)
+            return None
 
 # 创建全局股票数据服务实例
 stock_data_service = StockDataService()

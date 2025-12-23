@@ -9,7 +9,20 @@ from stock_monitor.utils.stock_utils import StockCodeProcessor
 
 
 class RefreshWorker(QtCore.QThread):
-    """后台刷新工作线程"""
+    """
+    后台刷新工作线程
+    
+    负责在后台定期获取股票数据并更新UI。
+    使用独立线程避免阻塞主UI线程。
+    
+    Signals:
+        data_updated: 数据更新信号，参数为(股票列表, 是否全部失败)
+        refresh_error: 刷新错误信号，连续失败时触发
+    
+    Attributes:
+        refresh_interval: 刷新间隔（秒）
+        current_user_stocks: 当前用户自选股列表
+    """
     
     # 定义信号
     data_updated = QtCore.pyqtSignal(list, bool)  # 数据列表, 是否全部失败

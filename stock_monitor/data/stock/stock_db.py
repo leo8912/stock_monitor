@@ -36,20 +36,14 @@ class StockDatabase(StockDataSource):
             config_dir = get_config_dir()
             self.db_path = os.path.join(config_dir, DB_FILE)
             
-            # 首次运行，复制基础数据库
-            if not os.path.exists(self.db_path):
-                base_db = resource_path('stocks_base.db')
-                if os.path.exists(base_db):
-                    app_logger.info("首次运行，复制基础数据库...")
-                    os.makedirs(config_dir, exist_ok=True)
-                    import shutil
-                    shutil.copy2(base_db, self.db_path)
-                    app_logger.info(f"基础数据库复制完成: {self.db_path}")
-                else:
-                    app_logger.info("未找到基础数据库，将创建新数据库")
-            
             self._initialized = True
+            # 确保数据库文件和表结构存在
             self._initialize_database()
+            
+            # 智能检查：如果数据库为空，导入基础数据
+            if self.is_empty():
+                app_logger.info("检测到空数据库，正在初始化...")
+                self._populate_base_data()
     
     def _initialize_database(self):
         """初始化数据库表结构"""
@@ -80,6 +74,70 @@ class StockDatabase(StockDataSource):
         except Exception as e:
             app_logger.error(f"初始化股票数据库失败: {e}")
             raise
+    
+    def _populate_base_data(self):
+        """填充基础数据"""
+        base_db = resource_path('stocks_base.db')
+        if os.path.exists(base_db):
+            app_logger.info("正在导入基础股票数据...")
+            try:
+                self._import_from_base_db(base_db)
+                app_logger.info("基础数据导入成功")
+            except Exception as e:
+                app_logger.error(f"导入基础数据失败: {e}")
+                # 失败后触发后台更新
+                self._trigger_background_update()
+        else:
+            app_logger.warning("未找到基础数据库文件，将在后台更新")
+            self._trigger_background_update()
+    
+    def _import_from_base_db(self, base_db_path: str):
+        """从基础数据库导入数据"""
+        try:
+            # 连接基础数据库
+            base_conn = sqlite3.connect(base_db_path)
+            base_cursor = base_conn.cursor()
+            
+            # 读取所有股票数据
+            base_cursor.execute("SELECT code, name, pinyin, abbr, market_type, updated_at FROM stocks")
+            stocks = base_cursor.fetchall()
+            base_conn.close()
+            
+            if not stocks:
+                app_logger.warning("基础数据库为空")
+                return
+            
+            # 批量插入到当前数据库
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.executemany("""
+                    INSERT OR REPLACE INTO stocks 
+                    (code, name, pinyin, abbr, market_type, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, stocks)
+                conn.commit()
+            
+            app_logger.info(f"成功导入 {len(stocks)} 只股票数据")
+        except Exception as e:
+            app_logger.error(f"导入基础数据时出错: {e}")
+            raise
+    
+    def _trigger_background_update(self):
+        """触发后台数据库更新"""
+        try:
+            # 导入并触发更新（避免循环导入）
+            import threading
+            from stock_monitor.data.stock.stock_updater import update_stock_database
+            
+            def update_task():
+                app_logger.info("开始后台更新股票数据库...")
+                update_stock_database()
+            
+            # 在后台线程中执行更新
+            update_thread = threading.Thread(target=update_task, daemon=True)
+            update_thread.start()
+        except Exception as e:
+            app_logger.error(f"触发后台更新失败: {e}")
     
     def insert_stocks(self, stocks: List[Dict[str, Any]]) -> int:
         """

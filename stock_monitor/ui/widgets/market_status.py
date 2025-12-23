@@ -7,18 +7,29 @@ from PyQt6 import QtWidgets, QtGui, QtCore
 from stock_monitor.utils.logger import app_logger
 import threading
 
+# 常量定义
+MARKET_STATUS_BAR_HEIGHT = 3  # 市场状态条高度（像素）
+DEFAULT_UP_COUNT = 100  # 默认上涨股票数
+DEFAULT_DOWN_COUNT = 0  # 默认下跌股票数
+DEFAULT_FLAT_COUNT = 0  # 默认平盘股票数
+DEFAULT_TOTAL_COUNT = 100  # 默认总股票数
 
 class MarketStatusBar(QtWidgets.QWidget):
-    """股市状态条，显示整体涨跌情况"""
+    """
+    市场状态条组件
+    
+    显示市场整体涨跌情况的可视化条形图。
+    红色表示上涨股票比例，绿色表示下跌股票比例，灰色表示平盘股票比例。
+    """
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.up_count = 100    # 上涨股票数，默认全红
-        self.down_count = 0    # 下跌股票数
-        self.flat_count = 0    # 平盘股票数
-        self.total_count = 100 # 总股票数
-        self.setMinimumHeight(3)
-        self.setMaximumHeight(3)
+        self.up_count = DEFAULT_UP_COUNT
+        self.down_count = DEFAULT_DOWN_COUNT
+        self.flat_count = DEFAULT_FLAT_COUNT
+        self.total_count = DEFAULT_TOTAL_COUNT
+        self.setMinimumHeight(MARKET_STATUS_BAR_HEIGHT)
+        self.setMaximumHeight(MARKET_STATUS_BAR_HEIGHT)
         self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Preferred)
         
         # 创建右键菜单

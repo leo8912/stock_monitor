@@ -16,8 +16,14 @@ from stock_monitor.utils.logger import app_logger
 
 class StockTable(QtWidgets.QTableView):
     """
-    股票表格控件 (基于 QTableView + QAbstractTableModel)
-    用于显示股票行情数据，优化了渲染性能
+    股票表格组件
+    
+    用于显示股票行情数据的表格视图。
+    支持自定义列宽、行高、样式等。
+    使用 StockTableModel 作为数据模型。
+    
+    Attributes:
+        model: StockTableModel 实例，用于管理表格数据
     """
     
     def __init__(self, parent=None):
