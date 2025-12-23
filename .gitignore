@@ -52,3 +52,4 @@ htmlcov/
 # 忽略日志目录
 logs/
 stock_monitor/logs/
+docs/clean_code_review.md

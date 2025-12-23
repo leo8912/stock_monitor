@@ -961,8 +961,8 @@ class NewSettingsDialog(QDialog):
         
         # 刷新频率
         self.refresh_combo = QComboBox()
-        self.refresh_combo.addItems(["2秒", "5秒", "10秒", "30秒"])
-        self.refresh_combo.setFixedWidth(110)  # 缩小宽度
+        self.refresh_combo.addItems(["1秒", "2秒", "5秒", "10秒", "30秒"])
+        self.refresh_combo.setFixedWidth(100)  # 缩小宽度
         # 样式已在全局样式表中定义
         
         # 检查更新
@@ -1441,12 +1441,12 @@ class NewSettingsDialog(QDialog):
     
     def _map_refresh_text_to_value(self, text):
         """将刷新频率文本映射为数值"""
-        mapping = {"2秒": 2, "5秒": 5, "10秒": 10, "30秒": 30}
+        mapping = {"1秒": 1, "2秒": 2, "5秒": 5, "10秒": 10, "30秒": 30}
         return mapping.get(text, 2)
     
     def _map_refresh_value_to_text(self, value):
         """将刷新频率数值映射为文本"""
-        mapping = {2: "2秒", 5: "5秒", 10: "10秒", 30: "30秒"}
+        mapping = {1: "1秒", 2: "2秒", 5: "5秒", 10: "10秒", 30: "30秒"}
         return mapping.get(value, "2秒")
     
     def on_display_setting_changed(self):

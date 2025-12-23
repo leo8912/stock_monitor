@@ -33,7 +33,21 @@ class StockDatabase(StockDataSource):
         """初始化数据库连接"""
         if not hasattr(self, '_initialized'):
             # 使用配置目录存储数据库，确保数据持久化且可写
-            self.db_path = os.path.join(get_config_dir(), DB_FILE)
+            config_dir = get_config_dir()
+            self.db_path = os.path.join(config_dir, DB_FILE)
+            
+            # 首次运行，复制基础数据库
+            if not os.path.exists(self.db_path):
+                base_db = resource_path('stocks_base.db')
+                if os.path.exists(base_db):
+                    app_logger.info("首次运行，复制基础数据库...")
+                    os.makedirs(config_dir, exist_ok=True)
+                    import shutil
+                    shutil.copy2(base_db, self.db_path)
+                    app_logger.info(f"基础数据库复制完成: {self.db_path}")
+                else:
+                    app_logger.info("未找到基础数据库，将创建新数据库")
+            
             self._initialized = True
             self._initialize_database()
     
@@ -309,6 +323,39 @@ class StockDatabase(StockDataSource):
         except Exception as e:
             app_logger.error(f"获取所有股票数据失败: {e}")
             return []
+    
+    def is_empty(self) -> bool:
+        """
+        检查数据库是否为空
+        
+        Returns:
+            bool: 数据库是否为空
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT COUNT(*) FROM stocks")
+                count = cursor.fetchone()[0]
+                return count == 0
+        except Exception as e:
+            app_logger.error(f"检查数据库是否为空失败: {e}")
+            return True
+    
+    def get_stock_count(self) -> int:
+        """
+        获取数据库中的股票数量
+        
+        Returns:
+            int: 股票数量
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT COUNT(*) FROM stocks")
+                return cursor.fetchone()[0]
+        except Exception as e:
+            app_logger.error(f"获取股票数量失败: {e}")
+            return 0
 
-# 创建全局实例
+# 创建全局单例
 stock_db = StockDatabase()

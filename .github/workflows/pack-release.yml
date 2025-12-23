@@ -61,6 +61,7 @@ jobs:
           --add-data "$env:EQPATH\stock_codes.conf;easyquotation" `
           --add-data "$env:ZHCONVPATH\zhcdict.json;zhconv" `
           --add-data "stock_monitor/resources/icon.ico;stock_monitor/resources" `
+          --add-data "stock_monitor/resources/stocks_base.db;stock_monitor/resources" `
           --hidden-import=pypinyin `
           --hidden-import=pypinyin.style `
           --hidden-import=pandas
@@ -128,8 +129,8 @@ jobs:
         print(content[:200])
         
         # 构造正则表达式匹配特定版本的日志
-        # 匹配 ## [v2.0.4] - 2025-12-10 或 ## [v2.0.4] 这样的格式
-        pattern = r"## \[" + re.escape("v" + version) + r"\](.*?)(?=## \[v|\Z)"
+        # 同时支持 ## [2.4.0] 和 ## [v2.4.0] 两种格式
+        pattern = r"## \[v?" + re.escape(version) + r"\](.*?)(?=## \[v?|\Z)"
         print(f"使用的正则表达式: {pattern}")
         match = re.search(pattern, content, re.DOTALL)
         
