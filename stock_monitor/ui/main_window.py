@@ -24,8 +24,8 @@ from stock_monitor.utils.stock_utils import StockCodeProcessor
 
 # 定义常量
 ICON_FILE = resource_path('icon.ico')
-MIN_BACKGROUND_ALPHA = 1
-MAX_BACKGROUND_ALPHA = 240 # 略微降低最大值，保证一点点透
+MIN_BACKGROUND_ALPHA = 128  # 透明度0时的alpha值(半透明,相当于原来50%的透明度)
+MAX_BACKGROUND_ALPHA = 255  # 透明度100时的alpha值(完全不透明)
 ALPHA_RANGE = MAX_BACKGROUND_ALPHA - MIN_BACKGROUND_ALPHA
 
 class MainWindow(QtWidgets.QWidget):

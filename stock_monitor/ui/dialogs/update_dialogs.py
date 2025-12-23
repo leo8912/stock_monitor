@@ -86,7 +86,11 @@ class UpdateNotificationDialog(QDialog):
     def __init__(self, version_info, current_version, parent=None):
         super().__init__(parent)
         self.setWindowTitle("发现新版本")
-        self.setFixedSize(600, 450)
+        
+        # 使用最小/最大尺寸而不是固定尺寸,允许窗口自适应但有合理限制
+        self.setMinimumSize(600, 400)
+        self.setMaximumSize(800, 700)
+        self.resize(600, 500)  # 默认尺寸
         
         # 美化样式
         self.setStyleSheet("""
@@ -147,17 +151,21 @@ class UpdateNotificationDialog(QDialog):
         
         layout.addLayout(header_layout)
         
-        # 更新日志
+        # 更新日志标签
         changelog_label = QLabel("更新内容：")
         changelog_label.setStyleSheet("font-size: 14px; font-weight: bold;")
         layout.addWidget(changelog_label)
         
+        # 更新日志 - 使用固定高度并允许滚动
         changelog = QTextEdit()
         changelog.setReadOnly(True)
         changelog.setPlainText(version_info.get('changelog', '暂无更新日志'))
-        layout.addWidget(changelog)
+        # 设置最小和最大高度,确保内容可滚动
+        changelog.setMinimumHeight(150)
+        changelog.setMaximumHeight(350)
+        layout.addWidget(changelog, 1)  # stretch factor = 1,允许扩展但受限于最大高度
         
-        # 按钮
+        # 按钮布局 - 固定在底部
         button_layout = QHBoxLayout()
         button_layout.addStretch()
         

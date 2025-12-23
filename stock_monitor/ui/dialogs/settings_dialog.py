@@ -494,7 +494,8 @@ class NewSettingsDialog(QDialog):
     config_changed = pyqtSignal(list, int)
     
     def __init__(self, main_window=None):
-        super().__init__(main_window)
+        # 不传递父窗口给QDialog,避免继承主窗口的置顶属性
+        super().__init__(None)
         self.main_window = main_window
         # 使用依赖注入容器获取配置管理器
         from stock_monitor.config.manager import ConfigManager
@@ -514,11 +515,11 @@ class NewSettingsDialog(QDialog):
             except Exception:
                 pass
         
-        # 移除右上角的问号帮助按钮，并确保窗口不置顶
-        flags = self.windowFlags()
-        flags &= ~Qt.WindowType.WindowContextHelpButtonHint
-        flags &= ~Qt.WindowType.WindowStaysOnTopHint
-        self.setWindowFlags(Qt.WindowType.Window)
+        # 设置窗口标志:移除帮助按钮,确保不置顶
+        flags = Qt.WindowType.Window  # 使用普通窗口标志
+        flags |= Qt.WindowType.WindowCloseButtonHint  # 添加关闭按钮
+        flags |= Qt.WindowType.WindowMinimizeButtonHint  # 添加最小化按钮
+        self.setWindowFlags(flags)
         
         # 设置窗口大小
         self.resize(900, 700)  # 进一步调大窗口尺寸
