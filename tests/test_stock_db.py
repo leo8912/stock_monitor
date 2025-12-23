@@ -17,13 +17,24 @@ class TestStockDatabase(unittest.TestCase):
         self.patcher_db_file = patch('stock_monitor.data.stock.stock_db.DB_FILE', self.test_db_path)
         self.patcher_db_file.start()
         
+        # Patch is_empty to return False, so _populate_base_data is skipped
+        # This prevents auto-importing thousands of stocks into the test DB
+        self.patcher_is_empty = patch('stock_monitor.data.stock.stock_db.StockDatabase.is_empty', return_value=False)
+        self.mock_is_empty = self.patcher_is_empty.start()
+        
         # Reset the singleton instance
         StockDatabase._instance = None
         self.db = StockDatabase()
         
+        # Force Clean - ensure database is empty regardless of auto-population
+        with sqlite3.connect(self.db.db_path) as conn:
+            conn.execute("DELETE FROM stocks")
+            conn.commit()
+        
     def tearDown(self):
         self.patcher_config.stop()
         self.patcher_db_file.stop()
+        self.patcher_is_empty.stop()
         StockDatabase._instance = None
         # Clean up the database file
         if os.path.exists(self.test_db_path):

@@ -3,7 +3,7 @@ import time
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton
 from stock_monitor.ui.widgets import MarketStatusBar
 
-class TestWindow(QWidget):
+class DemoWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle('Market Status Bar Test')
@@ -21,6 +21,6 @@ class TestWindow(QWidget):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    window = TestWindow()
+    window = DemoWindow()
     window.show()
     sys.exit(app.exec_())
