@@ -124,28 +124,17 @@ class StockDataService:
             List[Tuple]: 格式化后的股票数据列表
         """
         from ..data.market.quotation import get_name_by_code
+        from ..core.processor import stock_processor
+        
         stocks = []
         
         for code in stocks_list:
             info = self._get_stock_info(data, code)
             
             if info:
-                name = info.get('name', code)
-                # 对于港股，只保留中文部分
-                name = self._format_hk_stock_name(name, code)
-                
-                # 处理股票价格和涨跌幅信息
-                price_info = self._process_price_info(info, code)
-                if not price_info:
-                    stocks.append((name, "--", "--", "#e6eaf3", "", ""))
-                    continue
-                    
-                price, change_str, color = price_info
-                
-                # 检测涨停/跌停封单
-                seal_vol, seal_type = self._detect_limit_info(info, code, price)
-                    
-                stocks.append((name, price, change_str, color, seal_vol, seal_type))
+                # 使用 StockDataProcessor 处理单只股票数据
+                result = stock_processor.process_raw_data(code, info)
+                stocks.append(result)
                 app_logger.debug(f"股票 {code} 数据处理完成")
             else:
                 # 如果没有获取到数据，显示默认值
@@ -155,9 +144,11 @@ class StockDataService:
                 if local_name:
                     name = local_name
                     # 对于港股，只保留中文部分
-                    name = self._format_hk_stock_name(name, code)
+                    if code.startswith('hk') and '-' in name:
+                        name = name.split('-')[0].strip()
                 stocks.append((name, "--", "--", "#e6eaf3", "", ""))
                 app_logger.warning(f"未获取到股票 {code} 的数据")
+                
         app_logger.debug(f"共处理 {len(stocks)} 只股票数据")
         app_logger.info(f"股票数据处理完成: 总计 {len(stocks)} 只股票")
         return stocks
@@ -419,164 +410,35 @@ class StockDataService:
                 info['name'] = '平安银行'
         return info
 
-    def _format_hk_stock_name(self, name: str, code: str) -> str:
+    def get_all_market_data(self) -> Optional[Dict[str, Any]]:
         """
-        格式化港股名称显示
+        获取全市场股票数据
         
-        Args:
-            name (str): 原始名称
-            code (str): 股票代码
-            
         Returns:
-            str: 格式化后的名称
+            Optional[Dict[str, Any]]: 全市场股票数据字典，失败返回None
         """
-        if code.startswith('hk'):
-            # 去除"-"及之后的部分，只保留中文名称
-            if '-' in name:
-                name = name.split('-')[0].strip()
-        return name
-    
-    def _validate_price_data(self, code: str, now: Any, close: Any) -> bool:
-        """
-        验证价格数据的有效性
+        def init_sina_if_needed():
+            if self.sina_quotation is None:
+                self.sina_quotation = easyquotation.use('sina')
         
-        Args:
-            code (str): 股票代码
-            now: 当前价格
-            close: 收盘价格
-            
-        Returns:
-            bool: 数据是否有效
-        """
-        # 添加更严格的None值检查
-        if now is None or close is None:
-            app_logger.warning(f"股票 {code} 数据不完整: now={now}, close={close}")
-            return False
-            
-        # 检查数据是否有效（防止获取到空字符串等无效数据）
-        try:
-            float(now)
-            float(close)
-            return True
-        except (ValueError, TypeError):
-            app_logger.warning(f"股票 {code} 数据无效: now={now}, close={close}")
-            return False
-    
-    def _calculate_price_change(self, now: float, close: float) -> Tuple[str, str, str]:
-        """
-        计算价格变化和颜色
+        safe_call(
+            init_sina_if_needed,
+            exception_handler=lambda e, error_type: app_logger.error(f"初始化新浪行情引擎失败: {e}") or None
+        )
         
-        Args:
-            now (float): 当前价格
-            close (float): 收盘价格
-            
-        Returns:
-            Tuple[str, str, str]: 价格、变化百分比和颜色
-        """
-        price = f"{now:.2f}"
-        percent = ((now - close) / close * 100) if close != 0 else 0
-        
-        # 修改颜色逻辑：超过5%的涨幅使用亮红色
-        if percent >= 5:
-            color = '#FF4500'  # 亮红色（更亮的红色）
-        elif percent > 0:
-            color = '#e74c3f'  # 红色
-        elif percent < 0:
-            color = '#27ae60'  # 绿色
-        else:
-            color = '#e6eaf3'  # 平盘
-            
-        change_str = f"{percent:+.2f}%"
-        return price, change_str, color
-    
-    def _extract_price_data(self, code: str, info: Dict[str, Any]) -> Optional[Tuple[str, str, str]]:
-        """
-        提取并处理价格数据
-        
-        Args:
-            code (str): 股票代码
-            info (Dict[str, Any]): 股票原始数据
-            
-        Returns:
-            Optional[Tuple[str, str, str]]: 价格、变化百分比和颜色，如果数据无效则返回None
-        """
-        try:
-            # 不同行情源的字段可能不同
-            now = info.get('now') or info.get('price')
-            close = info.get('close') or info.get('lastPrice') or now
-            
-            # 验证价格数据
-            if not self._validate_price_data(code, now, close):
-                return None
-                
-            return self._calculate_price_change(float(now), float(close))
-        except (ValueError, TypeError, ZeroDivisionError) as e:
-            app_logger.warning(f"股票 {code} 数据计算错误: {e}")
+        if not self.sina_quotation:
             return None
-    
-    def _process_price_info(self, info: Dict[str, Any], code: str) -> Optional[Tuple[str, str, str]]:
-        """
-        处理股票价格和涨跌幅信息
+            
+        def fetch_all():
+            return self.sina_quotation.all
+            
+        market_data = safe_call(
+            fetch_all,
+            default_return=None,
+            exception_handler=lambda e, error_type: app_logger.error(f"获取全市场数据失败: {e}") or None
+        )
         
-        Args:
-            info (Dict[str, Any]): 股票信息
-            code (str): 股票代码
-            
-        Returns:
-            Optional[Tuple[str, str, str]]: 价格、涨跌幅和颜色的元组，处理失败时返回None
-        """
-        price_data = self._extract_price_data(code, info)
-        
-        if price_data is None:
-            return "--", "--", "#e6eaf3"
-            
-        return price_data
-    
-    def _detect_limit_info(self, info: Dict[str, Any], code: str, price: str) -> Tuple[str, str]:
-        """
-        检测涨停/跌停封单信息
-        
-        Args:
-            info (Dict[str, Any]): 股票信息
-            code (str): 股票代码
-            price (str): 当前价格
-            
-        Returns:
-            Tuple[str, str]: 封单量和封单类型
-        """
-        seal_vol = ''
-        seal_type = ''
-        
-        try:
-            # 获取相关信息
-            now = info.get('now') or info.get('price')
-            high = info.get('high', 0)
-            low = info.get('low', 0)
-            bid1 = info.get('bid1', 0)
-            bid1_vol = info.get('bid1_volume', 0) or info.get('volume_2', 0)
-            ask1 = info.get('ask1', 0)
-            ask1_vol = info.get('ask1_volume', 0) or info.get('volume_3', 0)
-            
-            # 确保所有值都不是None
-            if (now is not None and high is not None and bid1 is not None and 
-                bid1_vol is not None and ask1 is not None and
-                is_equal(str(now), str(high)) and is_equal(str(now), str(bid1)) and 
-                bid1_vol > 0 and is_equal(str(ask1), "0.0")):
-                # 将封单数转换为以"k"为单位，封单数/100000来算（万手转k）
-                seal_vol = f"{int(bid1_vol/100000)}k" if bid1_vol >= 100000 else f"{int(bid1_vol)}"
-                seal_type = 'up'
-            elif (now is not None and low is not None and ask1 is not None and 
-                  ask1_vol is not None and bid1 is not None and
-                  is_equal(str(now), str(low)) and is_equal(str(now), str(ask1)) and 
-                  ask1_vol > 0 and is_equal(str(bid1), "0.0")):
-                # 将封单数转换为以"k"为单位，封单数/100000来算（万手转k）
-                seal_vol = f"{int(ask1_vol/100000)}k" if ask1_vol >= 100000 else f"{int(ask1_vol)}"
-                seal_type = 'down'
-        except (ValueError, TypeError) as e:
-            app_logger.debug(f"股票 {code} 封单计算错误: {e}")
-            # 忽略封单计算中的错误
-            
-        return seal_vol, seal_type
+        return market_data
 
 # 创建全局股票数据服务实例
 stock_data_service = StockDataService()

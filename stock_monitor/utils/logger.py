@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 from datetime import datetime
 from typing import Optional
 from logging.handlers import RotatingFileHandler
@@ -91,8 +92,14 @@ def setup_logger(name: str = "stock_monitor", log_level: int = logging.INFO) -> 
         Logger实例
     """
     try:
-        # 获取项目根目录
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        # 获取项目根目录或可执行文件目录
+        if getattr(sys, 'frozen', False):
+            # PyInstaller打包环境
+            project_root = os.path.dirname(sys.executable)
+        else:
+            # 源码运行环境
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            
         # 创建日志目录
         log_dir = os.path.join(project_root, 'logs')
         if not os.path.exists(log_dir):

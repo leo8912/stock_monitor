@@ -62,7 +62,8 @@ jobs:
           --add-data "$env:ZHCONVPATH\zhcdict.json;zhconv" `
           --add-data "stock_monitor/resources/icon.ico;stock_monitor/resources" `
           --hidden-import=pypinyin `
-          --hidden-import=pypinyin.style
+          --hidden-import=pypinyin.style `
+          --hidden-import=pandas
 
     - name: 列出dist目录内容 # List dist directory
       run: |

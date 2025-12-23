@@ -346,6 +346,9 @@ class ConfigManagerHandler:
         try:
             font_size = self.config_manager.get("font_size", 13)  # 默认改为13
             font_size = _safe_int_conversion(font_size, 13)
+            # 确保即使配置文件中有错误值，字体大小也是正数
+            if font_size <= 0:
+                font_size = 13
             font_size_spinbox.setValue(font_size)
             
             # 加载字体族设置
@@ -1375,6 +1378,12 @@ class NewSettingsDialog(QDialog):
             font_size = self.font_size_spinbox.value()
             font_family = self.font_family_combo.currentText()
             
+            from stock_monitor.utils.logger import app_logger
+            if font_size <= 0:
+                app_logger.warning(f"检测到非法的字体大小: {font_size}，自动修正为 13")
+            else:
+                app_logger.debug(f"预览字体设置: 大小={font_size}, 字体={font_family}")
+            
             # 确保字体大小大于0
             if font_size <= 0:
                 font_size = 13  # 默认字体大小
@@ -1434,7 +1443,7 @@ class NewSettingsDialog(QDialog):
                 self.main_window.loading_label.setStyleSheet(f"""
                     QLabel {{
                         color: #fff;
-                        font-size: {max(1, font_size)}px;  # 确保字体大小至少为1
+                        font-size: {max(1, font_size)}px;
                         background: rgba(30, 30, 30, 0.8);
                         border-radius: 10px;
                         padding: 10px;

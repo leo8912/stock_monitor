@@ -1,0 +1,161 @@
+"""
+数据处理核心模块
+负责统一处理股票数据的清洗、转换和计算
+"""
+
+import json
+from typing import Dict, Any, Tuple, Optional
+from stock_monitor.utils.logger import app_logger
+from stock_monitor.utils.helpers import is_equal
+
+class StockDataProcessor:
+    """股票数据处理器"""
+    
+    @staticmethod
+    def process_raw_data(code: str, raw_data: Dict[str, Any]) -> Tuple:
+        """
+        处理原始股票数据，返回UI展示所需的元组格式
+        
+        Args:
+            code: 股票代码
+            raw_data: 原始数据字典
+            
+        Returns:
+            Tuple: (name, price, change_str, color, seal_vol, seal_type)
+        """
+        # 1. 处理特殊股票名称（如上证指数）
+        info = StockDataProcessor._handle_special_stocks(code, raw_data)
+        
+        # 2. 提取名称
+        name = StockDataProcessor._extract_name(code, info)
+        
+        # 3. 提取价格数据
+        price_info = StockDataProcessor._extract_price_info(code, info)
+        
+        if not price_info:
+             return (name, "--", "--", "#e6eaf3", "", "")
+             
+        price, change_str, color, now_price, close_price = price_info
+        
+        # 4. 计算封单信息
+        seal_vol, seal_type = StockDataProcessor._calculate_seal_info(info, now_price)
+        
+        return (name, price, change_str, color, seal_vol, seal_type)
+
+    @staticmethod
+    def _handle_special_stocks(code: str, info: Dict[str, Any]) -> Dict[str, Any]:
+        """处理特殊股票代码的名称映射"""
+        pure_code = code[2:] if code.startswith(('sh', 'sz')) else code
+        
+        if pure_code == '000001':
+            if code == 'sh000001':
+                # 只有当原名不是预期时才修改，或者强制修改
+                # 这里为了简单直接返回副本
+                info = info.copy()
+                info['name'] = '上证指数'
+            elif code == 'sz000001':
+                info = info.copy()
+                info['name'] = '平安银行'
+        return info
+
+    @staticmethod
+    def _extract_name(code: str, info: Dict[str, Any]) -> str:
+        """提取并格式化股票名称"""
+        name = info.get('name', code)
+        # 港股处理：去除英文部分
+        if code.startswith('hk') and '-' in name:
+            name = name.split('-')[0].strip()
+        return name
+
+    @staticmethod
+    def _extract_price_info(code: str, info: Dict[str, Any]) -> Optional[Tuple]:
+        """
+        提取价格信息
+        Returns:
+            (price_str, change_str, color_str, float_now, float_close)
+        """
+        try:
+            now = info.get('now') or info.get('price')
+            close = info.get('close') or info.get('lastPrice') or now
+            
+            # 价格有效性检查与回退逻辑
+            is_now_valid = False
+            if now is not None:
+                try:
+                    if float(now) > 0:
+                        is_now_valid = True
+                except (ValueError, TypeError):
+                    pass
+            
+            if not is_now_valid and close is not None:
+                 try:
+                    if float(close) > 0:
+                        # Debug log removed to avoid spam, or kept at debug level
+                        now = close
+                 except (ValueError, TypeError):
+                    pass
+
+            # 最终验证
+            if now is None or close is None:
+                return None
+            
+            f_now = float(now)
+            f_close = float(close)
+            
+            # 计算涨跌幅
+            percent = ((f_now - f_close) / f_close * 100) if f_close != 0 else 0
+            
+            # 颜色逻辑
+            if percent >= 5:
+                color = '#FF4500'  # 亮红
+            elif percent > 0:
+                color = '#e74c3f'  # 红
+            elif percent < 0:
+                color = '#27ae60'  # 绿
+            else:
+                color = '#e6eaf3'  # 平
+                
+            return (f"{f_now:.2f}", f"{percent:+.2f}%", color, f_now, f_close)
+            
+        except (ValueError, TypeError, Exception) as e:
+            app_logger.warning(f"处理股票 {code} 价格信息失: {e}")
+            return None
+
+    @staticmethod
+    def _calculate_seal_info(info: Dict[str, Any], now_price: float) -> Tuple[str, str]:
+        """计算封单信息"""
+        try:
+            high = float(info.get('high', 0))
+            low = float(info.get('low', 0))
+            bid1 = float(info.get('bid1', 0))
+            ask1 = float(info.get('ask1', 0))
+            bid1_vol = float(info.get('bid1_volume', 0) or info.get('volume_2', 0))
+            ask1_vol = float(info.get('ask1_volume', 0) or info.get('volume_3', 0))
+            
+            # 涨停判断
+            # 简单判断：价格等于最高价，且等于买一价，且买一量>0，卖一为0
+            if (is_equal(str(now_price), str(high)) and 
+                is_equal(str(now_price), str(bid1)) and 
+                bid1_vol > 0 and ask1 == 0): # ask1通常为0或卖一价，如果是涨停，卖一通常无单或价格为0？
+                # 注意：原始逻辑中校验的是 str(ask1) == "0.0"
+                # 这里使用更稳健的比较
+                
+                vol = int(bid1_vol)
+                display_vol = f"{int(vol/100000)}k" if vol >= 100000 else str(vol)
+                return (display_vol, 'up')
+            
+            # 跌停判断
+            if (is_equal(str(now_price), str(low)) and 
+                is_equal(str(now_price), str(ask1)) and 
+                ask1_vol > 0 and bid1 == 0):
+                
+                vol = int(ask1_vol)
+                display_vol = f"{int(vol/100000)}k" if vol >= 100000 else str(vol)
+                return (display_vol, 'down')
+                
+        except Exception:
+            pass
+        return ("", "")
+
+# 全局实例
+stock_processor = StockDataProcessor()

@@ -1,46 +1,54 @@
 """
 股票表格UI组件
 用于显示股票行情数据的表格组件
-
-该模块包含StockTable类，用于在GUI中展示实时股票行情数据。
 """
 
 from typing import List
 from PyQt6 import QtWidgets, QtGui, QtCore
 from PyQt6.QtCore import pyqtSlot
 
+# 导入数据模型
+from stock_monitor.ui.models.stock_model import StockTableModel
 # 导入日志记录器
 from stock_monitor.utils.logger import app_logger
 
-__version__ = "2.2.4"
 
-class StockTable(QtWidgets.QTableWidget):
+
+class StockTable(QtWidgets.QTableView):
     """
-    股票表格控件
-    用于显示股票行情数据
+    股票表格控件 (基于 QTableView + QAbstractTableModel)
+    用于显示股票行情数据，优化了渲染性能
     """
     
     def __init__(self, parent=None):
         """初始化股票表格"""
         super().__init__(parent)
-        self.setColumnCount(3)  # 默认3列：名称、价格、涨跌幅
+        
+        # 初始化数据模型
+        self._model = StockTableModel()
+        self.setModel(self._model)
+        
+        # UI设置
         h_header = self.horizontalHeader()
         v_header = self.verticalHeader()
         if h_header is not None:
             h_header.setVisible(False)
-            # 设置列宽自适应内容
-            h_header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
             h_header.setStretchLastSection(False)
         if v_header is not None:
             v_header.setVisible(False)
+            
         self.setShowGrid(False)
         self.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         self.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.NoSelection)
-        self.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)  # type: ignore
-        self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)  # type: ignore
-        self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)  # type: ignore
+        self.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+        self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         
-        # 设置大小策略，允许收缩
+        # 优化性能显示
+        # self.setWordWrap(False) # 股票信息不需要换行
+        # self.cornerWidget().setVisible(False)
+        
+        # 设置大小策略
         self.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Preferred,
             QtWidgets.QSizePolicy.Policy.Preferred
@@ -49,23 +57,34 @@ class StockTable(QtWidgets.QTableWidget):
         # 从配置中读取字体大小
         from stock_monitor.utils.helpers import get_config_manager
         config_manager = get_config_manager()
-        self.font_size = config_manager.get("font_size", 13)  # 默认13px
+        self.font_size = config_manager.get("font_size", 13)
         
+        try:
+            self.font_size = int(self.font_size)
+        except (ValueError, TypeError):
+            self.font_size = 13
+            
+        if self.font_size <= 0:
+            self.font_size = 13
+            
+        # 设置模型字体大小
+        self._model.set_font_size(self.font_size)
         self._set_table_style(self.font_size)
 
     def _set_table_style(self, font_size: int) -> None:
         """
         设置表格样式
-        
-        Args:
-            font_size (int): 字体大小
         """
-        # 确保字体大小大于0
+        try:
+            font_size = int(font_size)
+        except (ValueError, TypeError):
+            font_size = 13
+
         if font_size <= 0:
-            font_size = 13  # 默认字体大小
+            font_size = 13
             
         self.setStyleSheet(f'''
-            QTableWidget {{
+            QTableView {{
                 background: transparent;
                 border: none;
                 outline: none;
@@ -77,298 +96,67 @@ class StockTable(QtWidgets.QTableWidget):
                 font-weight: bold;
                 color: #fff;
             }}
-            QTableWidget::item {{
+            QTableView::item {{
                 border: none;
-                padding: 0px;
-                background: transparent;
-            }}
-            QTableWidget::item:selected {{
-                background: transparent;
-                color: #fff;
+                padding: 0px; 
+                background: transparent; 
             }}
             QHeaderView::section {{
                 background: transparent;
                 border: none;
                 color: transparent;
             }}
-            QScrollBar {{
-                background: transparent;
-                width: 0px;
-                height: 0px;
-            }}
-            QScrollBar::handle {{
-                background: transparent;
-            }}
-            QScrollBar::add-line, QScrollBar::sub-line {{
-                background: transparent;
-                border: none;
-            }}
         ''')
 
-    def _format_hk_stock_name(self, name: str) -> str:
-        """
-        格式化港股名称显示
-        
-        Args:
-            name (str): 原始名称
-            
-        Returns:
-            str: 格式化后的名称
-        """
-        if name.startswith('hk') and ':' in name:
-            return name.split(':')[1].strip()
-        elif name.startswith('hk') and '-' in name:
-            return name.split('-')[0].strip()
-        return name
-
-    def _create_table_item(self, text: str, color: str, seal_type: str) -> QtWidgets.QTableWidgetItem:
-        """
-        创建并设置表格项
-        
-        Args:
-            text (str): 显示文本
-            color (str): 文本颜色
-            seal_type (str): 封单类型
-            
-        Returns:
-            QtWidgets.QTableWidgetItem: 表格项
-        """
-        item = QtWidgets.QTableWidgetItem()
-        item.setText(text)
-        
-        # 根据封单类型设置背景和前景色
-        if seal_type == 'up':
-            item.setBackground(QtGui.QColor('#ffecec'))
-            item.setForeground(QtGui.QColor(color))
-        elif seal_type == 'down':
-            item.setBackground(QtGui.QColor('#e8f5e9'))
-            item.setForeground(QtGui.QColor('#27ae60'))
-        else:
-            item.setForeground(QtGui.QColor(color))
-            
-        return item
-
-    def _create_seal_item(self, seal_vol: str, seal_type: str, color: str) -> QtWidgets.QTableWidgetItem:
-        """
-        创建封单项
-        
-        Args:
-            seal_vol (str): 封单量
-            seal_type (str): 封单类型
-            color (str): 文本颜色
-            
-        Returns:
-            QtWidgets.QTableWidgetItem: 表格项
-        """
-        item_seal = QtWidgets.QTableWidgetItem()
-        # 对于有封单信息的股票显示封单数
-        item_seal.setText(f"{seal_vol} " if seal_vol and seal_type else "")
-        
-        # 根据涨跌停类型设置封单列的颜色
-        if seal_type == 'up':
-            item_seal.setBackground(QtGui.QColor('#ffecec'))
-            item_seal.setForeground(QtGui.QColor(color))
-        elif seal_type == 'down':
-            item_seal.setBackground(QtGui.QColor('#e8f5e9'))
-            item_seal.setForeground(QtGui.QColor('#27ae60'))
-        else:
-            item_seal.setForeground(QtGui.QColor('#888'))
-            
-        return item_seal
-
-    def _set_text_alignment(self, item: QtWidgets.QTableWidgetItem, alignment: QtCore.Qt.AlignmentFlag) -> None:
-        """
-        设置文本对齐方式
-        
-        Args:
-            item (QtWidgets.QTableWidgetItem): 表格项
-            alignment (QtCore.Qt.AlignmentFlag): 对齐方式
-        """
-        item.setTextAlignment(alignment | QtCore.Qt.AlignmentFlag.AlignVCenter)  # type: ignore
-
-    def _format_change_text(self, change: str) -> str:
-        """
-        格式化涨跌幅文本
-        
-        Args:
-            change (str): 原始涨跌幅文本
-            
-        Returns:
-            str: 格式化后的涨跌幅文本
-        """
-        if not change.endswith('%'):
-            return change + '%'
-        return f"{change} "
-
     def _resize_columns(self) -> None:
-        """
-        调整列宽
-        根据内容自动调整每列的宽度
-        """
+        """调整列宽"""
+        self.resizeColumnsToContents()
         h_header = self.horizontalHeader()
         if h_header is not None:
-            # 设置列宽自适应内容
-            for col in range(self.columnCount()):
-                h_header.setSectionResizeMode(col, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-            h_header.setStretchLastSection(False)
+             h_header.setStretchLastSection(False)
 
     def _notify_parent_window_height_adjustment(self) -> None:
-        """
-        通知父窗口调整高度
-        当表格数据更新后，通知父窗口重新计算和调整其高度
-        """
+        """通知父窗口调整高度"""
         if self.parent():
             parent = self.parent()
             if hasattr(parent, 'adjust_window_height') and callable(getattr(parent, 'adjust_window_height')):
-                parent.adjust_window_height()  # type: ignore
+                parent.adjust_window_height()
 
     @pyqtSlot(list)
     def update_data(self, stocks: List[tuple]) -> None:
         """
-        更新表格数据，优化性能
+        更新表格数据
         
         Args:
             stocks (list): 股票数据列表
         """
         try:
-            row_count = len(stocks)
-            if self.rowCount() != row_count:
-                self.setRowCount(row_count)
+            # 委托给模型更新
+            layout_changed = self._model.update_data(stocks)
             
-            # 检查是否需要显示封单列（检查是否有涨停或跌停的股票）
-            show_seal_column = any(stock[5] for stock in stocks)  # stock[5]是seal_type
+            # 如果列结构发生变化（如显示/隐藏封单列），重新调整列宽
+            if layout_changed:
+                self._resize_columns()
+            else:
+                # 即使结构没变，内容变了也可能需要微调列宽，但为了性能可以不每次都调
+                # 为了防止数字跳动导致宽度变化过大，可以适当限制
+                # 这里保持原逻辑：每次数据更新都调整列宽，确保内容完整显示
+                self._resize_columns()
             
-            column_count = 4 if show_seal_column else 3
-            if self.columnCount() != column_count:
-                self.setColumnCount(column_count)
-            
-            # 批量更新开始
-            self.setUpdatesEnabled(False)
-            
-            for row, stock in enumerate(stocks):
-                name, price, change, color, seal_vol, seal_type = stock
-                
-                # 处理港股名称显示
-                name = self._format_hk_stock_name(name)
-                
-                # 更新名称项
-                name_item = self.item(row, 0)
-                if not name_item:
-                    name_item = self._create_table_item(f" {name}", color, seal_type)
-                    self._set_text_alignment(name_item, QtCore.Qt.AlignmentFlag.AlignLeft)
-                    self.setItem(row, 0, name_item)
-                else:
-                    # 只在需要时更新
-                    if name_item.text() != f" {name}":
-                        name_item.setText(f" {name}")
-                    
-                    # 更新颜色
-                    if name_item.foreground().color().name() != color:
-                        if seal_type == 'up':
-                            name_item.setBackground(QtGui.QColor('#ffecec'))
-                            name_item.setForeground(QtGui.QColor(color))
-                        elif seal_type == 'down':
-                            name_item.setBackground(QtGui.QColor('#e8f5e9'))
-                            name_item.setForeground(QtGui.QColor('#27ae60'))
-                        else:
-                            name_item.setBackground(QtGui.QColor(QtCore.Qt.GlobalColor.transparent))
-                            name_item.setForeground(QtGui.QColor(color))
-                
-                # 更新价格项
-                price_item = self.item(row, 1)
-                if not price_item:
-                    price_item = self._create_table_item(price, color, seal_type)
-                    self._set_text_alignment(price_item, QtCore.Qt.AlignmentFlag.AlignRight)
-                    self.setItem(row, 1, price_item)
-                else:
-                    # 只在需要时更新
-                    if price_item.text() != price:
-                        price_item.setText(price)
-                        
-                    # 更新颜色
-                    if price_item.foreground().color().name() != color:
-                        if seal_type == 'up':
-                            price_item.setBackground(QtGui.QColor('#ffecec'))
-                            price_item.setForeground(QtGui.QColor(color))
-                        elif seal_type == 'down':
-                            price_item.setBackground(QtGui.QColor('#e8f5e9'))
-                            price_item.setForeground(QtGui.QColor('#27ae60'))
-                        else:
-                            price_item.setBackground(QtGui.QColor(QtCore.Qt.GlobalColor.transparent))
-                            price_item.setForeground(QtGui.QColor(color))
-                
-                # 更新涨跌项
-                change_text = self._format_change_text(change)
-                change_item = self.item(row, 2)
-                if not change_item:
-                    change_item = self._create_table_item(change_text, color, seal_type)
-                    self._set_text_alignment(change_item, QtCore.Qt.AlignmentFlag.AlignRight)
-                    self.setItem(row, 2, change_item)
-                else:
-                    # 只在需要时更新
-                    if change_item.text() != change_text:
-                        change_item.setText(change_text)
-                        
-                    # 更新颜色
-                    if change_item.foreground().color().name() != color:
-                        if seal_type == 'up':
-                            change_item.setBackground(QtGui.QColor('#ffecec'))
-                            change_item.setForeground(QtGui.QColor(color))
-                        elif seal_type == 'down':
-                            change_item.setBackground(QtGui.QColor('#e8f5e9'))
-                            change_item.setForeground(QtGui.QColor('#27ae60'))
-                        else:
-                            change_item.setBackground(QtGui.QColor(QtCore.Qt.GlobalColor.transparent))
-                            change_item.setForeground(QtGui.QColor(color))
-                
-                # 更新封单项（如果有）
-                if show_seal_column:
-                    seal_text = f"{seal_vol} " if seal_vol and seal_type else ""
-                    seal_item = self.item(row, 3)
-                    if not seal_item:
-                        seal_item = self._create_seal_item(seal_vol, seal_type, color)
-                        self._set_text_alignment(seal_item, QtCore.Qt.AlignmentFlag.AlignRight)
-                        self.setItem(row, 3, seal_item)
-                    else:
-                        # 只在需要时更新
-                        if seal_item.text() != seal_text:
-                            seal_item.setText(seal_text)
-                            
-                        # 更新颜色
-                        if seal_type == 'up':
-                            seal_item.setBackground(QtGui.QColor('#ffecec'))
-                            seal_item.setForeground(QtGui.QColor(color))
-                        elif seal_type == 'down':
-                            seal_item.setBackground(QtGui.QColor('#e8f5e9'))
-                            seal_item.setForeground(QtGui.QColor('#27ae60'))
-                        else:
-                            seal_item.setBackground(QtGui.QColor(QtCore.Qt.GlobalColor.transparent))
-                            seal_item.setForeground(QtGui.QColor('#888'))
-            
-            # 调整列宽
-            self._resize_columns()
-            
-            # 批量更新结束
-            self.setUpdatesEnabled(True)
-            
-            # 强制刷新
-            self.viewport().update()
-            
-            app_logger.debug(f"表格数据更新完成，共{len(stocks)}行")
-            
-            # 通知父窗口调整大小
+            # 通知父窗口调整大小 (因为行数可能变化)
             self._notify_parent_window_height_adjustment()
+            
         except Exception as e:
-            error_msg = f"更新表格数据时发生错误: {e}"
-            app_logger.error(error_msg)
+            app_logger.error(f"更新表格数据时发生错误: {e}")
             
     def wheelEvent(self, event):
-        """
-        鼠标滚轮事件处理，禁用滚轮滚动
-        
-        Args:
-            event: 滚轮事件对象
-        """
-        # 不调用父类的wheelEvent，直接忽略事件
-        # 这样可以完全防止鼠标滚轮引起的滚动
+        """禁用滚轮"""
         pass
+        
+    def set_font_size(self, size: int):
+        """提供给设置对话框调用的接口"""
+        self.font_size = size
+        self._model.set_font_size(size)
+        self._set_table_style(size)
+        self._resize_columns()
+        self._notify_parent_window_height_adjustment()

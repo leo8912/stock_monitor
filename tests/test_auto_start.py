@@ -12,7 +12,7 @@ import json
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 
 from stock_monitor.config.manager import ConfigManager
-from stock_monitor.main import _setup_auto_start
+from stock_monitor.core.startup import setup_auto_start
 
 
 def test_auto_start():
@@ -49,7 +49,7 @@ def test_auto_start():
     # 测试开启开机启动
     print("\n--- 测试开启开机启动 ---")
     config_manager.set("auto_start", True)
-    _setup_auto_start()
+    setup_auto_start()
     
     # 检查快捷方式是否创建
     shortcut_exists_after_enable = os.path.exists(shortcut_path)
@@ -58,7 +58,7 @@ def test_auto_start():
     # 测试关闭开机启动
     print("\n--- 测试关闭开机启动 ---")
     config_manager.set("auto_start", False)
-    _setup_auto_start()
+    setup_auto_start()
     
     # 检查快捷方式是否删除
     shortcut_exists_after_disable = os.path.exists(shortcut_path)
@@ -66,7 +66,7 @@ def test_auto_start():
     
     # 恢复原始配置
     config_manager.set("auto_start", auto_start_config)
-    _setup_auto_start()
+    setup_auto_start()
     
     print(f"\n已恢复原始配置: {auto_start_config}")
     

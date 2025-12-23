@@ -32,7 +32,23 @@ Thumbs.db
 .vscode/
 .idea/
 
+
 # 忽略临时文件
 *.tmp
 *.temp
 chat.md
+
+# 忽略开发配置和缓存
+.stock_monitor_dev/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 忽略打包产物
+*.spec
+*.zip
+*.exe
+
+# 忽略日志目录
+logs/
+stock_monitor/logs/

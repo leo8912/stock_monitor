@@ -1,30 +1,38 @@
 import unittest
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-
+from unittest.mock import MagicMock, patch
 from stock_monitor.core.stock_manager import StockManager
 
 class TestStockManager(unittest.TestCase):
-    
     def setUp(self):
-        """测试前准备"""
-        self.stock_manager = StockManager()
+        self.manager = StockManager()
         
-    def test_has_stock_data_changed(self):
-        """测试股票数据变化检测"""
-        # 确保方法存在且可调用
-        self.assertTrue(hasattr(self.stock_manager, 'has_stock_data_changed'))
+    def test_change_detection(self):
+        # Initial state: no cache
+        stocks = [('StockA', '10.0', '1.0%', '#f00', '100', 'B')]
         
-    def test_update_last_stock_data(self):
-        """测试更新最后股票数据缓存"""
-        # 确保方法存在且可调用
-        self.assertTrue(hasattr(self.stock_manager, 'update_last_stock_data'))
+        # Should detect change initially (empty cache)
+        self.assertTrue(self.manager.has_stock_data_changed(stocks))
         
-    def test_get_stock_list_data(self):
-        """测试获取股票列表数据"""
-        # 确保方法存在且可调用
-        self.assertTrue(hasattr(self.stock_manager, 'get_stock_list_data'))
-            
-if __name__ == '__main__':
-    unittest.main()
+        # Update cache
+        self.manager.update_last_stock_data(stocks)
+        
+        # Should NOT detect change with same data
+        self.assertFalse(self.manager.has_stock_data_changed(stocks))
+        
+        # Change price
+        changed_stocks = [('StockA', '10.1', '2.0%', '#f00', '100', 'B')]
+        self.assertTrue(self.manager.has_stock_data_changed(changed_stocks))
+        
+        # Update cache again
+        self.manager.update_last_stock_data(changed_stocks)
+        self.assertFalse(self.manager.has_stock_data_changed(changed_stocks))
+        
+        # Test remove stock
+        self.assertTrue(self.manager.has_stock_data_changed([]))
+        
+        # Test add new stock
+        new_stocks = [
+            ('StockA', '10.1', '2.0%', '#f00', '100', 'B'),
+            ('StockB', '5.0', '0.0%', '#fff', '50', 'S')
+        ]
+        self.assertTrue(self.manager.has_stock_data_changed(new_stocks))
