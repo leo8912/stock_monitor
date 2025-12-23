@@ -55,13 +55,21 @@ jobs:
         $ZHCONVPATH = Get-Content zhconv_path.txt | Select-Object -First 1
         echo "ZHCONVPATH=$ZHCONVPATH" | Out-File -FilePath $env:GITHUB_ENV -Append
     
-    - name: 使用PyInstaller构建 # Build with PyInstaller
+    - name: 编译updater.exe # Build updater.exe
+      run: |
+        echo "开始编译updater.exe..."
+        pyinstaller --onefile --windowed --name=updater updater.py
+        echo "updater.exe编译完成"
+        ls dist/updater.exe
+    
+    - name: 使用PyInstaller构建主程序 # Build main program with PyInstaller
       run: |
         pyinstaller -y -w -i stock_monitor/resources/icon.ico -n stock_monitor stock_monitor/main.py `
           --add-data "$env:EQPATH\stock_codes.conf;easyquotation" `
           --add-data "$env:ZHCONVPATH\zhcdict.json;zhconv" `
           --add-data "stock_monitor/resources/icon.ico;stock_monitor/resources" `
           --add-data "stock_monitor/resources/stocks_base.db;stock_monitor/resources" `
+          --add-data "dist/updater.exe;." `
           --hidden-import=pypinyin `
           --hidden-import=pypinyin.style `
           --hidden-import=pandas
@@ -70,7 +78,7 @@ jobs:
       run: |
         ls dist
 
-    - name: 压缩产物(整个stock_monitor文件夹) # Zip artifact (entire stock_monitor folder)
+    - name: 压缩产物(包含updater.exe) # Zip artifact (including updater.exe)
       run: |
         powershell Compress-Archive -Path dist/stock_monitor/* -DestinationPath stock_monitor.zip
 

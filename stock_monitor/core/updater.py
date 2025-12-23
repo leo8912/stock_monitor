@@ -167,164 +167,109 @@ class AppUpdater:
             app_logger.error(f"下载更新时发生错误: {e}")
             return None
     
-    def apply_update(self, update_file_path: str, skip_lock_check: bool = False) -> bool:
+    def apply_update(self, update_file_path: str) -> bool:
         """
-        应用更新
+        应用更新 - 启动updater.exe并退出主程序
         
         Args:
             update_file_path: 更新包文件路径
-            skip_lock_check: 是否跳过锁定文件检查（用于重启后应用更新）
             
         Returns:
-            bool: 更新是否成功
+            bool: 是否成功启动更新程序
         """
-        backup_dir = None
         try:
-            app_logger.info("开始应用更新...")
+            app_logger.info("准备启动更新程序...")
             
             # 获取当前程序目录
             if hasattr(sys, '_MEIPASS'):
                 # 打包环境
                 current_dir = os.path.dirname(sys.executable)
+                main_exe = "stock_monitor.exe"
             else:
                 # 开发环境
                 current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                main_exe = "stock_monitor.exe"  # 假设开发环境也会测试exe
                 
             app_logger.info(f"当前程序目录: {current_dir}")
             
-            # 解压更新包到临时目录
-            import zipfile
-            temp_extract_dir = tempfile.mkdtemp()
+            # 查找updater.exe
+            updater_exe = os.path.join(current_dir, "updater.exe")
             
-            with zipfile.ZipFile(update_file_path, 'r') as zip_ref:
-                zip_ref.extractall(temp_extract_dir)
+            # 如果updater.exe不存在,尝试从资源中提取
+            if not os.path.exists(updater_exe):
+                app_logger.warning(f"未找到updater.exe: {updater_exe}")
                 
-            app_logger.info(f"更新包解压到: {temp_extract_dir}")
-            
-            # 创建备份目录
-            backup_dir = tempfile.mkdtemp()
-            app_logger.info(f"创建备份目录: {backup_dir}")
-            
-            # 替换文件
-            # 获取解压后的目录
-            extracted_dirs = os.listdir(temp_extract_dir)
-            if not extracted_dirs:
-                raise Exception("更新包为空")
-                
-            # 确保我们获取的是正确的解压目录
-            extracted_dir = temp_extract_dir
-            if len(extracted_dirs) == 1:
-                single_path = os.path.join(temp_extract_dir, extracted_dirs[0])
-                # 如果是目录，则使用这个目录作为源
-                if os.path.isdir(single_path):
-                    extracted_dir = single_path
-                    
-            app_logger.info(f"更新文件目录: {extracted_dir}")
-            
-            # 检查是否有正在运行的文件需要更新
-            locked_files = []
-            if not skip_lock_check:  # 只有在不跳过锁定检查时才执行此段代码
-                for root, dirs, files in os.walk(extracted_dir):
-                    # 计算相对于extracted_dir的路径
-                    rel_path = os.path.relpath(root, extracted_dir)
-                    # 确保目标路径正确
-                    if rel_path == ".":
-                        target_path = current_dir
+                # 尝试从打包的资源中提取
+                if hasattr(sys, '_MEIPASS'):
+                    # PyInstaller打包环境,从_MEIPASS提取
+                    resource_updater = os.path.join(sys._MEIPASS, "updater.exe")
+                    if os.path.exists(resource_updater):
+                        app_logger.info(f"从资源中提取updater.exe: {resource_updater}")
+                        try:
+                            shutil.copy2(resource_updater, updater_exe)
+                            app_logger.info(f"updater.exe提取成功: {updater_exe}")
+                        except Exception as e:
+                            app_logger.error(f"提取updater.exe失败: {e}")
+                            QMessageBox.warning(
+                                None,
+                                "更新失败",
+                                f"无法提取更新程序,请手动更新。\n错误: {e}",
+                                QMessageBox.StandardButton.Ok
+                            )
+                            return False
                     else:
-                        target_path = os.path.join(current_dir, rel_path)
-                    
-                    # 检查文件是否需要更新并且正在被占用
-                    for file in files:
-                        dst_file = os.path.join(target_path, file)
-                        if os.path.exists(dst_file):
-                            # 检查是否是正在运行的exe文件
-                            if dst_file.lower() == os.path.join(current_dir, 'stock_monitor.exe').lower():
-                                locked_files.append(dst_file)
-                            # 检查其他可能被占用的文件（DLL、PYD等）
-                            elif dst_file.lower().endswith(('.dll', '.pyd')):
-                                locked_files.append(dst_file)
-                
-                # 如果有文件被占用，需要先重启应用
-                if locked_files:
-                    app_logger.info(f"检测到 {len(locked_files)} 个被占用的文件，需要先重启应用")
-                    # 创建更新标记文件
-                    update_marker = os.path.join(current_dir, 'update_pending')
-                    with open(update_marker, 'w') as f:
-                        f.write(update_file_path)
-                    app_logger.info("已创建更新标记文件，准备重启应用")
-                    return True  # 返回True表示需要重启
-            
-            # 替换文件
-            for root, dirs, files in os.walk(extracted_dir):
-                # 计算相对于extracted_dir的路径
-                rel_path = os.path.relpath(root, extracted_dir)
-                # 确保目标路径正确
-                if rel_path == ".":
-                    target_path = current_dir
+                        app_logger.error(f"资源中也未找到updater.exe: {resource_updater}")
+                        QMessageBox.warning(
+                            None,
+                            "更新失败",
+                            "更新程序缺失,请重新下载完整安装包。",
+                            QMessageBox.StandardButton.Ok
+                        )
+                        return False
                 else:
-                    target_path = os.path.join(current_dir, rel_path)
-                
-                # 创建目标目录
-                if not os.path.exists(target_path):
-                    os.makedirs(target_path)
-                
-                # 复制文件
-                for file in files:
-                    src_file = os.path.join(root, file)
-                    dst_file = os.path.join(target_path, file)
-                    
-                    # 如果目标文件存在，先备份再替换
-                    if os.path.exists(dst_file):
-                        # 特殊处理正在运行的可执行文件和动态链接库文件
-                        if dst_file.lower() == os.path.join(current_dir, 'stock_monitor.exe').lower() or \
-                           dst_file.lower().endswith(('.dll', '.pyd')):
-                            # 对于正在运行的exe文件和动态链接库，先重命名为临时名称
-                            temp_dst_file = dst_file + '.tmp'
-                            try:
-                                os.rename(dst_file, temp_dst_file)
-                                app_logger.info(f"已将正在运行的文件重命名为: {temp_dst_file}")
-                            except OSError:
-                                # 如果重命名失败，跳过这个文件
-                                app_logger.warning(f"无法重命名正在运行的文件: {dst_file}")
-                                continue
-                        else:
-                            # 对于其他文件，先备份再删除
-                            try:
-                                backup_file = os.path.join(backup_dir, os.path.relpath(dst_file, current_dir))
-                                backup_dirname = os.path.dirname(backup_file)
-                                if not os.path.exists(backup_dirname):
-                                    os.makedirs(backup_dirname)
-                                shutil.copy2(dst_file, backup_file)
-                                os.remove(dst_file)
-                            except OSError as e:
-                                app_logger.warning(f"无法备份或删除文件 {dst_file}: {e}")
-                                continue
-                    
-                    shutil.copy2(src_file, dst_file)
-                    
-            # 清理临时文件
-            shutil.rmtree(temp_extract_dir)
-            os.remove(update_file_path)
-            shutil.rmtree(backup_dir)
+                    # 开发环境,从dist目录查找
+                    dev_updater = os.path.join(current_dir, "dist", "updater.exe")
+                    if os.path.exists(dev_updater):
+                        app_logger.info(f"从dist目录复制updater.exe: {dev_updater}")
+                        shutil.copy2(dev_updater, updater_exe)
+                    else:
+                        app_logger.error("开发环境中未找到updater.exe")
+                        return False
             
-            # 清理可能遗留的.tmp文件
-            self._cleanup_tmp_files(current_dir)
+            # 获取当前进程ID
+            current_pid = os.getpid()
             
-            app_logger.info("更新应用成功")
+            # 构建updater.exe的命令行参数
+            updater_args = [
+                updater_exe,
+                "--update-package", update_file_path,
+                "--target-dir", current_dir,
+                "--main-exe", main_exe,
+                "--pid", str(current_pid)
+            ]
             
-            # 执行更新后钩子
-            self._run_post_update_hooks()
+            app_logger.info(f"启动更新程序: {' '.join(updater_args)}")
+            
+            # 启动updater.exe(分离进程)
+            subprocess.Popen(
+                updater_args,
+                creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+                cwd=current_dir
+            )
+            
+            app_logger.info("更新程序已启动,主程序即将退出")
+            
+            # 延迟一下确保updater启动
+            import time
+            time.sleep(1)
+            
+            # 退出主程序
+            QApplication.quit()
             
             return True
             
         except Exception as e:
-            app_logger.error(f"应用更新时发生错误: {e}")
-            # 如果有备份目录，尝试清理
-            if backup_dir is not None:
-                try:
-                    shutil.rmtree(backup_dir)
-                except:
-                    pass
+            app_logger.error(f"启动更新程序时发生错误: {e}")
             return False
     
     def show_update_dialog(self, parent=None) -> bool:
@@ -371,24 +316,13 @@ class AppUpdater:
                 # 下载更新
                 update_file = self.download_update(parent)
                 if update_file:
-                    # 应用更新
-                    result = self.apply_update(update_file, skip_lock_check=True)
-                    if result:
-                        # 重启应用
-                        self.restart_application()
-                        return True
-                    else:
-                        QMessageBox.warning(
-                            parent, 
-                            "更新失败", 
-                            "应用更新失败，请稍后重试或手动更新。",
-                            QMessageBox.StandardButton.Ok
-                        )
+                    # 应用更新(启动updater.exe并退出)
+                    return self.apply_update(update_file)
                 else:
                     QMessageBox.warning(
                         parent, 
                         "下载失败", 
-                        "更新包下载失败，请检查网络连接后重试。",
+                        "更新包下载失败,请检查网络连接后重试。",
                         QMessageBox.StandardButton.Ok
                     )
             return False
@@ -402,78 +336,7 @@ class AppUpdater:
             )
             return False
 
-    def restart_application(self) -> None:
-        """
-        重启应用程序
-        """
-        try:
-            app_logger.info("正在重启应用程序...")
-            
-            # 获取当前可执行文件路径
-            if hasattr(sys, '_MEIPASS'):
-                # 打包环境
-                executable = sys.executable
-                # 检查是否有待处理的更新
-                update_marker = os.path.join(os.path.dirname(executable), 'update_pending')
-                if os.path.exists(update_marker):
-                    app_logger.info("检测到待处理的更新，先处理更新")
-                    # 读取更新文件路径
-                    with open(update_marker, 'r') as f:
-                        update_file_path = f.read().strip()
-                    # 删除标记文件
-                    os.remove(update_marker)
-                    # 应用更新，跳过锁定检查
-                    if self.apply_update(update_file_path, skip_lock_check=True):
-                        app_logger.info("更新应用完成，继续重启应用")
-                    else:
-                        app_logger.error("更新应用失败")
-                
-                # 首先尝试使用 execv 直接替换进程
-                try:
-                    os.execv(executable, [executable] + sys.argv[1:])
-                except Exception as e:
-                    app_logger.warning(f"os.execv 重启失败: {e}，回退到 subprocess 方式")
-                    # 回退到 subprocess 方式
-                    subprocess.Popen([executable] + sys.argv[1:])
-                    QApplication.quit()
-            else:
-                # 开发环境
-                executable = sys.executable
-                # 在开发环境中需要指定主模块
-                if os.path.basename(executable).lower().startswith('python'):
-                    # 如果是通过python运行的，则需要指定主模块
-                    main_module = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'main.py')
-                    if os.path.exists(main_module):
-                        # 首先尝试使用 execv 直接替换进程
-                        try:
-                            os.execv(executable, [executable, main_module] + sys.argv[1:])
-                        except Exception as e:
-                            app_logger.warning(f"os.execv 重启失败: {e}，回退到 subprocess 方式")
-                            # 回退到 subprocess 方式
-                            subprocess.Popen([executable, main_module] + sys.argv[1:])
-                            QApplication.quit()
-        except Exception as e:
-            app_logger.error(f"重启应用程序时发生错误: {e}")
 
-    def _cleanup_tmp_files(self, directory: str) -> None:
-        """
-        清理目录中遗留的.tmp文件
-        
-        Args:
-            directory: 要清理的目录路径
-        """
-        try:
-            for root, dirs, files in os.walk(directory):
-                for file in files:
-                    if file.endswith('.tmp'):
-                        tmp_file = os.path.join(root, file)
-                        try:
-                            os.remove(tmp_file)
-                            app_logger.info(f"已清理临时文件: {tmp_file}")
-                        except Exception as e:
-                            app_logger.warning(f"无法删除临时文件 {tmp_file}: {e}")
-        except Exception as e:
-            app_logger.error(f"清理临时文件时发生错误: {e}")
     
     def _run_post_update_hooks(self):
         """

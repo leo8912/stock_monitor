@@ -11,6 +11,10 @@ from ..utils.error_handler import retry_on_failure, safe_call
 from ..utils.helpers import is_equal
 from typing import Tuple
 
+# 常量定义
+MAX_RETRY_ATTEMPTS = 5  # 股票数据获取最大重试次数
+RETRY_DELAY_SECONDS = 2  # 重试间隔(秒)
+
 
 class StockDataService:
     """股票数据服务类"""
@@ -190,6 +194,35 @@ class StockDataService:
             app_logger.debug(f"使用 sina 引擎获取股票 {code} 数据")
         return quotation_engine
 
+    def _fetch_single_stock(self, quotation_engine, code: str, query_code: str) -> Optional[Dict[str, Any]]:
+        """
+        从行情引擎获取单只股票数据
+        
+        Args:
+            quotation_engine: 行情引擎
+            code: 完整股票代码(带前缀)
+            query_code: 查询用代码(可能不带前缀)
+            
+        Returns:
+            股票数据字典或None
+        """
+        try:
+            if code.startswith(('sh', 'sz')):
+                # A股:使用prefix=True参数,用完整代码作为键
+                single = quotation_engine.stocks(code, prefix=True)
+                return single if isinstance(single, dict) and code in single else None
+            elif code.startswith('hk'):
+                # 港股:移除前缀查询
+                single = quotation_engine.stocks(query_code)
+                return single if isinstance(single, dict) else None
+            else:
+                # 其他:使用纯代码查询
+                single = quotation_engine.stocks(query_code)
+                return single if isinstance(single, dict) else None
+        except Exception as e:
+            app_logger.debug(f"获取股票 {code} 数据时发生异常: {e}")
+            return None
+
     def _fetch_stock_data_with_retry(self, quotation_engine, code: str) -> Optional[Dict[str, Any]]:
         """
         带重试机制获取股票数据
@@ -201,73 +234,23 @@ class StockDataService:
         Returns:
             Optional[Dict[str, Any]]: 股票数据或None
         """
-        # 统一使用带前缀的代码查询，避免代码混淆
-        # 特别是对于sh000001和sz000001这样的同数字代码
+        # 准备查询代码(移除前缀)
         query_code = code[2:] if code.startswith(('sh', 'sz', 'hk')) else code
         
-        if code.startswith(('sh', 'sz')):
-            # 对于A股带前缀的代码，直接使用prefix=True参数查询
-            single = quotation_engine.stocks(code, prefix=True)
-            # 直接使用完整代码作为键获取数据
-            stock_data = single if isinstance(single, dict) and code in single else None
-        elif code.startswith('hk'):
-            # 对于港股代码，移除前缀进行查询
-            single = quotation_engine.stocks(query_code)
-            # 检查返回数据是否有效
-            if isinstance(single, dict):
-                # 确保返回的数据不是None且是完整的
-                stock_data = single
-            else:
-                stock_data = None
-        else:
-            # 对于不带前缀的代码，使用纯代码查询
-            single = quotation_engine.stocks(query_code)
-            # 检查返回数据是否有效
-            if isinstance(single, dict):
-                # 确保返回的数据不是None且是完整的
-                stock_data = single
-            else:
-                stock_data = None
-        
+        # 首次尝试
+        stock_data = self._fetch_single_stock(quotation_engine, code, query_code)
         if stock_data is not None:
             return stock_data
         
-        # 添加重试机制
-        max_retries = 5
-        retry_count = 0
-        
-        while retry_count < max_retries:
-            try:
-                if code.startswith(('sh', 'sz')):
-                    # 对于A股带前缀的代码，直接使用prefix=True参数查询
-                    single = quotation_engine.stocks(code, prefix=True)
-                    stock_data = single if isinstance(single, dict) and code in single else None
-                elif code.startswith('hk'):
-                    # 对于港股代码，移除前缀进行查询
-                    single = quotation_engine.stocks(query_code)
-                    if isinstance(single, dict):
-                        stock_data = single
-                    else:
-                        stock_data = None
-                else:
-                    single = quotation_engine.stocks(query_code)
-                    if isinstance(single, dict):
-                        stock_data = single
-                    else:
-                        stock_data = None
+        # 重试机制
+        for retry_count in range(1, MAX_RETRY_ATTEMPTS + 1):
+            app_logger.debug(f"获取 {code} 数据失败,第 {retry_count} 次重试")
+            time.sleep(RETRY_DELAY_SECONDS)
+            
+            stock_data = self._fetch_single_stock(quotation_engine, code, query_code)
+            if stock_data is not None:
+                return stock_data
                 
-                if stock_data is not None:
-                    return stock_data
-                retry_count += 1
-                app_logger.debug(f"获取 {code} 数据失败或不完整，第 {retry_count} 次重试")
-                if retry_count < max_retries:
-                    time.sleep(2)
-            except Exception as e:
-                retry_count += 1
-                app_logger.debug(f"获取 {code} 数据异常: {e}，第 {retry_count} 次重试")
-                if retry_count < max_retries:
-                    time.sleep(2)
-                    
         return None
 
     def _fetch_sina_stocks_data(self, result: dict, sina_codes: List[str]) -> None:
@@ -381,11 +364,11 @@ class StockDataService:
         if info and isinstance(data, dict):
             # 提取纯数字代码
             pure_code = code[2:] if code.startswith(('sh', 'sz')) else code
-            info = self._handle_special_stock_cases(info, pure_code, code, copy_required=True)
+            info = self._handle_special_stock_cases(info, pure_code, code, should_copy_data=True)
             
         return info
 
-    def _handle_special_stock_cases(self, info: Dict[str, Any], pure_code: str, code: str, copy_required: bool = False) -> Optional[Dict[str, Any]]:
+    def _handle_special_stock_cases(self, info: Dict[str, Any], pure_code: str, code: str, should_copy_data: bool = False) -> Optional[Dict[str, Any]]:
         """
         处理特殊情况下的股票数据（如上证指数和平安银行）
         
@@ -393,7 +376,7 @@ class StockDataService:
             info (Dict[str, Any]): 股票信息
             pure_code (str): 纯股票代码
             code (str): 完整股票代码
-            copy_required (bool): 是否需要复制数据
+            should_copy_data (bool): 是否需要复制数据以避免修改原始数据
             
         Returns:
             Optional[Dict[str, Any]]: 处理后的股票信息
@@ -402,11 +385,11 @@ class StockDataService:
             # 检查是否应该显示为上证指数
             if code == 'sh000001':
                 # 强制修正名称为上证指数
-                info = info.copy() if copy_required else info  # 创建副本避免修改原始数据
+                info = info.copy() if should_copy_data else info  # 创建副本避免修改原始数据
                 info['name'] = '上证指数'
             elif code == 'sz000001':
                 # 强制修正名称为平安银行
-                info = info.copy() if copy_required else info  # 创建副本避免修改原始数据
+                info = info.copy() if should_copy_data else info  # 创建副本避免修改原始数据
                 info['name'] = '平安银行'
         return info
 
@@ -446,30 +429,6 @@ class StockDataService:
             
         return market_data
     
-    def get_stock_data(self, code: str) -> Optional[Dict[str, Any]]:
-        """
-        获取单只股票数据，带重试机制
-        
-        Args:
-            code (str): 股票代码
-            
-        Returns:
-            Optional[Dict[str, Any]]: 股票数据，获取失败则返回None
-        """
-        try:
-            return self._get_stock_data_with_retry(code)
-        except (ConnectionError, TimeoutError) as e:
-            # 网络相关错误
-            app_logger.error(f"网络错误，获取股票 {code} 数据失败: {e}")
-            return None
-        except (ValueError, KeyError) as e:
-            # 数据解析错误
-            app_logger.error(f"数据解析错误，股票 {code}: {e}")
-            return None
-        except Exception as e:
-            # 其他未预期的错误
-            app_logger.error(f"未知错误，获取股票 {code} 数据失败: {e}", exc_info=True)
-            return None
 
 # 创建全局股票数据服务实例
 stock_data_service = StockDataService()

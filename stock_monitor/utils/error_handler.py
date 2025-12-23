@@ -59,27 +59,24 @@ def safe_call(func: Callable, *args, default_return=None, exception_handler=None
     try:
         return func(*args, **kwargs)
     except NETWORK_ERROR_TYPES as e:
+        error_type = 'network'
         error_msg = f"调用函数 {func.__name__} 时发生网络错误: {e}"
-        app_logger.error(error_msg)
-        app_logger.debug(f"函数参数: args={args}, kwargs={kwargs}")
-        if exception_handler:
-            return exception_handler(e, 'network')
-        return default_return
     except VALIDATION_ERROR_TYPES as e:
+        error_type = 'validation'
         error_msg = f"调用函数 {func.__name__} 时发生数据验证错误: {e}"
-        app_logger.error(error_msg)
-        app_logger.debug(f"函数参数: args={args}, kwargs={kwargs}")
-        if exception_handler:
-            return exception_handler(e, 'validation')
-        return default_return
     except Exception as e:
+        error_type = 'unknown'
         error_msg = f"调用函数 {func.__name__} 时发生未知错误: {e}"
-        app_logger.error(error_msg)
-        app_logger.debug(f"函数参数: args={args}, kwargs={kwargs}")
-        app_logger.error(error_msg)
-        if exception_handler:
-            return exception_handler(e, 'unknown')
-        return default_return
+    
+    # 统一的错误日志记录
+    app_logger.error(error_msg)
+    app_logger.debug(f"函数参数: args={args}, kwargs={kwargs}")
+    
+    # 调用自定义异常处理器(如果提供)
+    if exception_handler:
+        return exception_handler(e, error_type)
+    
+    return default_return
 
 def retry_on_failure(max_attempts: int = 3, delay: float = 1.0):
     """

@@ -109,9 +109,12 @@ stock_monitor/
 - 开市期间按设定频率刷新，休市期间降低刷新频率
 
 ### 7. 自动更新功能
+- 采用独立更新程序(updater.exe)实现无缝更新
 - 支持自动检测并下载新版本
-- 通过GitHub API检测更新，支持备用加速下载源(https://ghfast.top/)
-- 两阶段更新策略，提高更新稳定性
+- 通过GitHub API检测更新,支持备用加速下载源(https://ghfast.top/)
+- 更新过程中显示进度界面,用户体验流畅
+- 自动备份当前版本,支持更新失败回滚
+- 更新完成后自动启动新版本
 
 ### 8. 开机自启动
 - 支持设置开机自动启动
@@ -170,3 +173,26 @@ python -c "from stock_monitor.utils.log_cleaner import clean_old_logs; print('�
 - 采用 GitHub Actions 自动打包，主分支变动即触发
 - 打包产物为 `stock_monitor.zip`，含所有依赖，解压即用
 - Release 日志自动从 CHANGELOG.md 提取，最新在前
+
+## 更新机制
+
+### 独立更新程序
+
+本软件采用独立更新程序(`updater.exe`)实现自动更新,彻底解决了Windows平台文件锁定问题。
+
+**更新流程**:
+1. 主程序检测到新版本并下载更新包
+2. 主程序启动`updater.exe`并传递更新包路径
+3. 主程序立即退出,释放所有文件锁
+4. `updater.exe`等待主程序完全退出
+5. `updater.exe`解压更新包并备份当前版本
+6. `updater.exe`替换所有文件
+7. `updater.exe`启动新版本主程序
+8. `updater.exe`自动删除自身
+
+**优势**:
+- ✅ 完全避免文件锁定问题
+- ✅ 用户体验流畅,无卡顿
+- ✅ 支持更新失败自动回滚
+- ✅ 自动清理临时文件
+- ✅ 显示友好的进度界面

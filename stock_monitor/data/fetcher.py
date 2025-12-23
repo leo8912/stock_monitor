@@ -21,6 +21,10 @@ except Exception as e:
     def convert(s, locale, update=None):  # type: ignore
         return s
 
+# 常量定义
+MAX_STOCKS_LIMIT = 10000  # 最大处理股票数量限制
+BATCH_SIZE = 800  # 批量获取股票数据的批次大小
+
 class StockFetcher:
     """股票数据获取器"""
     
@@ -33,28 +37,24 @@ class StockFetcher:
         """
         stocks_data = []
         
-        # 1. 获取A股数据
         try:
             a_stocks = self._fetch_a_stocks()
             stocks_data.extend(a_stocks)
         except Exception as e:
             app_logger.error(f"获取A股数据失败: {e}")
             
-        # 2. 获取主要指数
         try:
              indices = self._fetch_indices()
              stocks_data.extend(indices)
         except Exception as e:
              app_logger.error(f"获取指数数据失败: {e}")
 
-        # 3. 获取港股数据
         try:
             hk_stocks = self._fetch_hk_stocks()
             stocks_data.extend(hk_stocks)
         except Exception as e:
             app_logger.error(f"获取港股数据失败: {e}")
             
-        # 4. 去重
         return self._deduplicate_stocks(stocks_data)
 
     def _fetch_a_stocks(self) -> List[Dict[str, str]]:
@@ -67,17 +67,15 @@ class StockFetcher:
             all_stock_codes.extend(item.split(','))
             
         # 限制数量
-        max_stocks = 10000
-        if len(all_stock_codes) > max_stocks:
-             app_logger.info(f"股票数量过多 ({len(all_stock_codes)})，限制处理前 {max_stocks} 只")
-             all_stock_codes = all_stock_codes[:max_stocks]
+        if len(all_stock_codes) > MAX_STOCKS_LIMIT:
+             app_logger.info(f"股票数量过多 ({len(all_stock_codes)})，限制处理前 {MAX_STOCKS_LIMIT} 只")
+             all_stock_codes = all_stock_codes[:MAX_STOCKS_LIMIT]
              
         # 分批获取
-        batch_size = 800
         results = []
         
-        for i in range(0, len(all_stock_codes), batch_size):
-            batch_codes = all_stock_codes[i:i+batch_size]
+        for i in range(0, len(all_stock_codes), BATCH_SIZE):
+            batch_codes = all_stock_codes[i:i+BATCH_SIZE]
             pure_codes = [c[2:] if c.startswith(('sh', 'sz')) else c for c in batch_codes]
             
             try:

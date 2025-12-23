@@ -135,7 +135,16 @@ def build_executable():
     cmd.extend(['--add-data', f'{paths["easyquotation"]}{os.sep}stock_codes.conf;easyquotation'])
     cmd.extend(['--add-data', f'{paths["zhconv"]}{os.sep}zhcdict.json;zhconv'])
     cmd.extend(['--add-data', 'stock_monitor/resources/icon.ico;stock_monitor/resources'])
-    cmd.extend(['--add-data', 'stock_monitor/resources/stocks.db;stock_monitor/resources'])    
+    cmd.extend(['--add-data', 'stock_monitor/resources/stocks.db;stock_monitor/resources'])
+    
+    # 添加updater.exe
+    updater_exe_path = 'dist/updater.exe'
+    if os.path.exists(updater_exe_path):
+        cmd.extend(['--add-data', f'{updater_exe_path};.'])
+        print(f"✅ 将包含updater.exe: {updater_exe_path}")
+    else:
+        print(f"⚠️  未找到updater.exe,将不包含更新程序")
+    
     # 添加隐藏导入 (与GitHub Workflow保持一致)
     cmd.extend(['--hidden-import', 'pypinyin'])
     cmd.extend(['--hidden-import', 'pypinyin.style'])
@@ -194,6 +203,12 @@ def create_zip_artifact():
             if os.path.exists(exe_path):
                 zipf.write(exe_path, 'stock_monitor.exe')
                 print("✅ 已添加可执行文件到压缩包")
+            
+            # 添加updater.exe
+            updater_path = 'dist/updater.exe'
+            if os.path.exists(updater_path):
+                zipf.write(updater_path, 'updater.exe')
+                print("✅ 已添加updater.exe到压缩包")
             
             print("✅ 产物压缩包创建完成: stock_monitor.zip")
             return True

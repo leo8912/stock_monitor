@@ -615,7 +615,6 @@ class MainWindow(QtWidgets.QWidget):
             # 使用 update_data 更新数据，不需要手动清理
             self.table.update_data(stocks)
             
-            # self.table.viewport().update() # update_data 已经调用了 view update
             self.adjust_window_height()
             
             self.loading_label.hide()
@@ -686,48 +685,71 @@ class MainWindow(QtWidgets.QWidget):
         except Exception as e:
             app_logger.error(f"异步更新数据库时出错: {e}")
 
+    def _clean_stock_code(self, stock_code: str, processor) -> str:
+        """
+        清理股票代码,移除特殊字符并格式化
+        
+        Args:
+            stock_code: 原始股票代码
+            processor: StockCodeProcessor实例
+            
+        Returns:
+            清理后的股票代码
+        """
+        # 移除emoji等特殊字符
+        cleaned = stock_code.replace("⭐️", "").strip()
+        
+        # 如果为空,返回原始值
+        if not cleaned:
+            return stock_code
+        
+        # 尝试提取第一部分(处理 "code name" 格式)
+        parts = cleaned.split()
+        if not parts:
+            return stock_code
+            
+        # 先尝试格式化第一部分
+        formatted = processor.format_stock_code(parts[0])
+        if formatted:
+            return formatted
+        
+        # 如果第一部分格式化失败,尝试整个字符串
+        formatted = processor.format_stock_code(cleaned)
+        return formatted if formatted else stock_code
+
     def load_user_stocks(self):
         """加载用户自选股列表"""
         try:
             config_manager = self._container.get(ConfigManager)
             stocks = config_manager.get('user_stocks', [])
             
-            # 清理可能的损坏数据（如含"⭐️"的项）
-            cleaned_stocks = []
-            has_changes = False
+            # 早返回:如果列表为空,直接返回
+            if not stocks:
+                app_logger.info("自选股列表为空")
+                return []
             
+            # 清理可能的损坏数据
             from stock_monitor.utils.stock_utils import StockCodeProcessor
             processor = StockCodeProcessor()
             
+            cleaned_stocks = []
+            has_changes = False
+            
             for stock in stocks:
-                original_stock = stock
-                # 移除 "⭐️"
-                if "⭐️" in stock:
-                    stock = stock.replace("⭐️", "").strip()
-                    
-                # 尝试只保留第一部分（如果是 "code name" 格式）
-                if stock.split():
-                    code_part = stock.split()[0]
-                    # 如果这部分看起来像代码，就用它
-                    formatted = processor.format_stock_code(code_part)
-                    if formatted:
-                        stock = formatted
-                    else:
-                        # 否则尝试整个字符串
-                        formatted = processor.format_stock_code(stock)
-                        if formatted:
-                            stock = formatted
-                            
-                cleaned_stocks.append(stock)
-                if stock != original_stock:
+                cleaned = self._clean_stock_code(stock, processor)
+                cleaned_stocks.append(cleaned)
+                
+                if cleaned != stock:
                     has_changes = True
             
+            # 如果有变化,保存清理后的数据
             if has_changes:
                 app_logger.warning(f"检测到自选股列表包含脏数据，已自动修复: {stocks} -> {cleaned_stocks}")
                 config_manager.set('user_stocks', cleaned_stocks)
                 
             app_logger.info(f"加载自选股列表: {cleaned_stocks}")
             return cleaned_stocks
+            
         except Exception as e:
             app_logger.error(f"加载自选股列表失败: {e}")
             return []
