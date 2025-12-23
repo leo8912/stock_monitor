@@ -39,6 +39,20 @@ def main():
 
         app_logger.info("应用程序启动")
 
+        # 修复 SSL 证书路径 (PyInstaller 环境)
+        if hasattr(sys, "_MEIPASS"):
+            import os
+
+            # 尝试查找 bundled certifi pem
+            # PyInstaller --collect-all certifi 会将其放在 _MEIPASS/certifi 目录中
+            ssl_cert_path = os.path.join(sys._MEIPASS, "certifi", "cacert.pem")
+            if os.path.exists(ssl_cert_path):
+                os.environ["REQUESTS_CA_BUNDLE"] = ssl_cert_path
+                os.environ["SSL_CERT_FILE"] = ssl_cert_path
+                app_logger.info(f"已设置 SSL 证书路径: {ssl_cert_path}")
+            else:
+                app_logger.warning(f"未找到 SSL 证书文件: {ssl_cert_path}")
+
         # 应用待处理的更新
         apply_pending_updates()
 

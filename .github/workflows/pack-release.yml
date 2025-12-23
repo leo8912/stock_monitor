@@ -70,10 +70,14 @@ jobs:
           --add-data "$env:ZHCONVPATH\zhcdict.json;zhconv" `
           --add-data "stock_monitor/resources/icon.ico;stock_monitor/resources" `
           --add-data "stock_monitor/resources/stocks_base.db;stock_monitor/resources" `
-          --add-data "dist/updater.exe;." `
           --hidden-import=pypinyin `
           --hidden-import=pypinyin.style `
-          --hidden-import=pandas
+          --hidden-import=pandas `
+          --collect-all certifi
+
+    - name: 复制updater.exe到输出目录 # Copy updater.exe to output directory
+      run: |
+        Copy-Item dist/updater.exe -Destination dist/stock_monitor/
 
     - name: 列出dist目录内容 # List dist directory
       run: |

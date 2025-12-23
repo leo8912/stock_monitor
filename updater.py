@@ -241,6 +241,52 @@ class Updater:
             self.log(f"备份失败: {e}", 60, "继续更新")
             return False
 
+    # ... (imports)
+
+    def _safe_delete(self, path: Path, max_retries: int = 5) -> bool:
+        """安全删除文件或目录，带重试机制"""
+        import time
+
+        for i in range(max_retries):
+            try:
+                if not path.exists():
+                    return True
+                if path.is_dir():
+                    shutil.rmtree(path)
+                else:
+                    path.unlink()
+                return True
+            except PermissionError:
+                if i < max_retries - 1:
+                    time.sleep(1.0)
+                    continue
+                return False
+            except Exception as e:
+                logger.warning(f"删除失败 {path}: {e}")
+                return False
+        return False
+
+    def _safe_copy(self, src: Path, dst: Path, max_retries: int = 5) -> bool:
+        """安全复制文件或目录，带重试机制"""
+        import time
+
+        for i in range(max_retries):
+            try:
+                if src.is_dir():
+                    shutil.copytree(src, dst)
+                else:
+                    shutil.copy2(src, dst)
+                return True
+            except PermissionError:
+                if i < max_retries - 1:
+                    time.sleep(1.0)
+                    continue
+                return False
+            except Exception as e:
+                logger.warning(f"复制失败 {src} -> {dst}: {e}")
+                return False
+        return False
+
     def replace_files(self, source_dir: Path) -> bool:
         """替换文件"""
         try:
@@ -271,21 +317,20 @@ class Updater:
                     continue
 
                 try:
+                    # 使用安全删除
                     if dest.exists():
-                        if dest.is_dir():
-                            shutil.rmtree(dest)
-                        else:
-                            dest.unlink()
+                        if not self._safe_delete(dest):
+                            raise PermissionError(f"无法删除旧文件: {dest}")
 
-                    if item.is_dir():
-                        shutil.copytree(item, dest)
-                    else:
-                        shutil.copy2(item, dest)
+                    # 使用安全复制
+                    if not self._safe_copy(item, dest):
+                        raise PermissionError(f"无法复制新文件: {dest}")
 
                     replaced_count += 1
                     logger.debug(f"替换: {item.name}")
                 except Exception as e:
                     logger.warning(f"替换 {item.name} 失败: {e}")
+                    raise  # 关键文件替换失败应抛出异常触发回滚
 
             self.log("文件替换完成", 90, f"已替换 {replaced_count} 个文件/目录")
             logger.info(f"替换完成: {replaced_count} 个项目")
