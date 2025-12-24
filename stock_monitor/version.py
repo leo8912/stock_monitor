@@ -41,3 +41,21 @@ except (ImportError, AttributeError):
             project_root = parent
     except Exception:
         pass
+
+    # 3. Special handling for PyInstaller frozen environment
+    if __version__ == "0.0.0-dev" and getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        try:
+            base_path = sys._MEIPASS
+            toml_path = os.path.join(base_path, "pyproject.toml")
+            if os.path.exists(toml_path):
+                with open(toml_path, encoding="utf-8") as f:
+                    for line in f:
+                        if line.strip().startswith("version"):
+                            parts = line.split("=")
+                            if len(parts) == 2:
+                                version_str = parts[1].strip().strip('"').strip("'")
+                                if version_str:
+                                    __version__ = version_str
+                                    break
+        except Exception:
+            pass
