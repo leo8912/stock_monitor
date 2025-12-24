@@ -11,7 +11,11 @@ class TestMarketStatsWorker:
 
         # 模拟数据
         mock_data = {
-            "sh000001": {"name": "上证指数", "now": 3000, "close": 2900},  # 指数应被跳过
+            "sh000001": {
+                "name": "上证指数",
+                "now": 3000,
+                "close": 2900,
+            },  # 指数应被跳过
             "sz000001": {"name": "平安银行", "now": 10.5, "close": 10.0},  # 上涨
             "sz000002": {"name": "万科A", "now": 9.5, "close": 10.0},  # 下跌
             "sz000003": {"name": "PT金田", "now": 0, "close": 0},  # 平盘 (停牌)

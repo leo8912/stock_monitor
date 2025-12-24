@@ -3,7 +3,7 @@
 提供统一的股票数据获取接口
 """
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
 from ..utils.logger import app_logger
 from .stock_data_fetcher import StockDataFetcher
@@ -34,7 +34,7 @@ class StockDataService:
         self.processor = processor or StockDataProcessor()
         app_logger.info("股票数据服务初始化完成")
 
-    def get_stock_data(self, code: str) -> Optional[Dict[str, Any]]:
+    def get_stock_data(self, code: str) -> Optional[dict[str, Any]]:
         """
         获取单只股票数据,带重试机制
 
@@ -47,8 +47,8 @@ class StockDataService:
         return self.fetcher.fetch_single(code)
 
     def get_multiple_stocks_data(
-        self, codes: List[str]
-    ) -> Dict[str, Optional[Dict[str, Any]]]:
+        self, codes: list[str]
+    ) -> dict[str, Optional[dict[str, Any]]]:
         """
         批量获取多只股票数据,按市场类型分组处理
 
@@ -60,7 +60,7 @@ class StockDataService:
         """
         return self.fetcher.fetch_multiple(codes)
 
-    def is_stock_data_valid(self, stock_data: Dict[str, Any]) -> bool:
+    def is_stock_data_valid(self, stock_data: dict[str, Any]) -> bool:
         """
         检查股票数据是否完整有效
 
@@ -73,8 +73,8 @@ class StockDataService:
         return self.validator.is_valid(stock_data)
 
     def process_stock_data(
-        self, data: Dict[str, Any], stocks_list: List[str]
-    ) -> List[Tuple]:
+        self, data: dict[str, Any], stocks_list: list[str]
+    ) -> list[tuple]:
         """
         处理股票数据,返回格式化的股票列表
 
@@ -114,7 +114,7 @@ class StockDataService:
         app_logger.info(f"股票数据处理完成: 总计 {len(stocks)} 只股票")
         return stocks
 
-    def get_all_market_data(self) -> Optional[Dict[str, Any]]:
+    def get_all_market_data(self) -> Optional[dict[str, Any]]:
         """
         获取全市场股票数据
 

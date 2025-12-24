@@ -19,7 +19,9 @@ class TestStockDataFetcher(unittest.TestCase):
         mock_quotation = MagicMock()
 
         # Mock successful response
-        mock_quotation.stocks.return_value = {"sh600000": {"name": "浦发银行", "now": 10.0}}
+        mock_quotation.stocks.return_value = {
+            "sh600000": {"name": "浦发银行", "now": 10.0}
+        }
 
         # Inject mock engine directly
         self.fetcher.sina_quotation = mock_quotation
@@ -46,7 +48,9 @@ class TestStockDataFetcher(unittest.TestCase):
         self.fetcher.sina_quotation = mock_quotation
 
         # Mock A-share response
-        mock_quotation.stocks.return_value = {"sh600000": {"name": "浦发银行", "now": 10.0}}
+        mock_quotation.stocks.return_value = {
+            "sh600000": {"name": "浦发银行", "now": 10.0}
+        }
 
         codes = ["sh600000"]
         result = self.fetcher.fetch_multiple(codes)

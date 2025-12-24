@@ -6,7 +6,7 @@
 import os
 import sqlite3
 import threading
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from stock_monitor.config.manager import get_config_dir
 from stock_monitor.utils.helpers import resource_path
@@ -153,7 +153,7 @@ class StockDatabase(StockDataSource):
         except Exception as e:
             app_logger.error(f"触发后台更新失败: {e}")
 
-    def insert_stocks(self, stocks: List[Dict[str, Any]]) -> int:
+    def insert_stocks(self, stocks: list[dict[str, Any]]) -> int:
         """
         插入或更新股票数据（批量优化版）
 
@@ -211,7 +211,9 @@ class StockDatabase(StockDataSource):
 
                 # cursor.rowcount 在某些驱动/配置下可能返回-1或不准确
                 # 既然我们使用了事务且未抛出异常，可以认为所有数据都已处理
-                app_logger.info(f"股票数据批量更新完成: 处理了 {len(data_to_insert)} 条记录")
+                app_logger.info(
+                    f"股票数据批量更新完成: 处理了 {len(data_to_insert)} 条记录"
+                )
                 return len(data_to_insert)
 
         except Exception as e:
@@ -219,7 +221,7 @@ class StockDatabase(StockDataSource):
             # Fallback to older slow method if UPSERT fails
             return self._insert_stocks_slow(stocks)
 
-    def _insert_stocks_slow(self, stocks: List[Dict[str, Any]]) -> int:
+    def _insert_stocks_slow(self, stocks: list[dict[str, Any]]) -> int:
         """慢速插入模式（兼容旧版SQLite或作为降级方案）"""
         try:
             with sqlite3.connect(self.db_path) as conn:
@@ -275,7 +277,7 @@ class StockDatabase(StockDataSource):
             app_logger.error(f"慢速插入失败: {e}")
             return 0
 
-    def get_stock_by_code(self, code: str) -> Optional[Dict[str, Any]]:
+    def get_stock_by_code(self, code: str) -> Optional[dict[str, Any]]:
         """
         根据股票代码获取股票信息
 
@@ -306,7 +308,7 @@ class StockDatabase(StockDataSource):
             app_logger.error(f"查询股票 {code} 失败: {e}")
             return None
 
-    def search_stocks(self, keyword: str, limit: int = 30) -> List[Dict[str, Any]]:
+    def search_stocks(self, keyword: str, limit: int = 30) -> list[dict[str, Any]]:
         """
         搜索股票
 
@@ -361,7 +363,7 @@ class StockDatabase(StockDataSource):
             app_logger.error(f"搜索股票失败: {e}")
             return []
 
-    def get_stocks_by_market_type(self, market_type: str) -> List[Dict[str, Any]]:
+    def get_stocks_by_market_type(self, market_type: str) -> list[dict[str, Any]]:
         """
         根据市场类型获取股票列表
 
@@ -403,7 +405,7 @@ class StockDatabase(StockDataSource):
             app_logger.error(f"获取股票总数失败: {e}")
             return 0
 
-    def get_all_stocks(self) -> List[Dict[str, Any]]:
+    def get_all_stocks(self) -> list[dict[str, Any]]:
         """
         获取所有股票数据
 

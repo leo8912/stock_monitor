@@ -2,6 +2,7 @@
 独立更新程序测试脚本
 用于验证updater.exe的基本功能
 """
+
 import shutil
 import subprocess
 import tempfile

@@ -33,7 +33,7 @@ def resource_path(relative_path):
             import pkg_resources
 
             return pkg_resources.resource_filename("zhconv", "zhcdict.json")
-        except:
+        except Exception:
             # Fallback方法
             import zhconv
 

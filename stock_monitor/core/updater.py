@@ -5,7 +5,7 @@ import sys
 import tempfile
 import zipfile
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 import requests
 from packaging import version
@@ -30,7 +30,7 @@ class AppUpdater:
         self.github_repo = github_repo
         self.network_manager = NetworkManager()
         self.current_version = __version__
-        self.latest_release_info: Optional[Dict[Any, Any]] = None
+        self.latest_release_info: Optional[dict[Any, Any]] = None
 
     def check_for_updates(self) -> Optional[bool]:
         """
@@ -65,7 +65,9 @@ class AppUpdater:
                 .replace("v", "")
             )
 
-            app_logger.info(f"当前版本: {self.current_version}, 最新版本: {latest_version}")
+            app_logger.info(
+                f"当前版本: {self.current_version}, 最新版本: {latest_version}"
+            )
 
             # 比较版本号
             if version.parse(latest_version) > version.parse(self.current_version):
@@ -245,44 +247,44 @@ class AppUpdater:
     def apply_update(self, update_file_path: str) -> bool:
         """
         应用更新 (BAT脚本方案)
-        
+
         1. 解压更新包到临时目录
         2. 生成 update.bat 脚本
         3. 运行脚本并退出主程序
         """
         try:
             app_logger.info("准备应用更新(BAT方案)...")
-            
+
             # 1. 准备路径
-            if getattr(sys, 'frozen', False):
+            if getattr(sys, "frozen", False):
                 app_dir = Path(sys.executable).parent
             else:
                 app_dir = Path(os.getcwd())
 
             temp_dir = app_dir / "temp_update"
             update_zip = Path(update_file_path)
-            
+
             # 清理旧的临时目录
             if temp_dir.exists():
                 shutil.rmtree(temp_dir, ignore_errors=True)
             temp_dir.mkdir(exist_ok=True)
-            
+
             app_logger.info(f"正在解压更新包到: {temp_dir}")
-            
+
             # 2. 解压文件
-            with zipfile.ZipFile(update_zip, 'r') as zip_ref:
+            with zipfile.ZipFile(update_zip, "r") as zip_ref:
                 zip_ref.extractall(temp_dir)
-            
+
             # 智能寻找源目录: 查找包含 stock_monitor.exe 的目录
             source_dir = temp_dir
             for root, dirs, files in os.walk(temp_dir):
                 if "stock_monitor.exe" in files:
                     source_dir = Path(root)
                     break
-            
+
             app_logger.info(f"更新源目录: {source_dir}")
             if source_dir == temp_dir:
-                 app_logger.info("注意: 未在子目录找到exe，将使用解压根目录作为源")
+                app_logger.info("注意: 未在子目录找到exe，将使用解压根目录作为源")
 
             app_logger.info("正在生成更新脚本 update.bat...")
 
@@ -290,7 +292,7 @@ class AppUpdater:
             bat_path = app_dir / "update.bat"
             main_exe_name = "stock_monitor.exe"
             current_pid = os.getpid()
-            
+
             # BAT 脚本内容 (使用 GBK 兼容中文 CMD)
             bat_content = f"""@echo off
 title Stock Monitor Updater
@@ -375,7 +377,7 @@ del "%0"
                 return False
 
             app_logger.info("启动 update.bat，主程序即将退出")
-            
+
             # 4. 运行脚本并退出
             try:
                 # 使用 os.startfile 直接打开 BAT 文件，这在 Windows 上最可靠
@@ -385,17 +387,18 @@ del "%0"
                 app_logger.error(f"os.startfile调用失败: {e}, 尝试回退到subprocess...")
                 # 回退方案
                 subprocess.Popen(
-                    f'"{str(bat_path)}"', 
+                    f'"{str(bat_path)}"',
                     shell=True,
                     creationflags=subprocess.CREATE_NEW_CONSOLE,
-                    cwd=str(app_dir)
+                    cwd=str(app_dir),
                 )
-            
+
             # 强制退出
             import time
-            time.sleep(1.0) 
+
+            time.sleep(1.0)
             os._exit(0)
-            
+
             return True
 
         except Exception as e:

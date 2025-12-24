@@ -33,7 +33,9 @@ class TestHelpers(unittest.TestCase):
 
         # 测试无效代码
         self.assertEqual(processor.format_stock_code("invalid"), "invalid")
-        self.assertEqual(processor.format_stock_code("12345"), "12345")  # 5位数字代码保持不变
+        self.assertEqual(
+            processor.format_stock_code("12345"), "12345"
+        )  # 5位数字代码保持不变
         self.assertIsNone(processor.format_stock_code(""))
 
     def test_get_stock_emoji(self):

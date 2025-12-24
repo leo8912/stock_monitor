@@ -3,7 +3,7 @@
 提供基于QAbstractTableModel的高效数据模型，用于QTableView显示
 """
 
-from typing import Any, List, Tuple
+from typing import Any
 
 from PyQt6 import QtCore, QtGui
 
@@ -24,7 +24,7 @@ class StockTableModel(QtCore.QAbstractTableModel):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._data: List[Tuple] = []
+        self._data: list[tuple] = []
         self._header_labels = ["名称", "价格", "涨跌幅", "封单"]
         self._font_size = 13
         self._show_seal_column = False
@@ -133,7 +133,7 @@ class StockTableModel(QtCore.QAbstractTableModel):
                 return self._header_labels[section]
         return None
 
-    def update_data(self, new_data: List[Tuple]):
+    def update_data(self, new_data: list[tuple]):
         """更新数据"""
         # 检查是否需要显示封单列
         has_seal = any(item[5] for item in new_data)  # item[5] is seal_type

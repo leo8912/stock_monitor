@@ -4,8 +4,11 @@
 """
 
 import inspect
-from typing import Any, Callable, Dict, Optional, Type, Union
+from typing import Any, Callable, Optional, Union
 
+from ..config.manager import ConfigManager
+from ..core.stock_manager import StockManager
+from ..core.stock_service import StockDataService
 from ..utils.logger import app_logger
 
 
@@ -16,7 +19,7 @@ class DIContainer:
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super(DIContainer, cls).__new__(cls)
+            cls._instance = super().__new__(cls)
             cls._instance._initialized = False
         return cls._instance
 
@@ -24,12 +27,12 @@ class DIContainer:
         if self._initialized:
             return
         self._initialized = True
-        self._services: Dict[Union[Type, str], Any] = {}
-        self._factories: Dict[Union[Type, str], Callable] = {}
-        self._singletons: Dict[Union[Type, str], Any] = {}
+        self._services: dict[Union[type, str], Any] = {}
+        self._factories: dict[Union[type, str], Callable] = {}
+        self._singletons: dict[Union[type, str], Any] = {}
         app_logger.debug("DI容器初始化完成")
 
-    def register_singleton(self, key: Union[Type, str], instance: Any) -> None:
+    def register_singleton(self, key: Union[type, str], instance: Any) -> None:
         """
         注册单例服务
 
@@ -40,7 +43,7 @@ class DIContainer:
         self._singletons[key] = instance
         app_logger.debug(f"注册单例服务: {key}")
 
-    def register_factory(self, key: Union[Type, str], factory: Callable) -> None:
+    def register_factory(self, key: Union[type, str], factory: Callable) -> None:
         """
         注册工厂函数
 
@@ -51,7 +54,7 @@ class DIContainer:
         self._factories[key] = factory
         app_logger.debug(f"注册工厂: {key}")
 
-    def register(self, key: Union[Type, str], instance: Any) -> None:
+    def register(self, key: Union[type, str], instance: Any) -> None:
         """
         注册服务实例(向后兼容)
 
@@ -61,7 +64,7 @@ class DIContainer:
         """
         self.register_singleton(key, instance)
 
-    def get(self, key: Union[Type, str]) -> Any:
+    def get(self, key: Union[type, str]) -> Any:
         """
         获取服务实例
 
@@ -92,7 +95,7 @@ class DIContainer:
 
         raise KeyError(f"服务未注册: {key}")
 
-    def _auto_create(self, service_type: Type) -> Optional[Any]:
+    def _auto_create(self, service_type: type) -> Optional[Any]:
         """
         自动创建服务实例(向后兼容)
 
@@ -102,10 +105,6 @@ class DIContainer:
         Returns:
             服务实例或None
         """
-        from ..config.manager import ConfigManager
-        from ..core.stock_manager import StockManager
-        from ..core.stock_service import StockDataService
-
         if service_type == ConfigManager:
             app_logger.debug("自动创建ConfigManager")
             return ConfigManager()
@@ -119,7 +118,7 @@ class DIContainer:
 
         return None
 
-    def resolve(self, cls: Type) -> Any:
+    def resolve(self, cls: type) -> Any:
         """
         自动解析类的依赖并创建实例
 
@@ -158,7 +157,7 @@ class DIContainer:
             app_logger.error(f"解析依赖失败: {cls.__name__}, 错误: {e}")
             raise
 
-    def has(self, key: Union[Type, str]) -> bool:
+    def has(self, key: Union[type, str]) -> bool:
         """
         检查服务是否已注册
 

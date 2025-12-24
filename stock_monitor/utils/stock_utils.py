@@ -3,7 +3,7 @@
 提供统一的股票代码处理功能
 """
 
-from typing import Any, List, Optional, Tuple
+from typing import Any, Optional
 
 
 class StockCodeProcessor:
@@ -71,7 +71,7 @@ class StockCodeProcessor:
         return code
 
     @staticmethod
-    def extract_code_from_text(text: str) -> Tuple[Optional[str], str]:
+    def extract_code_from_text(text: str) -> tuple[Optional[str], str]:
         """
         从文本中提取股票代码
 
@@ -117,7 +117,7 @@ class StockCodeProcessor:
         return code, text
 
 
-def extract_stocks_from_list(items: List[Any]) -> List[str]:
+def extract_stocks_from_list(items: list[Any]) -> list[str]:
     """
     从列表项中提取股票代码列表
 

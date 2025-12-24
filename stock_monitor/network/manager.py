@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 import requests
 
@@ -72,7 +72,7 @@ class NetworkManager:
 
     def github_api_request(
         self, url: str, use_mirror: bool = False
-    ) -> Optional[Dict[Any, Any]]:
+    ) -> Optional[dict[Any, Any]]:
         """
         发送GitHub API请求
 

@@ -3,7 +3,7 @@
 """
 
 import os
-from typing import Any, Dict
+from typing import Any
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QIcon
@@ -139,7 +139,7 @@ class StockSearchHandler:
             all_stocks_list = load_stock_data()
 
             # 转换为字典格式以匹配原有逻辑
-            all_stocks: Dict[str, Any] = {}
+            all_stocks: dict[str, Any] = {}
             for stock in all_stocks_list:
                 all_stocks[stock["code"]] = stock
 
@@ -580,7 +580,7 @@ class NewSettingsDialog(QDialog):
                 ctypes.byref(ctypes.c_int(0x1E1E1E)),
                 ctypes.sizeof(ctypes.c_int),
             )
-        except:
+        except Exception:
             pass
 
         # 为设置对话框设置固定字体，避免继承主窗口的动态字体
@@ -1040,7 +1040,9 @@ class NewSettingsDialog(QDialog):
         system_layout = QHBoxLayout()
         system_layout.setContentsMargins(0, 0, 0, 0)  # 移除边距
         system_layout.setSpacing(6)  # 调整为6px间距
-        system_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)  # 垂直居中对齐，确保与按钮视觉齐平
+        system_layout.setAlignment(
+            Qt.AlignmentFlag.AlignVCenter
+        )  # 垂直居中对齐，确保与按钮视觉齐平
 
         # 开机启动
         self.auto_start_checkbox = QCheckBox()
@@ -1503,7 +1505,9 @@ class NewSettingsDialog(QDialog):
             # 添加调试信息
             from stock_monitor.utils.logger import app_logger
 
-            app_logger.info(f"发送配置更改信号: 股票列表={stocks}, 刷新间隔={refresh_interval}")
+            app_logger.info(
+                f"发送配置更改信号: 股票列表={stocks}, 刷新间隔={refresh_interval}"
+            )
             self.config_changed.emit(stocks, refresh_interval)
 
             # 立即刷新数据

@@ -5,7 +5,6 @@
 
 import threading
 import time
-from typing import Dict, List
 
 from stock_monitor.data.stock.stock_updater import (
     update_stock_database as _core_update_db,
@@ -24,7 +23,7 @@ def update_stock_database() -> bool:
     return _core_update_db()
 
 
-def get_stock_list() -> List[Dict[str, str]]:
+def get_stock_list() -> list[dict[str, str]]:
     """
     获取股票列表，从本地数据库读取
 

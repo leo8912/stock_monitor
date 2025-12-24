@@ -38,7 +38,8 @@ class TestStockTableModel(unittest.TestCase):
 
         idx_tencent = self.model.index(2, 0)
         self.assertEqual(
-            self.model.data(idx_tencent, QtCore.Qt.ItemDataRole.DisplayRole), " 腾讯控股"
+            self.model.data(idx_tencent, QtCore.Qt.ItemDataRole.DisplayRole),
+            " 腾讯控股",
         )
 
         # Test Price

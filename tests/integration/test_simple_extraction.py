@@ -1,6 +1,7 @@
 """
 简单测试updater.exe提取逻辑
 """
+
 import os
 import shutil
 

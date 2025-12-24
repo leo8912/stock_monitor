@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stock_monitor"
-version = "2.6.7"
+version = "2.6.8"
 description = "A real-time stock monitoring application for A-shares"
 authors = [
     {name = "Stock Monitor Team"}
@@ -20,7 +20,7 @@ dependencies = [
     "zhconv>=1.4.1",
     "openpyxl>=3.0.7",
 ]
-requires-python = ">=3.7"
+requires-python = ">=3.9"
 
 [tool.black]
 line-length = 88
@@ -42,6 +42,9 @@ exclude = '''
 
 [tool.ruff]
 line-length = 88
+target-version = "py39"
+
+[tool.ruff.lint]
 select = [
     "E",  # pycodestyle errors
     "F",  # pyflakes
@@ -49,11 +52,11 @@ select = [
     "I",  # isort
     "C",  # flake8-comprehensions
     "B",  # flake8-bugbear
+    "UP", # pyupgrade
 ]
-ignore = ["E501", "C901", "E402", "E722", "B007"]
-target-version = "py37"
+ignore = ["E501", "C901", "E402", "B007"]
 
-[tool.ruff.per-file-ignores]
+[tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 
 [tool.isort]

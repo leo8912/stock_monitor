@@ -6,7 +6,7 @@
 """
 
 import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 import easyquotation
 
@@ -58,7 +58,7 @@ def get_name_by_code(code: str) -> str:
     return ""
 
 
-def get_stock_info_by_code(code: str) -> Optional[Dict[str, str]]:
+def get_stock_info_by_code(code: str) -> Optional[dict[str, str]]:
     """根据股票代码获取股票完整信息"""
     # 从SQLite数据库获取股票信息
     try:

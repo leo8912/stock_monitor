@@ -4,14 +4,14 @@
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional
+from typing import Optional
 
 
 class StockDataSource(ABC):
     """股票数据源抽象接口"""
 
     @abstractmethod
-    def get_stock_by_code(self, code: str) -> Optional[Dict[str, str]]:
+    def get_stock_by_code(self, code: str) -> Optional[dict[str, str]]:
         """
         根据股票代码获取股票信息
 
@@ -24,7 +24,7 @@ class StockDataSource(ABC):
         pass
 
     @abstractmethod
-    def search_stocks(self, keyword: str, limit: int = 30) -> List[Dict[str, str]]:
+    def search_stocks(self, keyword: str, limit: int = 30) -> list[dict[str, str]]:
         """
         搜索股票
 
@@ -38,7 +38,7 @@ class StockDataSource(ABC):
         pass
 
     @abstractmethod
-    def get_all_stocks(self) -> List[Dict[str, str]]:
+    def get_all_stocks(self) -> list[dict[str, str]]:
         """
         获取所有股票数据
 
@@ -48,7 +48,7 @@ class StockDataSource(ABC):
         pass
 
     @abstractmethod
-    def get_stocks_by_market_type(self, market_type: str) -> List[Dict[str, str]]:
+    def get_stocks_by_market_type(self, market_type: str) -> list[dict[str, str]]:
         """
         根据市场类型获取股票列表
 

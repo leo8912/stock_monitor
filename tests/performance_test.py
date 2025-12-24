@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 性能基准测试脚本
 用于测试股票数据处理和缓存机制的性能
@@ -9,7 +8,7 @@ import json
 import os
 import sys
 import time
-from typing import Any, Dict, List
+from typing import Any
 
 # 添加项目根目录到Python路径
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
@@ -18,8 +17,8 @@ from stock_monitor.core.stock_manager import StockManager
 
 
 def benchmark_stock_processing(
-    stock_manager: StockManager, stock_codes: List[str], iterations: int = 100
-) -> Dict[str, Any]:
+    stock_manager: StockManager, stock_codes: list[str], iterations: int = 100
+) -> dict[str, Any]:
     """
     测试股票数据处理性能
 
@@ -73,8 +72,8 @@ def benchmark_stock_processing(
 
 
 def benchmark_cache_performance(
-    stock_manager: StockManager, stock_codes: List[str], iterations: int = 1000
-) -> Dict[str, Any]:
+    stock_manager: StockManager, stock_codes: list[str], iterations: int = 1000
+) -> dict[str, Any]:
     """
     测试缓存性能
 
@@ -129,9 +128,11 @@ def benchmark_cache_performance(
         "avg_cache_hit_time": avg_cache_hit_time,
         "avg_cache_miss_time": avg_cache_miss_time,
         "cache_hit_rate": cache_hit_time / (cache_hit_time + cache_miss_time),
-        "performance_ratio": avg_cache_miss_time / avg_cache_hit_time
-        if avg_cache_hit_time > 0
-        else float("inf"),
+        "performance_ratio": (
+            avg_cache_miss_time / avg_cache_hit_time
+            if avg_cache_hit_time > 0
+            else float("inf")
+        ),
     }
 
     print("缓存性能测试完成:")

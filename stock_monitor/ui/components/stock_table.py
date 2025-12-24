@@ -3,7 +3,6 @@
 用于显示股票行情数据的表格组件
 """
 
-from typing import List
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 from PyQt6.QtCore import pyqtSlot
@@ -176,7 +175,7 @@ class StockTable(QtWidgets.QTableView):
         return ""
 
     @pyqtSlot(list)
-    def update_data(self, stocks: List[tuple]) -> None:
+    def update_data(self, stocks: list[tuple]) -> None:
         """
         更新表格数据
 

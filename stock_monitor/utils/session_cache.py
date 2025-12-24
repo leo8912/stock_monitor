@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 """
 会话缓存管理模块
@@ -9,7 +8,7 @@
 import json
 import os
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from .logger import app_logger
 
@@ -20,7 +19,7 @@ CACHE_DIR = os.path.join(
 CACHE_FILE = os.path.join(CACHE_DIR, "last_session.json")
 
 
-def save_session_cache(data: Dict[str, Any]) -> bool:
+def save_session_cache(data: dict[str, Any]) -> bool:
     """
     保存会话缓存数据到文件
 
@@ -48,7 +47,7 @@ def save_session_cache(data: Dict[str, Any]) -> bool:
         return False
 
 
-def load_session_cache(max_age: int = 86400) -> Optional[Dict[str, Any]]:  # 默认24小时
+def load_session_cache(max_age: int = 86400) -> Optional[dict[str, Any]]:  # 默认24小时
     """
     从文件加载会话缓存数据
 
@@ -65,7 +64,7 @@ def load_session_cache(max_age: int = 86400) -> Optional[Dict[str, Any]]:  # 默
             return None
 
         # 读取缓存文件
-        with open(CACHE_FILE, "r", encoding="utf-8") as f:
+        with open(CACHE_FILE, encoding="utf-8") as f:
             cache_data = json.load(f)
 
         # 检查时间戳
@@ -75,7 +74,7 @@ def load_session_cache(max_age: int = 86400) -> Optional[Dict[str, Any]]:  # 默
             # 删除过期的缓存文件
             try:
                 os.remove(CACHE_FILE)
-            except:
+            except Exception:
                 pass
             return None
 
@@ -86,7 +85,7 @@ def load_session_cache(max_age: int = 86400) -> Optional[Dict[str, Any]]:  # 默
         # 删除损坏的缓存文件
         try:
             os.remove(CACHE_FILE)
-        except:
+        except Exception:
             pass
         return None
 

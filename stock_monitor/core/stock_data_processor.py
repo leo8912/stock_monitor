@@ -3,7 +3,7 @@
 负责统一处理股票数据的清洗、转换和计算
 """
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Optional
 
 from stock_monitor.utils.helpers import is_equal
 from stock_monitor.utils.logger import app_logger
@@ -13,7 +13,7 @@ class StockDataProcessor:
     """股票数据处理器"""
 
     @staticmethod
-    def process_raw_data(code: str, raw_data: Dict[str, Any]) -> Tuple:
+    def process_raw_data(code: str, raw_data: dict[str, Any]) -> tuple:
         """
         处理原始股票数据，返回UI展示所需的元组格式
 
@@ -44,7 +44,7 @@ class StockDataProcessor:
         return (name, price, change_str, color, seal_vol, seal_type)
 
     @staticmethod
-    def _handle_special_stocks(code: str, info: Dict[str, Any]) -> Dict[str, Any]:
+    def _handle_special_stocks(code: str, info: dict[str, Any]) -> dict[str, Any]:
         """处理特殊股票代码的名称映射"""
         pure_code = code[2:] if code.startswith(("sh", "sz")) else code
 
@@ -60,7 +60,7 @@ class StockDataProcessor:
         return info
 
     @staticmethod
-    def _extract_name(code: str, info: Dict[str, Any]) -> str:
+    def _extract_name(code: str, info: dict[str, Any]) -> str:
         """提取并格式化股票名称"""
         name = info.get("name", code)
         # 港股处理：去除英文部分
@@ -69,7 +69,7 @@ class StockDataProcessor:
         return name
 
     @staticmethod
-    def _extract_price_info(code: str, info: Dict[str, Any]) -> Optional[Tuple]:
+    def _extract_price_info(code: str, info: dict[str, Any]) -> Optional[tuple]:
         """
         提取价格信息
         Returns:
@@ -123,7 +123,7 @@ class StockDataProcessor:
             return None
 
     @staticmethod
-    def _calculate_seal_info(info: Dict[str, Any], now_price: float) -> Tuple[str, str]:
+    def _calculate_seal_info(info: dict[str, Any], now_price: float) -> tuple[str, str]:
         """计算封单信息"""
         try:
             high = float(info.get("high", 0))

@@ -94,6 +94,7 @@ class MainWindow(QtWidgets.QWidget):
 
             if hasattr(self, "market_stats_worker"):
                 self.market_stats_worker.stop_worker()
+                self.market_stats_worker.wait()
 
             # 4. 清理快捷键
             if hasattr(self, "shortcuts"):
@@ -101,11 +102,9 @@ class MainWindow(QtWidgets.QWidget):
                     shortcut.setEnabled(False)
                     shortcut.setParent(None)
 
-            # 5. 强制退出应用
-            # 使用 os._exit(0) 立即终止进程，避免等待后台线程导致的挂起
-            import os
-
-            os._exit(0)
+            # 5. 优雅退出应用
+            # 使用 QApplication.quit() 替代 os._exit(0)，允许 Qt 清理资源
+            QtWidgets.QApplication.instance().quit()
         except Exception as e:
             app_logger.error(f"退出程序时出错: {e}")
             import os
@@ -275,9 +274,9 @@ class MainWindow(QtWidgets.QWidget):
         """处理刷新错误 - 在主线程中执行"""
         try:
             app_logger.error("连续多次刷新失败")
-            error_stocks = [("网络连接异常", "--", "--", COLORS.STOCK_NEUTRAL, "", "")] * max(
-                3, len(self.current_user_stocks)
-            )
+            error_stocks = [
+                ("网络连接异常", "--", "--", COLORS.STOCK_NEUTRAL, "", "")
+            ] * max(3, len(self.current_user_stocks))
             self.update_table_signal.emit(error_stocks)
 
             # 即使出错也要显示窗口，避免一直隐藏
@@ -559,7 +558,9 @@ class MainWindow(QtWidgets.QWidget):
 
     def on_config_changed(self, stocks, refresh_interval):
         """当配置更改时的处理函数"""
-        app_logger.info(f"接收到配置更改信号: 股票列表={stocks}, 刷新间隔={refresh_interval}")
+        app_logger.info(
+            f"接收到配置更改信号: 股票列表={stocks}, 刷新间隔={refresh_interval}"
+        )
 
         # 更新股票列表和刷新间隔
         self.current_user_stocks = stocks
@@ -642,9 +643,9 @@ class MainWindow(QtWidgets.QWidget):
             self.table.show()
         except Exception as e:
             app_logger.error(f"行情刷新异常: {e}")
-            error_stocks = [("数据加载异常", "--", "--", COLORS.STOCK_NEUTRAL, "", "")] * max(
-                3, len(stocks_list) if stocks_list else 3
-            )
+            error_stocks = [
+                ("数据加载异常", "--", "--", COLORS.STOCK_NEUTRAL, "", "")
+            ] * max(3, len(stocks_list) if stocks_list else 3)
             self.table.setRowCount(0)
             self.table.clearContents()
             self.table.update_data(error_stocks)  # type: ignore
@@ -770,7 +771,9 @@ class MainWindow(QtWidgets.QWidget):
 
             # 如果有变化,保存清理后的数据
             if has_changes:
-                app_logger.warning(f"检测到自选股列表包含脏数据，已自动修复: {stocks} -> {cleaned_stocks}")
+                app_logger.warning(
+                    f"检测到自选股列表包含脏数据，已自动修复: {stocks} -> {cleaned_stocks}"
+                )
                 config_manager.set("user_stocks", cleaned_stocks)
 
             app_logger.info(f"加载自选股列表: {cleaned_stocks}")
@@ -790,7 +793,7 @@ class MainWindow(QtWidgets.QWidget):
         import json
 
         try:
-            with open(resource_path("theme_config.json"), "r", encoding="utf-8") as f:
+            with open(resource_path("theme_config.json"), encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
             return {}

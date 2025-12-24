@@ -4,7 +4,7 @@
 """
 
 import io
-from typing import Dict, List
+import warnings
 
 import easyquotation
 import requests
@@ -13,7 +13,10 @@ from stock_monitor.utils.logger import app_logger
 
 # 安全导入zhconv
 try:
-    from zhconv import convert
+    # 抑制 zhconv 的 UserWarning
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=UserWarning, module="zhconv")
+        from zhconv import convert
 except ImportError:
     app_logger.warning("无法导入zhconv库，将使用原样返回的替代函数")
 
@@ -35,7 +38,7 @@ BATCH_SIZE = 800  # 批量获取股票数据的批次大小
 class StockFetcher:
     """股票数据获取器"""
 
-    def fetch_all_stocks(self) -> List[Dict[str, str]]:
+    def fetch_all_stocks(self) -> list[dict[str, str]]:
         """
         获取所有A股和港股数据
 
@@ -64,7 +67,7 @@ class StockFetcher:
 
         return self._deduplicate_stocks(stocks_data)
 
-    def _fetch_a_stocks(self) -> List[Dict[str, str]]:
+    def _fetch_a_stocks(self) -> list[dict[str, str]]:
         """获取A股数据"""
         quotation = easyquotation.use("sina")
         # 获取所有代码
@@ -130,7 +133,7 @@ class StockFetcher:
 
         return results
 
-    def _fetch_indices(self) -> List[Dict[str, str]]:
+    def _fetch_indices(self) -> list[dict[str, str]]:
         """获取主要指数"""
         indices = ["sh000001", "sh000002", "sh000300", "sz399001", "sz399006"]
         quotation = easyquotation.use("sina")
@@ -142,7 +145,7 @@ class StockFetcher:
                     results.append({"code": code, "name": info["name"]})
         return results
 
-    def _fetch_hk_stocks(self) -> List[Dict[str, str]]:
+    def _fetch_hk_stocks(self) -> list[dict[str, str]]:
         """从HKEX获取港股数据"""
         app_logger.info("开始获取港股数据...")
         hkex_urls = [
@@ -192,7 +195,7 @@ class StockFetcher:
                             s_name = convert(s_name, "zh-hans")
                             if "-" in s_name:
                                 s_name = s_name.split("-")[0].strip()
-                        except:
+                        except Exception:
                             pass
 
                         hk_stocks.append({"code": f"hk{code}", "name": s_name})
@@ -201,7 +204,7 @@ class StockFetcher:
 
         return hk_stocks
 
-    def _deduplicate_stocks(self, stocks: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    def _deduplicate_stocks(self, stocks: list[dict[str, str]]) -> list[dict[str, str]]:
         """去重，指数优先"""
         unique = {}
         for s in stocks:

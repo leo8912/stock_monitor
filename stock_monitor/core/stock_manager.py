@@ -4,7 +4,7 @@
 
 import json
 from functools import lru_cache
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 from ..utils.logger import app_logger
 from ..utils.stock_utils import StockCodeProcessor
@@ -46,7 +46,7 @@ class StockManager:
         """初始化股票管理器"""
         self._processor = StockCodeProcessor()
         # 缓存上一帧的股票数据，用于差异比较
-        self._last_stock_data: Dict[str, str] = {}
+        self._last_stock_data: dict[str, str] = {}
         # 使用依赖注入，如果没有提供则使用全局实例
         from ..core.stock_service import stock_data_service as global_stock_data_service
 
@@ -64,7 +64,7 @@ class StockManager:
             # 将JSON字符串转换回字典
             try:
                 info = json.loads(info_json)
-            except:
+            except Exception:
                 info = {}
             return self._process_single_stock_data_impl(code, info)
 
@@ -73,7 +73,7 @@ class StockManager:
             process_single_stock_data_core
         )
 
-    def has_stock_data_changed(self, stocks: List[tuple]) -> bool:
+    def has_stock_data_changed(self, stocks: list[tuple]) -> bool:
         """
         检查股票数据是否发生变化
 
@@ -109,7 +109,7 @@ class StockManager:
         # 数据没有变化
         return False
 
-    def update_last_stock_data(self, stocks: List[tuple]) -> None:
+    def update_last_stock_data(self, stocks: list[tuple]) -> None:
         """
         更新最后股票数据缓存
 
@@ -125,8 +125,8 @@ class StockManager:
         app_logger.debug(f"更新股票数据缓存，共{len(self._last_stock_data)}只股票")
 
     def fetch_and_process_stocks(
-        self, stock_codes: List[str]
-    ) -> Tuple[List[tuple], int]:
+        self, stock_codes: list[str]
+    ) -> tuple[list[tuple], int]:
         """
         获取并处理股票数据
 
@@ -162,7 +162,7 @@ class StockManager:
         app_logger.debug(f"共处理 {len(stocks)} 只股票数据")
         return stocks, failed_count
 
-    def get_stock_list_data(self, stock_codes: List[str]) -> List[tuple]:
+    def get_stock_list_data(self, stock_codes: list[str]) -> list[tuple]:
         """
         获取股票列表数据
 
@@ -175,7 +175,7 @@ class StockManager:
         stocks, _ = self.fetch_and_process_stocks(stock_codes)
         return stocks
 
-    def get_all_market_data(self) -> Dict[str, Any]:
+    def get_all_market_data(self) -> dict[str, Any]:
         """
         获取全市场数据
 
@@ -184,7 +184,7 @@ class StockManager:
         """
         return self._stock_data_service.get_all_market_data()
 
-    def _process_single_stock_data_impl(self, code: str, info: Dict[str, Any]) -> tuple:
+    def _process_single_stock_data_impl(self, code: str, info: dict[str, Any]) -> tuple:
         """
         处理单只股票的数据的实际实现
 
@@ -201,7 +201,7 @@ class StockManager:
         app_logger.debug(f"股票 {code} 数据处理完成")
         return result
 
-    def _process_single_stock_data(self, code: str, info: Dict[str, Any]) -> tuple:
+    def _process_single_stock_data(self, code: str, info: dict[str, Any]) -> tuple:
         """
         处理单只股票的数据
 

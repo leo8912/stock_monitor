@@ -2,6 +2,7 @@
 自动化测试updater.exe的核心功能
 不需要运行GUI程序
 """
+
 import shutil
 import subprocess
 import time

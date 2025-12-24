@@ -1,5 +1,4 @@
 import time
-from typing import List
 
 from PyQt6 import QtCore
 
@@ -33,7 +32,7 @@ class RefreshWorker(QtCore.QThread):
         super().__init__()
         self._is_running = False
         self.refresh_interval = 5
-        self.current_user_stocks: List[str] = []
+        self.current_user_stocks: list[str] = []
         self._lock = QtCore.QMutex()  # 使用Qt互斥锁
         self._consecutive_failures = 0
         self._max_consecutive_failures = 3
@@ -41,7 +40,7 @@ class RefreshWorker(QtCore.QThread):
         # self._data_change_detector = DataChangeDetector() # 使用StockManager的检测器
         self._last_successful_update = 0
 
-    def start_refresh(self, user_stocks: List[str], refresh_interval: int):
+    def start_refresh(self, user_stocks: list[str], refresh_interval: int):
         """
         启动刷新
 
@@ -67,7 +66,7 @@ class RefreshWorker(QtCore.QThread):
         self.wait(2000)  # 等待线程结束
         app_logger.info("后台刷新线程已停止")
 
-    def update_stocks(self, user_stocks: List[str]):
+    def update_stocks(self, user_stocks: list[str]):
         """更新用户股票列表"""
         self._lock.lock()
         self.current_user_stocks = user_stocks

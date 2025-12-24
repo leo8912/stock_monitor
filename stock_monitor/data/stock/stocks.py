@@ -3,12 +3,12 @@
 用于加载和处理股票基础数据，包括拼音处理等功能
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from stock_monitor.utils.logger import app_logger
 
 
-def load_stock_data() -> List[Dict[str, Any]]:
+def load_stock_data() -> list[dict[str, Any]]:
     """
     加载股票基础数据
 
@@ -30,7 +30,7 @@ def load_stock_data() -> List[Dict[str, Any]]:
     return all_stocks
 
 
-def enrich_pinyin(stock_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def enrich_pinyin(stock_list: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
     丰富股票的拼音信息
 

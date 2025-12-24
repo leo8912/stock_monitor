@@ -259,7 +259,9 @@ class StockSearchWidget(QtWidgets.QWidget):
         # 检查股票是否已存在
         if self._is_stock_already_added(code):
             # 如果股票已存在，给出提示
-            QtWidgets.QMessageBox.information(self, "提示", f"股票 {name} 已在自选股列表中")
+            QtWidgets.QMessageBox.information(
+                self, "提示", f"股票 {name} 已在自选股列表中"
+            )
             return
 
         # 添加到股票列表，确保是新增而不是覆盖最后一项

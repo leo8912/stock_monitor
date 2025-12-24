@@ -4,7 +4,7 @@
 """
 
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 import easyquotation
 
@@ -81,7 +81,7 @@ class StockDataFetcher:
 
     def fetch_single_stock(
         self, quotation_engine, code: str, query_code: str
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[dict[str, Any]]:
         """
         从行情引擎获取单只股票数据
 
@@ -110,7 +110,7 @@ class StockDataFetcher:
             app_logger.debug(f"获取股票 {code} 数据时发生异常: {e}")
             return None
 
-    def fetch_with_retry(self, quotation_engine, code: str) -> Optional[Dict[str, Any]]:
+    def fetch_with_retry(self, quotation_engine, code: str) -> Optional[dict[str, Any]]:
         """
         带重试机制获取股票数据
 
@@ -141,7 +141,7 @@ class StockDataFetcher:
         return None
 
     @retry_on_failure(max_attempts=3, delay=1.0)
-    def fetch_single(self, code: str) -> Optional[Dict[str, Any]]:
+    def fetch_single(self, code: str) -> Optional[dict[str, Any]]:
         """
         获取单只股票数据,带重试机制
 
@@ -162,7 +162,7 @@ class StockDataFetcher:
             app_logger.error(f"获取股票 {code} 数据失败: {e}")
             return None
 
-    def fetch_multiple(self, codes: List[str]) -> Dict[str, Optional[Dict[str, Any]]]:
+    def fetch_multiple(self, codes: list[str]) -> dict[str, Optional[dict[str, Any]]]:
         """
         批量获取多只股票数据,按市场类型分组处理
 
@@ -199,7 +199,7 @@ class StockDataFetcher:
 
         return result
 
-    def _fetch_sina_stocks(self, result: dict, sina_codes: List[str]):
+    def _fetch_sina_stocks(self, result: dict, sina_codes: list[str]):
         """
         批量获取A股数据
 
@@ -244,7 +244,7 @@ class StockDataFetcher:
         except Exception as e:
             app_logger.error(f"批量获取A股数据时发生错误: {e}")
 
-    def _fetch_hk_stocks(self, result: dict, hk_codes: List[str]):
+    def _fetch_hk_stocks(self, result: dict, hk_codes: list[str]):
         """
         批量获取港股数据
 

@@ -3,7 +3,7 @@
 负责验证股票数据的完整性和正确性
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 # from ..utils.helpers import is_equal  # Unused import removed
 
@@ -12,7 +12,7 @@ class StockDataValidator:
     """股票数据验证类"""
 
     @staticmethod
-    def is_valid(stock_data: Dict[str, Any]) -> bool:
+    def is_valid(stock_data: dict[str, Any]) -> bool:
         """
         检查股票数据是否完整有效
 
@@ -41,8 +41,8 @@ class StockDataValidator:
 
     @staticmethod
     def handle_special_cases(
-        info: Dict[str, Any], pure_code: str, code: str, should_copy: bool = False
-    ) -> Optional[Dict[str, Any]]:
+        info: dict[str, Any], pure_code: str, code: str, should_copy: bool = False
+    ) -> Optional[dict[str, Any]]:
         """
         处理特殊情况下的股票数据(如上证指数和平安银行)
 
@@ -68,7 +68,7 @@ class StockDataValidator:
         return info
 
     @staticmethod
-    def get_stock_info(data: Dict[str, Any], code: str) -> Optional[Dict[str, Any]]:
+    def get_stock_info(data: dict[str, Any], code: str) -> Optional[dict[str, Any]]:
         """
         获取股票信息并进行验证
 
@@ -104,7 +104,7 @@ class StockDataValidator:
         return info
 
     @staticmethod
-    def validate_required_fields(stock_data: Dict[str, Any]) -> bool:
+    def validate_required_fields(stock_data: dict[str, Any]) -> bool:
         """
         验证股票数据是否包含所有必需字段
 

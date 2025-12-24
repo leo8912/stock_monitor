@@ -4,7 +4,6 @@
 """
 
 import os
-import shutil
 import sys
 
 from stock_monitor.utils.logger import app_logger
@@ -99,9 +98,13 @@ def _create_shortcut(target_path, shortcut_path):
                 with open(batch_path, "w") as f:
                     f.write(batch_content)
             else:
-                # 如果是exe文件，直接复制（不太理想，但作为fallback）
-                # 注意：直接复制exe不是快捷方式，但能达到启动目的
-                shutil.copy2(target_path, shortcut_path.replace(".lnk", ".exe"))
+                # 如果是exe文件，创建批处理文件启动 (比复制EXE安全得多)
+                # 使用 copy2 复制 EXE 会导致自启版本无法更新
+                batch_content = f'@echo off\nstart "" "{target_path}"\n'
+                batch_path = shortcut_path.replace(".lnk", ".bat")
+                with open(batch_path, "w") as f:
+                    f.write(batch_content)
+                app_logger.info(f"由于win32com不可用，已创建BAT启动脚本: {batch_path}")
         except Exception as e:
             app_logger.error(f"创建快捷方式失败: {e}")
     except Exception as e:

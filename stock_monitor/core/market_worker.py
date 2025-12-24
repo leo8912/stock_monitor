@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any
 
 from PyQt6 import QtCore
 
@@ -41,7 +41,9 @@ class MarketStatsWorker(QtCore.QThread):
             try:
                 # 检查市场是否开市，闭市期间延长刷新间隔
                 market_open = is_market_open()
-                app_logger.info(f"[市场统计] 市场状态检查: {'开市' if market_open else '闭市'}")
+                app_logger.info(
+                    f"[市场统计] 市场状态检查: {'开市' if market_open else '闭市'}"
+                )
 
                 # 临时注释：即使闭市也获取数据，用于调试
                 # if not market_open:
@@ -58,7 +60,9 @@ class MarketStatsWorker(QtCore.QThread):
                 market_data = stock_manager.get_all_market_data()
 
                 if market_data:
-                    app_logger.info(f"[市场统计] 成功获取数据，共 {len(market_data)} 只股票")
+                    app_logger.info(
+                        f"[市场统计] 成功获取数据，共 {len(market_data)} 只股票"
+                    )
                     stats = self._calculate_stats(market_data)
                     app_logger.info(
                         f"[市场统计] 统计结果: 上涨={stats['up_count']}, 下跌={stats['down_count']}, 平盘={stats['flat_count']}, 总计={stats['total_count']}"
@@ -83,7 +87,7 @@ class MarketStatsWorker(QtCore.QThread):
                 app_logger.error(f"市场统计线程异常: {e}")
                 self.sleep(10)
 
-    def _calculate_stats(self, data: Dict[str, Any]) -> Dict[str, int]:
+    def _calculate_stats(self, data: dict[str, Any]) -> dict[str, int]:
         """计算市场统计数据"""
         up = 0
         down = 0
@@ -123,7 +127,7 @@ class MarketStatsWorker(QtCore.QThread):
             "total_count": total,
         }
 
-    def _get_data_timestamp(self, data: Dict[str, Any]) -> str:
+    def _get_data_timestamp(self, data: dict[str, Any]) -> str:
         """
         获取市场数据的时间戳
 

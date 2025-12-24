@@ -2,7 +2,7 @@ import json
 import os
 import shutil
 import sys
-from typing import Any, Dict
+from typing import Any
 
 from ..utils.logger import app_logger
 
@@ -44,7 +44,7 @@ class ConfigManager:
             config_path: 配置文件路径
         """
         if cls._instance is None:
-            cls._instance = super(ConfigManager, cls).__new__(cls)
+            cls._instance = super().__new__(cls)
             cls._instance._initialized = False
         return cls._instance
 
@@ -59,7 +59,7 @@ class ConfigManager:
             return
 
         self.config_path = config_path
-        self._config: Dict[str, Any] = {}
+        self._config: dict[str, Any] = {}
         self._load_config()
         self._initialized = True
 
@@ -70,8 +70,8 @@ class ConfigManager:
                 self._handle_missing_config_file()
                 return
 
-            with open(self.config_path, "r", encoding="utf-8") as f:
-                config: Dict[str, Any] = json.load(f)
+            with open(self.config_path, encoding="utf-8") as f:
+                config: dict[str, Any] = json.load(f)
 
             # 确保必要的键存在
             self._ensure_required_keys_exist(config)
@@ -130,7 +130,7 @@ class ConfigManager:
         self._config[key] = value
         return self._save_config()
 
-    def _create_default_config(self) -> Dict[str, Any]:
+    def _create_default_config(self) -> dict[str, Any]:
         """创建默认配置文件"""
         default_config = self._get_default_config()
         with open(self.config_path, "w", encoding="utf-8") as f:
@@ -138,7 +138,7 @@ class ConfigManager:
         self._config = default_config
         return default_config
 
-    def _get_default_config(self) -> Dict[str, Any]:
+    def _get_default_config(self) -> dict[str, Any]:
         """获取默认配置"""
         return {
             "user_stocks": ["sh600460", "sh603986", "sh600030", "sh000001"],
@@ -148,14 +148,14 @@ class ConfigManager:
             "settings_dialog_pos": [],
         }
 
-    def _ensure_required_keys_exist(self, config: Dict[str, Any]) -> None:
+    def _ensure_required_keys_exist(self, config: dict[str, Any]) -> None:
         """确保必要的键存在"""
         default_config = self._get_default_config()
         for key, default_value in default_config.items():
             if key not in config:
                 config[key] = default_value
 
-    def _handle_corrupted_config_file(self, error_type: str) -> Dict[str, Any]:
+    def _handle_corrupted_config_file(self, error_type: str) -> dict[str, Any]:
         """处理损坏的配置文件"""
         # 如果配置文件损坏，备份原文件并创建新配置
         error_msg = f"配置文件损坏({error_type})，正在创建新的配置文件..."
@@ -178,7 +178,7 @@ class ConfigManager:
         self._config = default_config
         return default_config
 
-    def _handle_permission_error_config(self) -> Dict[str, Any]:
+    def _handle_permission_error_config(self) -> dict[str, Any]:
         """处理配置文件权限错误"""
         error_msg = "配置文件权限错误，请检查文件权限"
         app_logger.error(error_msg)
@@ -187,21 +187,21 @@ class ConfigManager:
         self._config = default_config
         return default_config
 
-    def _handle_unknown_error_config(self, e: Exception) -> Dict[str, Any]:
+    def _handle_unknown_error_config(self, e: Exception) -> dict[str, Any]:
         """处理未知错误"""
         app_logger.error(f"加载配置文件时发生未知错误: {e}")
         self._config = self._get_default_config()
         return self._config
 
 
-def load_config() -> Dict[str, Any]:
+def load_config() -> dict[str, Any]:
     """加载配置文件，包含完整的错误处理和默认值"""
     manager = ConfigManager()
     # 由于使用了单例模式，这里直接返回内部配置的副本
     return manager._config.copy()
 
 
-def save_config(cfg: Dict[str, Any]) -> bool:
+def save_config(cfg: dict[str, Any]) -> bool:
     """
     保存配置文件
 
