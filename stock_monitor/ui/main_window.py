@@ -1,5 +1,4 @@
 import os
-import sys
 import threading
 import time
 
@@ -102,11 +101,16 @@ class MainWindow(QtWidgets.QWidget):
                     shortcut.setEnabled(False)
                     shortcut.setParent(None)
 
-            # 5. 退出Qt应用
-            QtWidgets.QApplication.quit()
+            # 5. 强制退出应用
+            # 使用 os._exit(0) 立即终止进程，避免等待后台线程导致的挂起
+            import os
+
+            os._exit(0)
         except Exception as e:
             app_logger.error(f"退出程序时出错: {e}")
-            sys.exit(0)
+            import os
+
+            os._exit(1)
 
     def setup_ui(self):
         """设置主窗口UI"""
