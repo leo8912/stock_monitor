@@ -31,6 +31,7 @@ Thumbs.db
 # 忽略IDE相关文件
 .vscode/
 .idea/
+.lingma/
 
 
 # 忽略临时文件
@@ -41,8 +42,14 @@ chat.md
 # 忽略开发配置和缓存
 .stock_monitor_dev/
 .pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.env
 .coverage
 htmlcov/
+pre_commit_output.txt
+sha256.txt
+*.bak
 
 # 忽略打包产物
 *.spec
