@@ -351,18 +351,23 @@ del "%0"
             app_logger.info("启动 update.bat，主程序即将退出")
             
             # 4. 运行脚本并退出
-            # creationflags=subprocess.CREATE_NEW_CONSOLE 显示新窗口
-            # 必须给 bat_path 加引号以处理路径空格
-            subprocess.Popen(
-                f'"{str(bat_path)}"', 
-                shell=True,
-                creationflags=subprocess.CREATE_NEW_CONSOLE,
-                cwd=str(app_dir)
-            )
+            try:
+                # 使用 os.startfile 直接打开 BAT 文件，这在 Windows 上最可靠
+                # 等同于用户双击文件
+                os.startfile(str(bat_path))
+            except Exception as e:
+                app_logger.error(f"os.startfile调用失败: {e}, 尝试回退到subprocess...")
+                # 回退方案
+                subprocess.Popen(
+                    f'"{str(bat_path)}"', 
+                    shell=True,
+                    creationflags=subprocess.CREATE_NEW_CONSOLE,
+                    cwd=str(app_dir)
+                )
             
             # 强制退出
             import time
-            time.sleep(0.5) 
+            time.sleep(1.0) 
             os._exit(0)
             
             return True
