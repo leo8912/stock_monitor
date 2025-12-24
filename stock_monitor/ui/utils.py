@@ -33,7 +33,11 @@ def qt_message_handler(mode, context, message):
         msg_type = "Fatal"
 
     # 避免日志噪音，只在严重错误时打印到stderr
-    if mode >= QtCore.QtMsgType.QtWarningMsg:
+    if mode in (
+        QtCore.QtMsgType.QtWarningMsg,
+        QtCore.QtMsgType.QtCriticalMsg,
+        QtCore.QtMsgType.QtFatalMsg,
+    ):
         print(f"Qt {msg_type}: {message}", file=sys.stderr)
 
 

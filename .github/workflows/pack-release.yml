@@ -56,12 +56,7 @@ jobs:
         $ZHCONVPATH = Get-Content zhconv_path.txt | Select-Object -First 1
         echo "ZHCONVPATH=$ZHCONVPATH" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-    - name: 编译updater.exe # Build updater.exe
-      run: |
-        echo "开始编译updater.exe..."
-        pyinstaller --onefile --windowed --name=updater updater.py
-        echo "updater.exe编译完成"
-        ls dist/updater.exe
+
 
     - name: 使用PyInstaller构建主程序 # Build main program with PyInstaller
       run: |
@@ -75,9 +70,7 @@ jobs:
           --hidden-import=pandas `
           --collect-all certifi
 
-    - name: 复制updater.exe到输出目录 # Copy updater.exe to output directory
-      run: |
-        Copy-Item dist/updater.exe -Destination dist/stock_monitor/
+
 
     - name: 列出dist目录内容 # List dist directory
       run: |

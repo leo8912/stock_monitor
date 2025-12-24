@@ -65,25 +65,25 @@ class Logger:
             file_handler.setFormatter(formatter)
             self.logger.addHandler(file_handler)
 
-    def debug(self, message: str):
+    def debug(self, message: str, *args, **kwargs):
         """记录调试信息"""
-        self.logger.debug(message)
+        self.logger.debug(message, *args, **kwargs)
 
-    def info(self, message: str):
+    def info(self, message: str, *args, **kwargs):
         """记录一般信息"""
-        self.logger.info(message)
+        self.logger.info(message, *args, **kwargs)
 
-    def warning(self, message: str):
+    def warning(self, message: str, *args, **kwargs):
         """记录警告信息"""
-        self.logger.warning(message)
+        self.logger.warning(message, *args, **kwargs)
 
-    def error(self, message: str):
+    def error(self, message: str, *args, **kwargs):
         """记录错误信息"""
-        self.logger.error(message)
+        self.logger.error(message, *args, **kwargs)
 
-    def critical(self, message: str):
+    def critical(self, message: str, *args, **kwargs):
         """记录严重错误信息"""
-        self.logger.critical(message)
+        self.logger.critical(message, *args, **kwargs)
 
 
 def setup_logger(name: str = "stock_monitor", log_level: int = logging.INFO) -> Logger:

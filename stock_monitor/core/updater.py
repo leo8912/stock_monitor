@@ -3,6 +3,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import zipfile
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 import requests
@@ -242,115 +244,132 @@ class AppUpdater:
 
     def apply_update(self, update_file_path: str) -> bool:
         """
-        应用更新 - 启动updater.exe并退出主程序
-
-        Args:
-            update_file_path: 更新包文件路径
-
-        Returns:
-            bool: 是否成功启动更新程序
+        应用更新 (BAT脚本方案)
+        
+        1. 解压更新包到临时目录
+        2. 生成 update.bat 脚本
+        3. 运行脚本并退出主程序
         """
         try:
-            app_logger.info("准备启动更新程序...")
-
-            # 获取当前程序目录
-            if hasattr(sys, "_MEIPASS"):
-                # 打包环境
-                current_dir = os.path.dirname(sys.executable)
-                main_exe = "stock_monitor.exe"
+            app_logger.info("准备应用更新(BAT方案)...")
+            
+            # 1. 准备路径
+            app_dir = Path(os.getcwd())  # 当前程序目录
+            temp_dir = app_dir / "temp_update"
+            update_zip = Path(update_file_path)
+            
+            # 清理旧的临时目录
+            if temp_dir.exists():
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            temp_dir.mkdir(exist_ok=True)
+            
+            app_logger.info(f"正在解压更新包到: {temp_dir}")
+            
+            # 2. 解压文件
+            with zipfile.ZipFile(update_zip, 'r') as zip_ref:
+                zip_ref.extractall(temp_dir)
+            
+            # 检查解压结构 (处理只有 _internal 和 exe 的情况)
+            # 如果解压出来只有 stock_monitor 文件夹，则需要移动内容
+            content_list = list(temp_dir.iterdir())
+            if len(content_list) == 1 and content_list[0].is_dir() and content_list[0].name == "stock_monitor":
+                source_dir = content_list[0]
             else:
-                # 开发环境
-                current_dir = os.path.dirname(
-                    os.path.dirname(os.path.abspath(__file__))
-                )
-                main_exe = "stock_monitor.exe"  # 假设开发环境也会测试exe
+                source_dir = temp_dir
+                
+            app_logger.info("正在生成更新脚本 update.bat...")
 
-            app_logger.info(f"当前程序目录: {current_dir}")
-
-            # 查找updater.exe
-            updater_exe = os.path.join(current_dir, "updater.exe")
-
-            # 如果updater.exe不存在,尝试从资源中提取
-            if not os.path.exists(updater_exe):
-                app_logger.warning(f"未找到updater.exe: {updater_exe}")
-
-                # 尝试从打包的资源中提取
-                if hasattr(sys, "_MEIPASS"):
-                    # PyInstaller打包环境,从_MEIPASS提取
-                    resource_updater = os.path.join(sys._MEIPASS, "updater.exe")
-                    if os.path.exists(resource_updater):
-                        app_logger.info(f"从资源中提取updater.exe: {resource_updater}")
-                        try:
-                            shutil.copy2(resource_updater, updater_exe)
-                            app_logger.info(f"updater.exe提取成功: {updater_exe}")
-                        except Exception as e:
-                            app_logger.error(f"提取updater.exe失败: {e}")
-                            QMessageBox.warning(
-                                None,
-                                "更新失败",
-                                f"无法提取更新程序,请手动更新。\n错误: {e}",
-                                QMessageBox.StandardButton.Ok,
-                            )
-                            return False
-                    else:
-                        app_logger.error(f"资源中也未找到updater.exe: {resource_updater}")
-                        QMessageBox.warning(
-                            None,
-                            "更新失败",
-                            "更新程序缺失,请重新下载完整安装包。",
-                            QMessageBox.StandardButton.Ok,
-                        )
-                        return False
-                else:
-                    # 开发环境,从dist目录查找
-                    dev_updater = os.path.join(current_dir, "dist", "updater.exe")
-                    if os.path.exists(dev_updater):
-                        app_logger.info(f"从dist目录复制updater.exe: {dev_updater}")
-                        shutil.copy2(dev_updater, updater_exe)
-                    else:
-                        app_logger.error("开发环境中未找到updater.exe")
-                        return False
-
-            # 获取当前进程ID
+            # 3. 生成 BAT 脚本
+            bat_path = app_dir / "update.bat"
+            main_exe_name = "stock_monitor.exe"
             current_pid = os.getpid()
+            
+            # BAT 脚本内容 (使用 GBK 兼容中文 CMD)
+            bat_content = f"""@echo off
+chcp 65001 >nul
+title Stock Monitor Updater
+color 0A
+mode con cols=70 lines=25
+cls
 
-            # 构建updater.exe的命令行参数
-            updater_args = [
-                updater_exe,
-                "--update-package",
-                update_file_path,
-                "--target-dir",
-                current_dir,
-                "--main-exe",
-                main_exe,
-                "--pid",
-                str(current_pid),
-            ]
+echo ======================================================================
+echo.
+echo                   STOCK MONITOR UPDATE SYSTEM
+echo.
+echo ======================================================================
+echo.
+echo    [INFO] 正在更新 Stock Monitor 至最新版本...
+echo    [INFO] Updating Stock Monitor to latest version...
+echo.
+echo    --------------------------------------------------------
+echo    [STEP 1/3] 等待主程序退出 / Waiting for exit...
+:loop
+tasklist | find "{current_pid}" >nul
+if %errorlevel%==0 (
+    timeout /t 1 /nobreak >nul
+    goto loop
+)
+echo    [OK] 主程序已退出
 
-            app_logger.info(f"启动更新程序: {' '.join(updater_args)}")
+echo.
+echo    --------------------------------------------------------
+echo    [STEP 2/3] 正在替换文件 / Replacing files...
+xcopy /Y /E /H /R "{source_dir.absolute()}\\*" "{app_dir.absolute()}\\" >nul
+if %errorlevel% NEQ 0 (
+    color 0C
+    echo.
+    echo    [ERROR] 文件替换失败! (File Replacement Failed)
+    echo    请尝试手动解压更新包 / Please unzip manually.
+    echo.
+    pause
+    exit /b 1
+)
+echo    [OK] 文件替换成功
 
-            # 启动updater.exe(分离进程)
+echo.
+echo    --------------------------------------------------------
+echo    [STEP 3/3] 清理临时文件...
+rmdir /S /Q "{temp_dir.absolute()}"
+
+echo.
+echo    ======================================================================
+echo    [SUCCESS] 更新完成，正在启动软件...
+echo    Restarting application...
+echo    ======================================================================
+timeout /t 2 /nobreak >nul
+start "" "{app_dir.absolute()}\\{main_exe_name}"
+del "%0"
+"""
+            # 写入 BAT 文件
+            try:
+                # 优先尝试 GBK 写入，去掉 chcp 65001 以便在默认中文环境也不乱码
+                # 但现在的脚本加了 chcp 65001，那么应该用 UTF-8
+                # 既然加了 chcp 65001，就应该用 utf-8
+                with open(bat_path, "w", encoding="utf-8") as f:
+                    f.write(bat_content)
+            except Exception as e:
+                app_logger.error(f"写入BAT失败: {e}")
+                return False
+
+            app_logger.info("启动 update.bat，主程序即将退出")
+            
+            # 4. 运行脚本并退出
+            # creationflags=subprocess.CREATE_NEW_CONSOLE 显示新窗口
             subprocess.Popen(
-                updater_args,
-                creationflags=subprocess.DETACHED_PROCESS
-                | subprocess.CREATE_NEW_PROCESS_GROUP,
-                cwd=current_dir,
+                str(bat_path), 
+                shell=True,
+                creationflags=subprocess.CREATE_NEW_CONSOLE
             )
-
-            app_logger.info("更新程序已启动,主程序即将退出")
-
-            # 延迟一下确保updater启动
+            
+            # 强制退出
             import time
-
-            time.sleep(1)
-
-            # 退出主程序
-            QApplication.quit()
-
+            time.sleep(0.5) 
+            os._exit(0)
+            
             return True
 
         except Exception as e:
-            app_logger.error(f"启动更新程序时发生错误: {e}")
+            app_logger.error(f"启动更新程序时发生错误: {e}", exc_info=True)
             return False
 
     def show_update_dialog(self, parent=None) -> bool:
