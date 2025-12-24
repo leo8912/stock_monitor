@@ -286,7 +286,6 @@ class AppUpdater:
             
             # BAT 脚本内容 (使用 GBK 兼容中文 CMD)
             bat_content = f"""@echo off
-chcp 65001 >nul
 title Stock Monitor Updater
 color 0A
 mode con cols=70 lines=25
@@ -342,10 +341,8 @@ del "%0"
 """
             # 写入 BAT 文件
             try:
-                # 优先尝试 GBK 写入，去掉 chcp 65001 以便在默认中文环境也不乱码
-                # 但现在的脚本加了 chcp 65001，那么应该用 UTF-8
-                # 既然加了 chcp 65001，就应该用 utf-8
-                with open(bat_path, "w", encoding="utf-8") as f:
+                # 使用 GBK 写入，确保在中文 Windows 环境下 CMD 能正确执行
+                with open(bat_path, "w", encoding="gbk") as f:
                     f.write(bat_content)
             except Exception as e:
                 app_logger.error(f"写入BAT失败: {e}")
@@ -355,10 +352,12 @@ del "%0"
             
             # 4. 运行脚本并退出
             # creationflags=subprocess.CREATE_NEW_CONSOLE 显示新窗口
+            # 必须给 bat_path 加引号以处理路径空格
             subprocess.Popen(
-                str(bat_path), 
+                f'"{str(bat_path)}"', 
                 shell=True,
-                creationflags=subprocess.CREATE_NEW_CONSOLE
+                creationflags=subprocess.CREATE_NEW_CONSOLE,
+                cwd=str(app_dir)
             )
             
             # 强制退出

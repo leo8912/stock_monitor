@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stock_monitor"
-version = "2.6.1"
+version = "2.6.2"
 description = "A real-time stock monitoring application for A-shares"
 authors = [
     {name = "Stock Monitor Team"}
