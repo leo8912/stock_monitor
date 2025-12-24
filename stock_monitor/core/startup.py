@@ -12,75 +12,8 @@ from stock_monitor.utils.logger import app_logger
 
 def apply_pending_updates():
     """在应用启动时应用待处理的更新"""
-    try:
-        from stock_monitor.core.updater import app_updater
-
-        # 获取当前目录 - 确保始终使用程序所在目录
-        if hasattr(sys, "_MEIPASS"):
-            # 打包环境 - 使用可执行文件所在目录
-            os.path.dirname(sys.executable)
-        else:
-            # 开发环境或普通生产环境 - 使用main.py所在目录的父目录的父目录(项目根目录)
-            # 注意：这里的逻辑需要小心，原始main.py是在 stock_monitor/main.py
-            # 如果我们假设 main.py 在 stock_monitor 包内，那么 __file__ 指向 stock_monitor/main.py
-            # 原始代码: current_dir = os.path.dirname(os.path.abspath(__file__))
-            # 但在 startup.py 中 (stock_monitor/core/startup.py)，我们需要根据实际情况调整
-            # 为了保持一致性，我们模拟 main.py 的行为
-            # 实际上，更新逻辑通常基于 stock_monitor 包所在的目录或者更上层
-
-            # 使用项目根目录作为基准可能更安全，或者直接复用原始逻辑
-            # 原始逻辑是取 main.py 所在目录
-            # 我们这里取 sys.argv[0] 的目录可能更准确，或者硬编码
-            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            # 上面得到的是 stock_monitor 的父目录 (项目根目录)
-            # 但原始代码 main.py 里的 current_dir 是 stock_monitor 包目录
-            # 原始 main.py: os.path.dirname(os.path.abspath(__file__)) -> d:\code\stock\stock_monitor
-
-        # 修正：直接使用 stock_monitor 包的根目录
-        import stock_monitor
-
-        package_dir = os.path.dirname(os.path.abspath(stock_monitor.__file__))
-
-        # 检查更新标记文件 (通常在程序根目录下)
-        # 如果是打包环境，根目录是 exe 所在目录
-        # 如果是开发环境，通常希望是在项目根目录或包目录
-        # 保持与原始逻辑一致：update_pending 文件位置
-
-        if hasattr(sys, "_MEIPASS"):
-            base_dir = os.path.dirname(sys.executable)
-        else:
-            base_dir = package_dir
-
-        update_marker = os.path.join(base_dir, "update_pending")
-
-        if os.path.exists(update_marker):
-            try:
-                # 读取更新文件路径
-                with open(update_marker, "r") as f:
-                    update_file_path = f.read().strip()
-                # 删除标记文件
-                os.remove(update_marker)
-                app_logger.info("检测到待处理的更新，正在应用...")
-                # 应用更新，跳过锁定检查
-                if app_updater.apply_update(update_file_path, skip_lock_check=True):
-                    app_logger.info("更新应用完成")
-                else:
-                    app_logger.error("更新应用失败")
-            except Exception as e:
-                app_logger.error(f"应用待处理更新时出错: {e}")
-
-        # 查找并删除所有的 .tmp 文件
-        for filename in os.listdir(base_dir):
-            if filename.endswith(".tmp"):
-                tmp_file = os.path.join(base_dir, filename)
-                try:
-                    os.remove(tmp_file)
-                    app_logger.info(f"已清理临时文件: {tmp_file}")
-                except Exception as e:
-                    app_logger.warning(f"无法删除临时文件 {tmp_file}: {e}")
-    except Exception as e:
-        # 此时logger可能尚未初始化完全，使用print
-        print(f"应用更新检查失败: {e}")
+    # BAT更新方案不再需要启动检查，更新是即时的
+    pass
 
 
 def setup_auto_start():
