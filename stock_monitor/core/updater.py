@@ -254,7 +254,11 @@ class AppUpdater:
             app_logger.info("准备应用更新(BAT方案)...")
             
             # 1. 准备路径
-            app_dir = Path(os.getcwd())  # 当前程序目录
+            if getattr(sys, 'frozen', False):
+                app_dir = Path(sys.executable).parent
+            else:
+                app_dir = Path(os.getcwd())
+
             temp_dir = app_dir / "temp_update"
             update_zip = Path(update_file_path)
             
@@ -269,14 +273,17 @@ class AppUpdater:
             with zipfile.ZipFile(update_zip, 'r') as zip_ref:
                 zip_ref.extractall(temp_dir)
             
-            # 检查解压结构 (处理只有 _internal 和 exe 的情况)
-            # 如果解压出来只有 stock_monitor 文件夹，则需要移动内容
-            content_list = list(temp_dir.iterdir())
-            if len(content_list) == 1 and content_list[0].is_dir() and content_list[0].name == "stock_monitor":
-                source_dir = content_list[0]
-            else:
-                source_dir = temp_dir
-                
+            # 智能寻找源目录: 查找包含 stock_monitor.exe 的目录
+            source_dir = temp_dir
+            for root, dirs, files in os.walk(temp_dir):
+                if "stock_monitor.exe" in files:
+                    source_dir = Path(root)
+                    break
+            
+            app_logger.info(f"更新源目录: {source_dir}")
+            if source_dir == temp_dir:
+                 app_logger.info("注意: 未在子目录找到exe，将使用解压根目录作为源")
+
             app_logger.info("正在生成更新脚本 update.bat...")
 
             # 3. 生成 BAT 脚本
@@ -288,7 +295,7 @@ class AppUpdater:
             bat_content = f"""@echo off
 title Stock Monitor Updater
 color 0A
-mode con cols=70 lines=25
+mode con cols=80 lines=30
 cls
 
 echo ======================================================================
@@ -301,6 +308,10 @@ echo    [INFO] 正在更新 Stock Monitor 至最新版本...
 echo    [INFO] Updating Stock Monitor to latest version...
 echo.
 echo    --------------------------------------------------------
+echo    [DEBUG] Source: "{source_dir.absolute()}"
+echo    [DEBUG] Target: "{app_dir.absolute()}"
+echo    --------------------------------------------------------
+echo.
 echo    [STEP 1/3] 等待主程序退出 / Waiting for exit...
 :loop
 tasklist | find "{current_pid}" >nul
@@ -310,25 +321,40 @@ if %errorlevel%==0 (
 )
 echo    [OK] 主程序已退出
 
-echo.
 echo    --------------------------------------------------------
 echo    [STEP 2/3] 正在替换文件 / Replacing files...
-xcopy /Y /E /H /R "{source_dir.absolute()}\\*" "{app_dir.absolute()}\\" >nul
-if %errorlevel% NEQ 0 (
-    color 0C
-    echo.
-    echo    [ERROR] 文件替换失败! (File Replacement Failed)
-    echo    请尝试手动解压更新包 / Please unzip manually.
-    echo.
-    pause
-    exit /b 1
-)
+echo.
+xcopy /Y /E /H /R "{source_dir.absolute()}\\*" "{app_dir.absolute()}"
+if %errorlevel% NEQ 0 goto error
 echo    [OK] 文件替换成功
+goto cleanup
+
+:error
+color 0C
+echo.
+echo    ========================================================
+echo    [ERROR] 文件替换失败! (File Replacement Failed)
+echo    Error Level: %errorlevel%
+echo    请尝试手动解压更新包 / Please unzip manually.
+echo    Temp Path: "{temp_dir.absolute()}"
+echo    ========================================================
+echo.
+pause
+exit /b 1
+
+:cleanup
 
 echo.
 echo    --------------------------------------------------------
-echo    [STEP 3/3] 清理临时文件...
+echo    [STEP 3/3] 清理临时文件 / Cleaning up...
+echo    Target: "{temp_dir.absolute()}"
 rmdir /S /Q "{temp_dir.absolute()}"
+if exist "{temp_dir.absolute()}" (
+    echo    [WARNING] 临时目录清理失败 (Cleanup Failed)
+    echo    请稍后手动删除: "{temp_dir.absolute()}"
+) else (
+    echo    [OK] 临时文件已清理 (Cleanup Done)
+)
 
 echo.
 echo    ======================================================================
