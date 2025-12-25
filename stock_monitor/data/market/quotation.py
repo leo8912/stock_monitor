@@ -42,7 +42,10 @@ def get_name_by_code(code: str) -> str:
     """股票代码获取股票名称"""
     # 从SQLite数据库获取股票名称
     try:
-        from stock_monitor.data.stock.stock_db import stock_db
+        from stock_monitor.core.container import container
+        from stock_monitor.data.stock.stock_db import StockDatabase
+
+        stock_db = container.get(StockDatabase)
 
         stock_info = stock_db.get_stock_by_code(code)
         if stock_info:
@@ -62,7 +65,10 @@ def get_stock_info_by_code(code: str) -> Optional[dict[str, str]]:
     """根据股票代码获取股票完整信息"""
     # 从SQLite数据库获取股票信息
     try:
-        from stock_monitor.data.stock.stock_db import stock_db
+        from stock_monitor.core.container import container
+        from stock_monitor.data.stock.stock_db import StockDatabase
+
+        stock_db = container.get(StockDatabase)
 
         stock_info = stock_db.get_stock_by_code(code)
         if stock_info:

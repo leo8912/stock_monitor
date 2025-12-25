@@ -1,5 +1,26 @@
 # 更新日志
 
+## [v2.7.0] - 2025-12-25
+
+### 🔄 架构重构 (Major Refactoring)
+- **MVVM 模式落地**:
+  - 重构了 `MainWindow` 和 `SettingsDialog`，将业务逻辑彻底剥离至 `MainWindowViewModel` 和 `SettingsViewModel`。
+  - 实现了 View 与 Logic 的完全解耦，提升了代码的可维护性和可测试性。
+- **依赖注入 (DI) 完善**:
+  - 全面移除了 `stock_db` 等全局单例实例。
+  - 所有核心组件现已完全通过 `DIContainer` 进行生命周期管理。
+
+### ⚡ 优化 (Optimization)
+- **目录结构梳理**:
+  - 将后台 Worker 线程 (`RefreshWorker`, `MarketStatsWorker`) 迁移至 `stock_monitor/core/workers/`，结构更清晰。
+  - 清理了项目根目录下的临时调试文件。
+- **性能与稳定性**:
+  - 优化了配置加载流程，增加了对"脏数据"的自动清洗机制。
+  - 通过 MVVM 重构减少了不必要的 UI 刷新操作。
+
+### 🐛 修复 (Fixes)
+- 修复了 `SettingsDialog` 中潜在的 `NameError` 和 `IndentationError` 问题。
+
 ## [v2.6.8] - 2025-12-24
 
 ### 🐛 Fixed (修复)

@@ -300,6 +300,26 @@ color 0A
 mode con cols=80 lines=30
 cls
 
+:: Check for Administrative privileges
+>nul 2>&1 "%SYSTEMROOT%\\system32\\cacls.exe" "%SYSTEMROOT%\\system32\\config\\system"
+if '%errorlevel%' NEQ '0' (
+    echo.
+    echo    [INFO] Requesting administrative privileges...
+    echo    [INFO] 需要管理员权限此写入文件...
+    goto UACPrompt
+) else ( goto gotAdmin )
+
+:UACPrompt
+    echo Set UAC = CreateObject^("Shell.Application"^) > "%temp%\\getadmin.vbs"
+    echo UAC.ShellExecute "%~s0", "", "", "runas", 1 >> "%temp%\\getadmin.vbs"
+    "%temp%\\getadmin.vbs"
+    exit /B
+
+:gotAdmin
+    if exist "%temp%\\getadmin.vbs" ( del "%temp%\\getadmin.vbs" )
+    pushd "%CD%"
+    CD /D "%~dp0"
+
 echo ======================================================================
 echo.
 echo                   STOCK MONITOR UPDATE SYSTEM
@@ -483,7 +503,10 @@ del "%0"
             app_logger.info("执行更新后钩子...")
 
             # 检查并初始化数据库
-            from stock_monitor.data.stock.stock_db import stock_db
+            from stock_monitor.core.container import container
+            from stock_monitor.data.stock.stock_db import StockDatabase
+
+            stock_db = container.get(StockDatabase)
 
             if stock_db.is_empty():
                 app_logger.info("检测到空数据库，正在初始化...")

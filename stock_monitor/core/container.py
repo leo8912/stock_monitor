@@ -8,7 +8,9 @@ from typing import Any, Callable, Optional, Union
 
 from ..config.manager import ConfigManager
 from ..core.stock_manager import StockManager
+from ..core.stock_manager import StockManager
 from ..core.stock_service import StockDataService
+from ..data.stock.stock_db import StockDatabase
 from ..utils.logger import app_logger
 
 
@@ -115,6 +117,9 @@ class DIContainer:
             app_logger.debug("自动创建StockManager")
             stock_data_service = self.get(StockDataService)
             return StockManager(stock_data_service=stock_data_service)
+        elif service_type == StockDatabase:
+            app_logger.debug("自动创建StockDatabase")
+            return StockDatabase()
 
         return None
 

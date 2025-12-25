@@ -1,7 +1,7 @@
 import os
 
 # Default version if all else fails
-__version__ = "0.0.0-dev"
+__version__ = "2.7.0"
 
 try:
     # 1. Try to get version from installed package metadata (Python 3.8+)

@@ -9,8 +9,7 @@ from PyQt6.QtCore import (
 
 from stock_monitor.config.manager import ConfigManager
 from stock_monitor.core.container import container
-from stock_monitor.core.market_worker import MarketStatsWorker
-from stock_monitor.core.refresh_worker import RefreshWorker
+# Workers are now managed by ViewModel
 from stock_monitor.ui.components.stock_table import StockTable
 from stock_monitor.ui.constants import COLORS
 from stock_monitor.ui.dialogs.settings_dialog import NewSettingsDialog
@@ -25,6 +24,8 @@ from stock_monitor.utils.helpers import resource_path
 from stock_monitor.utils.log_cleaner import schedule_log_cleanup
 from stock_monitor.utils.logger import app_logger
 from stock_monitor.utils.stock_utils import StockCodeProcessor
+from stock_monitor.ui.mixins.draggable_window import DraggableWindowMixin
+from stock_monitor.ui.view_models.main_window_view_model import MainWindowViewModel
 
 # 定义常量
 ICON_FILE = resource_path("icon.ico")
@@ -33,7 +34,7 @@ MAX_BACKGROUND_ALPHA = 255  # 透明度100时的alpha值(完全不透明)
 ALPHA_RANGE = MAX_BACKGROUND_ALPHA - MIN_BACKGROUND_ALPHA
 
 
-class MainWindow(QtWidgets.QWidget):
+class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
     """
     主窗口类
     负责显示股票行情、处理用户交互和管理应用状态
@@ -45,25 +46,27 @@ class MainWindow(QtWidgets.QWidget):
     refresh_error_signal = pyqtSignal()
 
     def __init__(self):
-        super().__init__()
+        QtWidgets.QWidget.__init__(self)
+        DraggableWindowMixin.__init__(self)
         # 初始化依赖注入容器
         self._container = container
+        # 初始化ViewModel
+        self.viewModel = MainWindowViewModel()
+        
         self.setup_ui()
         # 尝试加载会话缓存
         if not self._try_load_session_cache():
             # 如果没有加载到缓存，确保窗口最终会显示
             pass
 
-        # 连接跨线程信号
-        self.refresh_data_signal.connect(self._handle_refresh_data)
-        self.refresh_error_signal.connect(self._handle_refresh_error)
-
-        # 初始化全市场统计工作线程
-        self.market_stats_worker = MarketStatsWorker()
-        self.market_stats_worker.stats_updated.connect(
-            self.market_status_bar.update_status
-        )
-        self.market_stats_worker.start_worker()
+        # 连接 ViewModel 信号
+        self.viewModel.market_stats_updated.connect(self.market_status_bar.update_status)
+        self.viewModel.stock_data_updated.connect(self._handle_refresh_data)
+        self.viewModel.refresh_error_occurred.connect(self._handle_refresh_error)
+        
+        # 启动 Workers (在 UI 设置完成后)
+        # 这里的 start_workers 会在 setup_refresh_worker 中被调用，或者我们可以在这里调用
+        # 但考虑到 setup_refresh_worker 可能会用到 config，我们稍后在 setup_refresh_worker 中统一启动
 
     def quit_application(self):
         """退出应用程序"""
@@ -88,13 +91,7 @@ class MainWindow(QtWidgets.QWidget):
                 self.tray_icon.hide()
 
             # 3. 停止所有工作线程
-            if hasattr(self, "refresh_worker"):
-                self.refresh_worker.stop_refresh()
-                self.refresh_worker.wait()
-
-            if hasattr(self, "market_stats_worker"):
-                self.market_stats_worker.stop_worker()
-                self.market_stats_worker.wait()
+            self.viewModel.stop_workers()
 
             # 4. 清理快捷键
             if hasattr(self, "shortcuts"):
@@ -120,15 +117,11 @@ class MainWindow(QtWidgets.QWidget):
     def _setup_window_properties(self):
         """设置窗口属性"""
         self.setWindowTitle("A股行情监控")
-        self.setWindowFlags(
-            QtCore.Qt.WindowType.WindowStaysOnTopHint  # type: ignore
-            | QtCore.Qt.WindowType.FramelessWindowHint  # type: ignore
-            | QtCore.Qt.WindowType.Tool  # type: ignore
-            | QtCore.Qt.WindowType.WindowMaximizeButtonHint  # type: ignore
-        )  # type: ignore
-        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)  # type: ignore
+        self.setup_draggable_window()
         self.resize(320, 160)
-        self.drag_position = None
+        
+        # Ensure we always have an arrow cursor initially
+        self.setCursor(QtCore.Qt.CursorShape.ArrowCursor)
 
         # 设置窗口图标
         if os.path.exists(ICON_FILE):
@@ -205,15 +198,12 @@ class MainWindow(QtWidgets.QWidget):
 
         config_manager = get_config_manager()
         self.refresh_interval = config_manager.get("refresh_interval", 5)
-        self.current_user_stocks = self.load_user_stocks()
-
-        # 初始化后台刷新工作线程
-        # 初始化后台刷新工作线程（使用新的QThread实现）
-        self.refresh_worker = RefreshWorker()
-
-        # 连接信号
-        self.refresh_worker.data_updated.connect(self._handle_refresh_data)
-        self.refresh_worker.refresh_error.connect(self._handle_refresh_error)
+        self.current_user_stocks = self.viewModel.load_user_stocks()
+        
+        # Workers 初始化移动到了 ViewModel，这里不需要初始化 RefreshWorker
+        # 信号连接也在 __init__ 中完成了
+        # self.viewModel.stock_data_updated.connect(self._handle_refresh_data)
+        # self.viewModel.refresh_error_occurred.connect(self._handle_refresh_error)
 
         # 加载状态指示器，初始隐藏
         self.loading_label = QtWidgets.QLabel("⏳ 数据加载中...")
@@ -226,12 +216,8 @@ class MainWindow(QtWidgets.QWidget):
         )
 
         # 启动刷新线程和信号连接
-        self.update_table_signal.connect(self.table.update_data)  # type: ignore
-
-        # 启动后台刷新线程
-        self.refresh_worker.start_refresh(
-            self.current_user_stocks, self.refresh_interval
-        )
+        # 启动后台刷新线程 (通过 ViewModel)
+        self.setup_refresh_worker()
 
         # 启动时立即更新一次数据库
         # 延迟一点时间再更新数据库，避免与市场状态更新冲突
@@ -263,10 +249,9 @@ class MainWindow(QtWidgets.QWidget):
 
     def setup_refresh_worker(self):
         """设置刷新工作线程"""
-        # 启动后台刷新线程
-        self.refresh_worker.start_refresh(
-            self.current_user_stocks, self.refresh_interval
-        )
+        # 启动后台刷新线程 (通过 ViewModel)
+        self.viewModel.start_workers(self.current_user_stocks, self.refresh_interval)
+        
         # 启动后立即刷新一次数据，确保界面显示
         self.refresh_now()
 
@@ -392,88 +377,7 @@ class MainWindow(QtWidgets.QWidget):
         except Exception as e:
             app_logger.error(f"强制显示窗口时出错: {e}")
 
-    def install_event_filters(self, widget):
-        """
-        为控件安装事件过滤器
 
-        Args:
-            widget: 需要安装事件过滤器的控件
-        """
-        if isinstance(widget, QtWidgets.QWidget):
-            widget.installEventFilter(self)
-            for child in widget.findChildren(QtWidgets.QWidget):
-                self.install_event_filters(child)
-
-    def eventFilter(self, a0, a1):
-        """
-        事件过滤器，处理鼠标事件
-        """
-        event = a1
-        if event is not None and event.type() == QtCore.QEvent.Type.MouseButtonDblClick:
-            if event.button() == QtCore.Qt.MouseButton.LeftButton:
-                self.hide()
-                event.accept()
-                return True
-        elif event is not None and event.type() == QtCore.QEvent.Type.MouseButtonPress:  # type: ignore
-            if event.button() == QtCore.Qt.MouseButton.LeftButton:  # type: ignore
-                cursor_pos = QtGui.QCursor.pos()
-                frame_top_left = self.frameGeometry().topLeft()
-                self.drag_position = QtCore.QPoint(
-                    cursor_pos.x() - frame_top_left.x(),
-                    cursor_pos.y() - frame_top_left.y(),
-                )
-                self.setCursor(QtCore.Qt.CursorShape.SizeAllCursor)  # type: ignore
-                event.accept()
-                return True
-            elif event.button() == QtCore.Qt.MouseButton.RightButton:
-                # 弹出右键菜单
-                click_pos = self.mapToGlobal(event.pos())
-                self.menu.popup(click_pos)
-                event.accept()
-                return True
-        elif event is not None and event.type() == QtCore.QEvent.Type.MouseMove:  # type: ignore
-            if event.buttons() == QtCore.Qt.MouseButton.LeftButton and self.drag_position is not None:  # type: ignore
-                cursor_pos = QtGui.QCursor.pos()
-                self.move(
-                    cursor_pos.x() - self.drag_position.x(),
-                    cursor_pos.y() - self.drag_position.y(),
-                )
-                event.accept()
-                return True
-        elif event is not None and event.type() == QtCore.QEvent.Type.MouseButtonRelease:  # type: ignore
-            self.drag_position = None
-            self.setCursor(QtCore.Qt.CursorShape.ArrowCursor)  # type: ignore
-            self.save_position()  # 拖动结束时自动保存位置
-            event.accept()
-            return True
-        return super().eventFilter(a0, a1)
-
-    def mousePressEvent(self, event):
-        super().mousePressEvent(event)
-
-    def mouseDoubleClickEvent(self, event):
-        """双击隐藏窗口"""
-        if event.button() == QtCore.Qt.MouseButton.LeftButton:
-            self.hide()
-            event.accept()
-
-    def mouseMoveEvent(self, event):
-        if event.buttons() == QtCore.Qt.MouseButton.LeftButton and self.drag_position is not None:  # type: ignore
-            self.move(event.globalPos() - self.drag_position)
-            event.accept()
-
-    def mouseReleaseEvent(self, event):
-        self.drag_position = None
-        self.setCursor(QtCore.Qt.CursorShape.ArrowCursor)  # type: ignore
-        # 只在没有隐藏的情况下保存位置
-        if self.isVisible():
-            self.save_position()
-
-    def closeEvent(self, event):
-        """处理窗口关闭事件"""
-        self.save_position()
-        self.hide()
-        event.ignore()
 
     def save_position(self):
         """保存窗口位置到配置文件"""
@@ -490,12 +394,7 @@ class MainWindow(QtWidgets.QWidget):
         else:
             self.move_to_bottom_right()
 
-    def move_to_bottom_right(self):
-        """将窗口移动到屏幕右下角"""
-        screen = QtWidgets.QApplication.primaryScreen().availableGeometry()  # type: ignore
-        self.move(
-            screen.right() - self.width() - 20, screen.bottom() - self.height() - 40
-        )
+
 
     def open_settings(self):
         """打开设置对话框"""
@@ -566,9 +465,8 @@ class MainWindow(QtWidgets.QWidget):
         self.current_user_stocks = stocks
         self.refresh_interval = refresh_interval
 
-        # 更新后台刷新线程的配置
-        self.refresh_worker.update_stocks(stocks)
-        self.refresh_worker.update_interval(refresh_interval)
+        # 更新后台刷新线程的配置 (通过 ViewModel)
+        self.viewModel.update_workers_config(stocks, refresh_interval)
 
         # 强制刷新显示
         self.refresh_now(stocks)
@@ -630,9 +528,11 @@ class MainWindow(QtWidgets.QWidget):
             self.table.hide()
             QtWidgets.QApplication.processEvents()
 
-            from stock_monitor.core.stock_manager import stock_manager
+            self.loading_label.show()
+            self.table.hide()
+            QtWidgets.QApplication.processEvents()
 
-            stocks = stock_manager.get_stock_list_data(stocks_list)
+            stocks = self.viewModel.get_stock_list_data(stocks_list)
 
             # 使用 update_data 更新数据，不需要手动清理
             self.table.update_data(stocks)
@@ -686,9 +586,7 @@ class MainWindow(QtWidgets.QWidget):
                 should_update = True
             else:
                 # 检查数据库是否为空（应对路径变更情况）
-                from stock_monitor.data.stock.stock_db import stock_db
-
-                if stock_db.get_all_stocks_count() == 0:
+                if self.viewModel.is_database_empty():
                     app_logger.warning("检测到股票数据库为空，强制启动更新")
                     should_update = True
                 else:
@@ -704,84 +602,18 @@ class MainWindow(QtWidgets.QWidget):
     def _update_database_async(self):
         """异步更新数据库"""
         try:
-            from stock_monitor.data.market.updater import update_stock_database
+            from stock_monitor.data.market.db_updater import update_stock_database
 
             update_thread = threading.Thread(target=update_stock_database, daemon=True)
             update_thread.start()
         except Exception as e:
             app_logger.error(f"异步更新数据库时出错: {e}")
 
-    def _clean_stock_code(self, stock_code: str, processor) -> str:
-        """
-        清理股票代码,移除特殊字符并格式化
 
-        Args:
-            stock_code: 原始股票代码
-            processor: StockCodeProcessor实例
-
-        Returns:
-            清理后的股票代码
-        """
-        # 移除emoji等特殊字符
-        cleaned = stock_code.replace("⭐️", "").strip()
-
-        # 如果为空,返回原始值
-        if not cleaned:
-            return stock_code
-
-        # 尝试提取第一部分(处理 "code name" 格式)
-        parts = cleaned.split()
-        if not parts:
-            return stock_code
-
-        # 先尝试格式化第一部分
-        formatted = processor.format_stock_code(parts[0])
-        if formatted:
-            return formatted
-
-        # 如果第一部分格式化失败,尝试整个字符串
-        formatted = processor.format_stock_code(cleaned)
-        return formatted if formatted else stock_code
 
     def load_user_stocks(self):
         """加载用户自选股列表"""
-        try:
-            config_manager = self._container.get(ConfigManager)
-            stocks = config_manager.get("user_stocks", [])
-
-            # 早返回:如果列表为空,直接返回
-            if not stocks:
-                app_logger.info("自选股列表为空")
-                return []
-
-            # 清理可能的损坏数据
-            from stock_monitor.utils.stock_utils import StockCodeProcessor
-
-            processor = StockCodeProcessor()
-
-            cleaned_stocks = []
-            has_changes = False
-
-            for stock in stocks:
-                cleaned = self._clean_stock_code(stock, processor)
-                cleaned_stocks.append(cleaned)
-
-                if cleaned != stock:
-                    has_changes = True
-
-            # 如果有变化,保存清理后的数据
-            if has_changes:
-                app_logger.warning(
-                    f"检测到自选股列表包含脏数据，已自动修复: {stocks} -> {cleaned_stocks}"
-                )
-                config_manager.set("user_stocks", cleaned_stocks)
-
-            app_logger.info(f"加载自选股列表: {cleaned_stocks}")
-            return cleaned_stocks
-
-        except Exception as e:
-            app_logger.error(f"加载自选股列表失败: {e}")
-            return []
+        return self.viewModel.load_user_stocks()
 
     def _format_stock_code(self, code):
         """格式化股票代码"""

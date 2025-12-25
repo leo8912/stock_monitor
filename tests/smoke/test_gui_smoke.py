@@ -1,4 +1,5 @@
-from stock_monitor.data.stock.stock_db import stock_db
+from stock_monitor.core.container import container
+from stock_monitor.data.stock.stock_db import StockDatabase
 from stock_monitor.ui.main_window import MainWindow
 
 
@@ -7,6 +8,7 @@ def test_main_window_init(qtbot, monkeypatch):
     GUI冒烟测试：验证主窗口能否正常初始化
     """
     # 模拟数据防止自动更新触发网络请求
+    stock_db = container.get(StockDatabase)
     monkeypatch.setattr(stock_db, "is_empty", lambda: False)
     monkeypatch.setattr(stock_db, "get_all_stocks", lambda: [])
 
@@ -19,12 +21,20 @@ def test_main_window_init(qtbot, monkeypatch):
     mock_worker.refresh_error.connect = MagicMock()
     mock_worker.start_refresh = MagicMock()
 
-    # 替换 RefreshWorker 类，使其返回我们的 mock_worker
-    # 注意：RefreshWorker 在 main_window.py 中被导入，所以要 patch 那里的引用
-    import stock_monitor.ui.main_window
-
+    # 替换 ViewModel 中的 Workers
+    import stock_monitor.ui.view_models.main_window_view_model
+    
     monkeypatch.setattr(
-        stock_monitor.ui.main_window, "RefreshWorker", lambda: mock_worker
+        stock_monitor.ui.view_models.main_window_view_model, "RefreshWorker", lambda: mock_worker
+    )
+    
+    # Mock MarketStatsWorker as well
+    mock_market_worker = MagicMock()
+    mock_market_worker.stats_updated.connect = MagicMock()
+    mock_market_worker.start_worker = MagicMock()
+    
+    monkeypatch.setattr(
+        stock_monitor.ui.view_models.main_window_view_model, "MarketStatsWorker", lambda: mock_market_worker
     )
 
     # 初始化主窗口

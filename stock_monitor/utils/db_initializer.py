@@ -3,7 +3,8 @@
 用于初始化SQLite数据库
 """
 
-from stock_monitor.data.stock.stock_db import stock_db
+from stock_monitor.core.container import container
+from stock_monitor.data.stock.stock_db import StockDatabase
 from stock_monitor.utils.logger import app_logger
 
 
@@ -13,6 +14,7 @@ def initialize_database_schema():
     """
     try:
         # 检查数据库是否已经有数据
+        stock_db = container.get(StockDatabase)
         stock_count = stock_db.get_all_stocks_count()
 
         if stock_count == 0:
@@ -32,6 +34,7 @@ def initialize_database():
     """
     try:
         # 检查数据库是否已经有数据
+        stock_db = container.get(StockDatabase)
         stock_count = stock_db.get_all_stocks_count()
 
         if stock_count == 0:

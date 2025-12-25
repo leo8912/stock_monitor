@@ -69,6 +69,38 @@ class StockCodeProcessor:
 
         # 其他情况返回原始代码
         return code
+        
+    @classmethod
+    def clean_code(cls, stock_code: str) -> str:
+        """
+        清理股票代码,移除特殊字符并格式化
+
+        Args:
+            stock_code: 原始股票代码
+
+        Returns:
+            清理后的股票代码
+        """
+        # 移除emoji等特殊字符
+        cleaned = stock_code.replace("⭐️", "").strip()
+
+        # 如果为空,返回原始值
+        if not cleaned:
+            return stock_code
+
+        # 尝试提取第一部分(处理 "code name" 格式)
+        parts = cleaned.split()
+        if not parts:
+            return stock_code
+
+        # 先尝试格式化第一部分
+        formatted = cls.format_stock_code(parts[0])
+        if formatted:
+            return formatted
+
+        # 如果第一部分格式化失败,尝试整个字符串
+        formatted = cls.format_stock_code(cleaned)
+        return formatted if formatted else stock_code
 
     @staticmethod
     def extract_code_from_text(text: str) -> tuple[Optional[str], str]:

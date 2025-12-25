@@ -6,7 +6,7 @@
 from pypinyin import Style, lazy_pinyin
 
 from stock_monitor.data.fetcher import stock_fetcher
-from stock_monitor.data.stock.stock_db import stock_db
+from stock_monitor.data.stock.stock_db import StockDatabase
 from stock_monitor.utils.logger import app_logger
 
 
@@ -55,6 +55,8 @@ def incremental_update_stock_database() -> bool:
 
         # 4. 批量插入/更新数据库
         app_logger.info(f"开始更新股票数据库，共 {len(stocks_data)} 条记录...")
+        from stock_monitor.core.container import container
+        stock_db = container.get(StockDatabase)
         count = stock_db.insert_stocks(stocks_data)
         app_logger.info(f"股票数据库更新完成，共处理/更新 {count} 条记录")
 

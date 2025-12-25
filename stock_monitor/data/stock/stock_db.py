@@ -461,5 +461,4 @@ class StockDatabase(StockDataSource):
             return 0
 
 
-# 创建全局单例
-stock_db = StockDatabase()
+

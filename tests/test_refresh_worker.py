@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-from stock_monitor.core.refresh_worker import RefreshWorker
+from stock_monitor.core.workers import RefreshWorker
 
 
 class TestRefreshWorker:
@@ -30,7 +30,7 @@ class TestRefreshWorker:
         pass
 
     @patch("stock_monitor.core.stock_manager.stock_manager")
-    @patch("stock_monitor.core.refresh_worker.is_market_open")
+    @patch("stock_monitor.core.workers.refresh_worker.is_market_open")
     def test_worker_cycle(self, mock_is_market_open, mock_stock_manager):
         """测试工作线程的一个周期"""
         # 模拟市场开放

@@ -1,11 +1,11 @@
 from unittest.mock import patch
 
-from stock_monitor.core.market_worker import MarketStatsWorker
+from stock_monitor.core.workers import MarketStatsWorker
 
 
 class TestMarketStatsWorker:
     @patch("stock_monitor.core.stock_manager.stock_manager")
-    @patch("stock_monitor.core.market_worker.is_market_open")
+    @patch("stock_monitor.core.workers.market_worker.is_market_open")
     def test_calculate_stats(self, mock_is_market_open, mock_stock_manager):
         worker = MarketStatsWorker()
 

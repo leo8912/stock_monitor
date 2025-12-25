@@ -60,3 +60,7 @@ sha256.txt
 logs/
 stock_monitor/logs/
 docs/clean_code_review.md
+.agent/workflows/stock.md
+开机启动分析报告.md
+项目分析报告.md
+代码审查报告.md

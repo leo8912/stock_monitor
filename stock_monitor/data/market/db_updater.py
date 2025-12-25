@@ -31,7 +31,10 @@ def get_stock_list() -> list[dict[str, str]]:
         List[Dict[str, str]]: 股票列表
     """
     try:
-        from stock_monitor.data.stock.stock_db import stock_db
+        from stock_monitor.core.container import container
+        from stock_monitor.data.stock.stock_db import StockDatabase
+
+        stock_db = container.get(StockDatabase)
 
         return stock_db.get_all_stocks()
     except Exception as e:

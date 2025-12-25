@@ -57,10 +57,10 @@ def main():
         apply_pending_updates()
 
         # 确保数据库已初始化
-        from stock_monitor.data.stock.stock_db import stock_db
+        from stock_monitor.data.stock.stock_db import StockDatabase
 
         # 访问实例以确保初始化
-        _ = stock_db
+        _ = container.get(StockDatabase)
 
         app = QtWidgets.QApplication(sys.argv)
         app.setQuitOnLastWindowClosed(False)  # 窗口关闭时不退出程序
