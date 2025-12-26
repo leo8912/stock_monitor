@@ -204,6 +204,9 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
         # 信号连接也在 __init__ 中完成了
         # self.viewModel.stock_data_updated.connect(self._handle_refresh_data)
         # self.viewModel.refresh_error_occurred.connect(self._handle_refresh_error)
+        
+        # 连接本地信号
+        self.update_table_signal.connect(self.table.update_data)
 
         # 加载状态指示器，初始隐藏
         self.loading_label = QtWidgets.QLabel("⏳ 数据加载中...")

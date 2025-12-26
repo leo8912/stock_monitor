@@ -89,40 +89,31 @@ class RefreshWorker(QtCore.QThread):
         if not self._is_running:
             return
 
-        self._lock.lock()
-        local_user_stocks = self.current_user_stocks[:]
-        local_refresh_interval = self.refresh_interval
-        self._lock.unlock()
-
         while self._is_running:
             try:
-                # 检查是否有配置更新
+                # 获取当前配置
                 self._lock.lock()
-                if (
-                    local_user_stocks != self.current_user_stocks
-                    or local_refresh_interval != self.refresh_interval
-                ):
-                    local_user_stocks = self.current_user_stocks[:]
-                    local_refresh_interval = self.refresh_interval
-                    app_logger.info(
-                        f"刷新线程检测到配置变更，更新本地缓存: 股票={local_user_stocks}, 间隔={local_refresh_interval}"
-                    )
+                local_user_stocks = self.current_user_stocks[:]
+                local_refresh_interval = self.refresh_interval
                 self._lock.unlock()
 
                 # 检查是否需要等待下次刷新（无股票时）
                 if not local_user_stocks:
-                    sleep_time = local_refresh_interval if is_market_open() else 60
-                    # 分段睡眠以便能及时响应停止信号
-                    for _ in range(int(sleep_time)):
-                        if not self._is_running:
-                            break
-                        self.sleep(1)
-                    if not self._is_running:
-                        break
+                    app_logger.debug("没有自选股，休眠等待...")
+                    self._smart_sleep(5)
+                    continue
+
+                # 检查市场状态
+                market_open = is_market_open()
+                
+                # 如果市场关闭，使用较长的休眠时间，但仍需保持响应
+                if not market_open:
+                    app_logger.debug("市场已关闭，休眠等待开市...")
+                    self._smart_sleep(60, check_interval=True)
                     continue
 
                 # 获取数据
-                app_logger.debug(f"需要获取 {len(local_user_stocks)} 只股票数据")
+                # app_logger.debug(f"开始刷新 {len(local_user_stocks)} 只股票数据")
 
                 # 使用 stock_manager 获取和处理数据
                 from stock_monitor.core.stock_manager import stock_manager
@@ -138,6 +129,7 @@ class RefreshWorker(QtCore.QThread):
                     stock_manager.update_last_stock_data(stocks)
                     if not hasattr(self, "_initial_update_done"):
                         self._initial_update_done = True
+                        app_logger.info("首次数据更新完成")
 
                     # 发送信号
                     self.data_updated.emit(
@@ -150,18 +142,11 @@ class RefreshWorker(QtCore.QThread):
                 self._consecutive_failures = 0
 
                 # 休眠
-                sleep_time = local_refresh_interval if is_market_open() else 60
+                sleep_time = local_refresh_interval
                 if sleep_time < 1:
                     sleep_time = 1
-
-                # 同样分段休眠
-                for _ in range(int(sleep_time)):
-                    if not self._is_running:
-                        break
-                    self.sleep(1)
-                # 处理剩余的小数秒
-                if self._is_running and (sleep_time % 1 > 0):
-                    self.msleep(int((sleep_time % 1) * 1000))
+                    
+                self._smart_sleep(sleep_time, check_interval=True)
 
             except Exception as e:
                 app_logger.error(f"行情刷新异常: {e}")
@@ -172,3 +157,38 @@ class RefreshWorker(QtCore.QThread):
                     self._consecutive_failures = 0
 
                 self.sleep(5)
+
+    def _smart_sleep(self, duration, check_interval=False):
+        """
+        智能休眠，支持快速响应停止信号和配置变更
+        
+        Args:
+            duration: 休眠时长(秒)
+            check_interval: 是否检查刷新间隔变更
+        """
+        # 将时长转换为0.5秒的时间片
+        steps = int(duration * 2)
+        if steps < 1:
+            steps = 1
+            
+        current_interval = self.refresh_interval
+        
+        for _ in range(steps):
+            if not self._is_running:
+                return
+                
+            # 如果需要检查配置变更
+            if check_interval:
+                self._lock.lock()
+                new_interval = self.refresh_interval
+                self._lock.unlock()
+                
+                # 如果刷新间隔变小了，立即结束休眠以应用新配置
+                # 如果变大了，当前循环结束后下一次自然会应用
+                if new_interval < current_interval:
+                    # app_logger.info(f"检测到刷新间隔变短 ({current_interval}->{new_interval})，立即唤醒")
+                    return
+                # 更新当前参考间隔
+                current_interval = new_interval
+                
+            self.msleep(500)

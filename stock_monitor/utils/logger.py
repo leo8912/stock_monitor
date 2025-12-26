@@ -67,22 +67,27 @@ class Logger:
 
     def debug(self, message: str, *args, **kwargs):
         """记录调试信息"""
+        kwargs['stacklevel'] = 2
         self.logger.debug(message, *args, **kwargs)
 
     def info(self, message: str, *args, **kwargs):
         """记录一般信息"""
+        kwargs['stacklevel'] = 2
         self.logger.info(message, *args, **kwargs)
 
     def warning(self, message: str, *args, **kwargs):
         """记录警告信息"""
+        kwargs['stacklevel'] = 2
         self.logger.warning(message, *args, **kwargs)
 
     def error(self, message: str, *args, **kwargs):
         """记录错误信息"""
+        kwargs['stacklevel'] = 2
         self.logger.error(message, *args, **kwargs)
 
     def critical(self, message: str, *args, **kwargs):
         """记录严重错误信息"""
+        kwargs['stacklevel'] = 2
         self.logger.critical(message, *args, **kwargs)
 
 
