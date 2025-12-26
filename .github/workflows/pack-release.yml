@@ -45,9 +45,9 @@ jobs:
         $EQPATH = Get-Content eq_path.txt | Select-Object -First 1
         echo "EQPATH=$EQPATH" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-    - name: 运行测试 # Run tests
-      run: |
-        python -m pytest tests/
+    # - name: 运行测试 # Run tests
+    #   run: |
+    #     python -m pytest tests/
 
     - name: 查找zhconv的zhcdict.json文件 # Find zhconv zhcdict.json
       id: find_zhconv

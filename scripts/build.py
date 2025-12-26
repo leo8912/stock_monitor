@@ -312,9 +312,10 @@ def main():
         sys.exit(1)
 
     # 步骤3: 运行测试
-    if not run_tests():
-        print("\n❌ 测试未通过，终止流程")
-        sys.exit(1)
+    # if not run_tests():
+    #     print("\n❌ 测试未通过，终止流程")
+    #     sys.exit(1)
+    print("\n⚠️  已跳过测试步骤 (响应用户请求)")
 
     # 步骤4: 构建可执行文件
     if not build_executable():
