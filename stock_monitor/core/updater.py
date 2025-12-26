@@ -300,27 +300,10 @@ color 0A
 mode con cols=80 lines=30
 cls
 
-:: Check for Administrative privileges
->nul 2>&1 "%SYSTEMROOT%\\system32\\cacls.exe" "%SYSTEMROOT%\\system32\\config\\system"
-if '%errorlevel%' NEQ '0' (
-    echo.
-    echo    [INFO] Requesting administrative privileges...
-    echo    [INFO] 需要管理员权限此写入文件...
-    goto UACPrompt
-) else ( goto gotAdmin )
 
-:UACPrompt
-    echo Set UAC = CreateObject^("Shell.Application"^) > "%temp%\\getadmin.vbs"
-    echo UAC.ShellExecute "%~s0", "", "", "runas", 1 >> "%temp%\\getadmin.vbs"
-    "%temp%\\getadmin.vbs"
-    exit /B
+:: No UAC check needed for user directory updates
+cd /d "%~dp0"
 
-:gotAdmin
-    if exist "%temp%\\getadmin.vbs" ( del "%temp%\\getadmin.vbs" )
-    pushd "%CD%"
-    CD /D "%~dp0"
-
-echo ======================================================================
 echo.
 echo                   STOCK MONITOR UPDATE SYSTEM
 echo.
