@@ -297,10 +297,12 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
                     self.activateWindow()
                 self._first_show_done = True
 
-            # 如果窗口可见，确保子组件也可见
+            # 如果窗口可见，确保子组件也可见，并静默刷新置顶状态
             if self.isVisible():
                 self.market_status_bar.show()
                 self.table.show()
+                # 静默刷新置顶状态（用户无感知）
+                self.raise_()
 
             # 隐藏加载状态
             self.loading_label.hide()
