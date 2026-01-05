@@ -15,6 +15,58 @@ def apply_pending_updates():
     pass
 
 
+def check_update_status():
+    """
+    检查更新状态标记文件
+    
+    Returns:
+        tuple: (status, info) 
+               status: "success" | "failed" | None
+               info: 更新时间或错误信息
+    """
+    try:
+        from stock_monitor.config.manager import get_config_dir
+        
+        config_dir = get_config_dir()
+        success_marker = os.path.join(config_dir, "update_complete.txt")
+        failed_marker = os.path.join(config_dir, "update_failed.txt")
+        
+        # 检查更新成功标记
+        if os.path.exists(success_marker):
+            try:
+                with open(success_marker, "r", encoding="gbk") as f:
+                    update_time = f.read().strip()
+                os.remove(success_marker)
+                app_logger.info(f"检测到更新成功标记，更新时间: {update_time}")
+                return ("success", update_time)
+            except Exception as e:
+                app_logger.warning(f"读取更新成功标记失败: {e}")
+                try:
+                    os.remove(success_marker)
+                except:
+                    pass
+        
+        # 检查更新失败标记
+        if os.path.exists(failed_marker):
+            try:
+                with open(failed_marker, "r", encoding="gbk") as f:
+                    error_info = f.read().strip()
+                os.remove(failed_marker)
+                app_logger.error(f"检测到更新失败标记: {error_info}")
+                return ("failed", error_info)
+            except Exception as e:
+                app_logger.warning(f"读取更新失败标记失败: {e}")
+                try:
+                    os.remove(failed_marker)
+                except:
+                    pass
+        
+        return (None, None)
+    except Exception as e:
+        app_logger.error(f"检查更新状态时出错: {e}")
+        return (None, None)
+
+
 def setup_auto_start():
     """
     设置开机自启动功能

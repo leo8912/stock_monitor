@@ -217,13 +217,22 @@ def save_config(cfg: dict[str, Any]) -> bool:
 
 
 def is_market_open():
-    """检查A股是否开市"""
+    """检查A股是否开市（包含集合竞价结束时刻）
+    
+    A股交易时间:
+    - 9:15-9:25 集合竞价（9:25产生开盘价）
+    - 9:30-11:30 上午连续竞价
+    - 13:00-15:00 下午连续竞价
+    
+    从9:25开始获取行情，可以第一时间获取开盘价
+    """
     import datetime
 
     now = datetime.datetime.now()
     if now.weekday() >= 5:  # 周末
         return False
     t = now.time()
-    return (datetime.time(9, 30) <= t <= datetime.time(11, 30)) or (
+    # 9:25开始（集合竞价结束，可获取开盘价）
+    return (datetime.time(9, 25) <= t <= datetime.time(11, 30)) or (
         datetime.time(13, 0) <= t <= datetime.time(15, 0)
     )

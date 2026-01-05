@@ -7,7 +7,7 @@
 from PyQt6 import QtCore, QtGui, QtWidgets
 
 # 常量定义
-MARKET_STATUS_BAR_HEIGHT = 3  # 市场状态条高度（像素）
+MARKET_STATUS_BAR_HEIGHT = 3  # 市场状态条高度（像素）- 极窄
 DEFAULT_UP_COUNT = 100  # 默认上涨股票数
 DEFAULT_DOWN_COUNT = 0  # 默认下跌股票数
 DEFAULT_FLAT_COUNT = 0  # 默认平盘股票数
@@ -98,13 +98,16 @@ class MarketStatusBar(QtWidgets.QWidget):
         self.update()
 
     def paintEvent(self, event):
-        """绘制状态条"""
+        """绘制状态条（渐变效果）"""
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)  # type: ignore
 
         if self.total_count == 0:
-            # 如果没有数据，显示红色
-            painter.fillRect(self.rect(), QtGui.QColor(231, 76, 60, 200))
+            # 如果没有数据，显示红色渐变
+            gradient = QtGui.QLinearGradient(0, 0, self.width(), 0)
+            gradient.setColorAt(0, QtGui.QColor(231, 76, 60, 220))
+            gradient.setColorAt(1, QtGui.QColor(231, 76, 60, 180))
+            painter.fillRect(self.rect(), gradient)
             return
 
         # 计算各部分宽度
@@ -116,11 +119,12 @@ class MarketStatusBar(QtWidgets.QWidget):
         # 按照 红色(上涨) - 灰色(平盘) - 绿色(下跌) 的顺序绘制
         x_pos = 0
 
-        # 绘制上涨部分（红色）
+        # 绘制上涨部分（红色渐变）
         if up_width > 0:
-            painter.fillRect(
-                x_pos, 0, up_width, self.height(), QtGui.QColor(231, 76, 60, 200)
-            )
+            gradient = QtGui.QLinearGradient(x_pos, 0, x_pos + up_width, 0)
+            gradient.setColorAt(0, QtGui.QColor(255, 69, 0, 220))   # 亮红
+            gradient.setColorAt(1, QtGui.QColor(231, 76, 60, 200))  # 标准红
+            painter.fillRect(x_pos, 0, up_width, self.height(), gradient)
             x_pos += up_width
 
         # 绘制平盘部分（灰色）
@@ -130,8 +134,9 @@ class MarketStatusBar(QtWidgets.QWidget):
             )
             x_pos += flat_width
 
-        # 绘制下跌部分（绿色）
+        # 绘制下跌部分（绿色渐变）
         if down_width > 0:
-            painter.fillRect(
-                x_pos, 0, down_width, self.height(), QtGui.QColor(39, 174, 96, 200)
-            )
+            gradient = QtGui.QLinearGradient(x_pos, 0, x_pos + down_width, 0)
+            gradient.setColorAt(0, QtGui.QColor(39, 174, 96, 200))  # 标准绿
+            gradient.setColorAt(1, QtGui.QColor(30, 132, 73, 220))  # 深绿
+            painter.fillRect(x_pos, 0, down_width, self.height(), gradient)

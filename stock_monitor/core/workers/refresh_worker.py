@@ -106,10 +106,14 @@ class RefreshWorker(QtCore.QThread):
                 # 检查市场状态
                 market_open = is_market_open()
                 
-                # 如果市场关闭，使用较长的休眠时间，但仍需保持响应
+                # 如果市场关闭，根据距离开市时间决定休眠时长
                 if not market_open:
-                    app_logger.debug("市场已关闭，休眠等待开市...")
-                    self._smart_sleep(60, check_interval=True)
+                    sleep_duration = self._get_pre_market_sleep_time()
+                    if sleep_duration < 60:
+                        app_logger.debug(f"临近开市，缩短休眠至{sleep_duration}秒")
+                    else:
+                        app_logger.debug("市场已关闭，休眠等待开市...")
+                    self._smart_sleep(sleep_duration, check_interval=True)
                     continue
 
                 # 获取数据
@@ -192,3 +196,32 @@ class RefreshWorker(QtCore.QThread):
                 current_interval = new_interval
                 
             self.msleep(500)
+
+    def _get_pre_market_sleep_time(self):
+        """
+        获取盘前休眠时间
+        
+        临近开市时缩短休眠时间，确保能快速响应开盘
+        
+        Returns:
+            int: 休眠时间（秒）
+        """
+        import datetime
+        
+        now = datetime.datetime.now()
+        t = now.time()
+        
+        # 周末直接返回长休眠
+        if now.weekday() >= 5:
+            return 60
+        
+        # 9:20-9:25 临近上午开市（9:25开始获取行情）
+        if datetime.time(9, 20) <= t < datetime.time(9, 25):
+            return 5
+        
+        # 12:55-13:00 临近下午开市
+        if datetime.time(12, 55) <= t < datetime.time(13, 0):
+            return 5
+        
+        # 其他时间使用正常休眠时间
+        return 60

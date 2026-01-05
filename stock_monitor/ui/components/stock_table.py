@@ -109,10 +109,18 @@ class StockTable(QtWidgets.QTableView):
                 border: none;
                 padding: 0px;
                 background: transparent;
+                outline: none;
+            }}
+            QTableView::item:focus {{
+                border: none;
+                outline: none;
+                background: transparent;
             }}
             QTableView::item:selected {{
                 background: transparent;
                 color: #fff;
+                border: none;
+                outline: none;
             }}
             QHeaderView::section {{
                 background: transparent;

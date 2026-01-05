@@ -17,7 +17,7 @@ QtWidgets.QApplication.setHighDpiScaleFactorRoundingPolicy(
 )
 
 from stock_monitor.core.container import container
-from stock_monitor.core.startup import apply_pending_updates, setup_auto_start
+from stock_monitor.core.startup import apply_pending_updates, check_update_status, setup_auto_start
 from stock_monitor.ui.components.system_tray import SystemTray
 from stock_monitor.ui.main_window import MainWindow
 from stock_monitor.ui.utils import setup_qt_message_handler
@@ -25,6 +25,46 @@ from stock_monitor.utils.logger import app_logger
 
 # 安装自定义Qt消息处理器
 setup_qt_message_handler()
+
+
+def _show_update_status_notification(window):
+    """检查更新状态并显示相应提示"""
+    try:
+        from stock_monitor.version import __version__
+        
+        status, info = check_update_status()
+        
+        if status == "success":
+            # 使用 QTimer 延迟显示，避免阻塞启动
+            from PyQt6.QtCore import QTimer
+            from PyQt6.QtWidgets import QMessageBox
+            
+            def show_success():
+                QMessageBox.information(
+                    window,
+                    "更新完成",
+                    f"🎉 Stock Monitor 已成功更新至 v{__version__}",
+                    QMessageBox.StandardButton.Ok
+                )
+            
+            QTimer.singleShot(500, show_success)
+            
+        elif status == "failed":
+            from PyQt6.QtCore import QTimer
+            from PyQt6.QtWidgets import QMessageBox
+            
+            def show_failure():
+                QMessageBox.warning(
+                    window,
+                    "更新失败",
+                    f"⚠️ 上次更新未能成功完成\n\n详细信息:\n{info}",
+                    QMessageBox.StandardButton.Ok
+                )
+            
+            QTimer.singleShot(500, show_failure)
+            
+    except Exception as e:
+        app_logger.error(f"显示更新状态通知失败: {e}")
 
 
 def main():
@@ -86,16 +126,14 @@ def main():
         # 保存托盘图标引用到主窗口
         window.tray_icon = tray_icon
 
-        # 设置开机自启动
-        setup_auto_start()
+        # 检查更新状态并显示提示
+        _show_update_status_notification(window)
 
-        # 启动预加载调度器
-        try:
-            pass
+        # 设置开机自启动（延迟执行，避免阻塞启动）
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(2000, setup_auto_start)
 
-            # start_preload_scheduler()
-        except Exception as e:
-            app_logger.error(f"启动预加载调度器失败: {e}")
+        # 预加载调度器（已移除，不再使用）
 
         # 运行应用
         sys.exit(app.exec())

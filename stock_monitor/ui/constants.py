@@ -59,11 +59,14 @@ class UIConstants:
         TEXT_PRIMARY = "white"  # 主文本
         TEXT_DISABLED = "#888888"  # 禁用文本
 
-        # 状态色 - 涨跌
-        STOCK_UP = "#e74c3f"  # 上涨(红色)
-        STOCK_UP_BRIGHT = "#FF4500"  # 大涨(亮红色,涨幅>=5%)
-        STOCK_DOWN = "#27ae60"  # 下跌(绿色)
-        STOCK_NEUTRAL = "#e6eaf3"  # 平盘(灰色)
+        # 状态色 - 涨跌渐变
+        STOCK_UP_LIMIT = "#FF0000"     # 涨停-最亮红
+        STOCK_UP_BRIGHT = "#FF4500"    # 大涨-亮红(涨幅>=5%)
+        STOCK_UP = "#e74c3f"           # 上涨-标准红
+        STOCK_NEUTRAL = "#e6eaf3"      # 平盘-灰白
+        STOCK_DOWN = "#27ae60"         # 下跌-标准绿
+        STOCK_DOWN_DEEP = "#1e8449"    # 大跌-深绿(跌幅<=-5%)
+        STOCK_DOWN_LIMIT = "#145a32"   # 跌停-最深绿
 
         # 状态色 - 背景
         BG_UP = "#ffecec"  # 上涨背景

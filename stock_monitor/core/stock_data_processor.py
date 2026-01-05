@@ -106,15 +106,21 @@ class StockDataProcessor:
             # 计算涨跌幅
             percent = ((f_now - f_close) / f_close * 100) if f_close != 0 else 0
 
-            # 颜色逻辑
-            if percent >= 5:
-                color = "#FF4500"  # 亮红
+            # 颜色逻辑 - 渐变色方案
+            if percent >= 10:
+                color = "#FF0000"  # 涨停-最亮红
+            elif percent >= 5:
+                color = "#FF4500"  # 大涨-亮红
             elif percent > 0:
-                color = "#e74c3f"  # 红
-            elif percent < 0:
-                color = "#27ae60"  # 绿
+                color = "#e74c3f"  # 上涨-标准红
+            elif percent == 0:
+                color = "#e6eaf3"  # 平盘-灰白
+            elif percent > -5:
+                color = "#27ae60"  # 下跌-标准绿
+            elif percent > -10:
+                color = "#1e8449"  # 大跌-深绿
             else:
-                color = "#e6eaf3"  # 平
+                color = "#145a32"  # 跌停-最深绿
 
             return (f"{f_now:.2f}", f"{percent:+.2f}%", color, f_now, f_close)
 

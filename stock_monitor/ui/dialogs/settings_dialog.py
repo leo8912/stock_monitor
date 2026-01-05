@@ -864,7 +864,7 @@ class NewSettingsDialog(QDialog):
             
             # Refresh interval logic
             ri = settings.get("refresh_interval", 5)
-            map_val_to_text = {2: "2秒", 5: "5秒", 10: "10秒", 30: "30秒"}
+            map_val_to_text = {1: "1秒", 2: "2秒", 5: "5秒", 10: "10秒", 30: "30秒"}
             text = map_val_to_text.get(ri, "5秒")
             index = self.refresh_combo.findText(text)
             if index >= 0:
@@ -895,7 +895,7 @@ class NewSettingsDialog(QDialog):
             stocks = self.get_stocks_from_list(self.watch_list) 
             
             # Map refresh text to int
-            map_text_to_val = {"2秒": 2, "5秒": 5, "10秒": 10, "30秒": 30}
+            map_text_to_val = {"1秒": 1, "2秒": 2, "5秒": 5, "10秒": 10, "30秒": 30}
             ri_text = self.refresh_combo.currentText()
             ri = map_text_to_val.get(ri_text, 5)
             

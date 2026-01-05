@@ -286,115 +286,84 @@ class AppUpdater:
             if source_dir == temp_dir:
                 app_logger.info("注意: 未在子目录找到exe，将使用解压根目录作为源")
 
-            app_logger.info("正在生成更新脚本 update.bat...")
+            app_logger.info("正在生成静默更新脚本...")
 
-            # 3. 生成 BAT 脚本
+            # 3. 生成 BAT 脚本 (静默模式)
             bat_path = app_dir / "update.bat"
             main_exe_name = "stock_monitor.exe"
             current_pid = os.getpid()
+            config_dir = app_dir / ".stock_monitor"
+            
+            # 确保配置目录存在
+            config_dir.mkdir(exist_ok=True)
 
-            # BAT 脚本内容 (使用 GBK 兼容中文 CMD)
+            # BAT 脚本内容 (静默模式 - 无输出，只写日志文件)
             bat_content = f"""@echo off
-title Stock Monitor Updater
-color 0A
-mode con cols=80 lines=30
-cls
-
-
-:: No UAC check needed for user directory updates
 cd /d "%~dp0"
 
-echo.
-echo                   STOCK MONITOR UPDATE SYSTEM
-echo.
-echo ======================================================================
-echo.
-echo    [INFO] 正在更新 Stock Monitor 至最新版本...
-echo    [INFO] Updating Stock Monitor to latest version...
-echo.
-echo    --------------------------------------------------------
-echo    [DEBUG] Source: "{source_dir.absolute()}"
-echo    [DEBUG] Target: "{app_dir.absolute()}"
-echo    --------------------------------------------------------
-echo.
-echo    [STEP 1/3] 等待主程序退出 / Waiting for exit...
+:: 等待主程序退出
 :loop
-tasklist | find "{current_pid}" >nul
+tasklist | find "{current_pid}" >nul 2>&1
 if %errorlevel%==0 (
-    timeout /t 1 /nobreak >nul
+    timeout /t 1 /nobreak >nul 2>&1
     goto loop
 )
-echo    [OK] 主程序已退出
 
-echo    --------------------------------------------------------
-echo    [STEP 2/3] 正在替换文件 / Replacing files...
-echo.
-xcopy /Y /E /H /R "{source_dir.absolute()}\\*" "{app_dir.absolute()}"
+:: 替换文件
+xcopy /Y /E /H /R "{source_dir.absolute()}\\*" "{app_dir.absolute()}" >nul 2>&1
 if %errorlevel% NEQ 0 goto error
-echo    [OK] 文件替换成功
-goto cleanup
+
+:: 清理临时文件
+rmdir /S /Q "{temp_dir.absolute()}" >nul 2>&1
+
+:: 写入更新成功标记
+echo %date% %time% > "{config_dir.absolute()}\\update_complete.txt"
+
+:: 启动程序
+start "" "{app_dir.absolute()}\\{main_exe_name}"
+del "%~f0" >nul 2>&1
+exit /b 0
 
 :error
-color 0C
-echo.
-echo    ========================================================
-echo    [ERROR] 文件替换失败! (File Replacement Failed)
-echo    Error Level: %errorlevel%
-echo    请尝试手动解压更新包 / Please unzip manually.
-echo    Temp Path: "{temp_dir.absolute()}"
-echo    ========================================================
-echo.
-pause
+:: 写入更新失败标记
+echo UPDATE_FAILED %date% %time% > "{config_dir.absolute()}\\update_failed.txt"
+echo Error: xcopy failed with errorlevel %errorlevel% >> "{config_dir.absolute()}\\update_failed.txt"
+echo Source: {source_dir.absolute()} >> "{config_dir.absolute()}\\update_failed.txt"
+echo Target: {app_dir.absolute()} >> "{config_dir.absolute()}\\update_failed.txt"
+del "%~f0" >nul 2>&1
 exit /b 1
-
-:cleanup
-
-echo.
-echo    --------------------------------------------------------
-echo    [STEP 3/3] 清理临时文件 / Cleaning up...
-echo    Target: "{temp_dir.absolute()}"
-rmdir /S /Q "{temp_dir.absolute()}"
-if exist "{temp_dir.absolute()}" (
-    echo    [WARNING] 临时目录清理失败 (Cleanup Failed)
-    echo    请稍后手动删除: "{temp_dir.absolute()}"
-) else (
-    echo    [OK] 临时文件已清理 (Cleanup Done)
-)
-
-echo.
-echo    ======================================================================
-echo    [SUCCESS] 更新完成，正在启动软件...
-echo    Restarting application...
-echo    ======================================================================
-timeout /t 2 /nobreak >nul
-start "" "{app_dir.absolute()}\\{main_exe_name}"
-del "%0"
 """
             # 写入 BAT 文件
             try:
-                # 使用 GBK 写入，确保在中文 Windows 环境下 CMD 能正确执行
                 with open(bat_path, "w", encoding="gbk") as f:
                     f.write(bat_content)
             except Exception as e:
                 app_logger.error(f"写入BAT失败: {e}")
                 return False
 
-            app_logger.info("启动 update.bat，主程序即将退出")
-
-            # 4. 运行脚本并退出
+            # 4. 生成 VBS 脚本用于隐藏运行 BAT
+            vbs_path = app_dir / "update_silent.vbs"
+            vbs_content = f'CreateObject("Wscript.Shell").Run """{bat_path}""", 0, False'
             try:
-                # 使用 os.startfile 直接打开 BAT 文件，这在 Windows 上最可靠
-                # 等同于用户双击文件
-                os.startfile(str(bat_path))
+                with open(vbs_path, "w", encoding="gbk") as f:
+                    f.write(vbs_content)
             except Exception as e:
-                app_logger.error(f"os.startfile调用失败: {e}, 尝试回退到subprocess...")
-                # 回退方案
-                subprocess.Popen(
-                    f'"{str(bat_path)}"',
-                    shell=True,
-                    creationflags=subprocess.CREATE_NEW_CONSOLE,
-                    cwd=str(app_dir),
-                )
+                app_logger.error(f"写入VBS失败: {e}")
+                return False
+
+            app_logger.info("启动静默更新脚本，主程序即将退出")
+
+            # 5. 使用 VBS 静默运行 BAT
+            try:
+                os.startfile(str(vbs_path))
+            except Exception as e:
+                app_logger.error(f"VBS启动失败: {e}, 尝试回退到可见模式...")
+                # 回退到可见模式
+                try:
+                    os.startfile(str(bat_path))
+                except Exception as e2:
+                    app_logger.error(f"BAT启动也失败: {e2}")
+                    return False
 
             # 强制退出
             import time
