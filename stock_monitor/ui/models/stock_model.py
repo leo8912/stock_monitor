@@ -134,19 +134,31 @@ class StockTableModel(QtCore.QAbstractTableModel):
         return None
 
     def update_data(self, new_data: list[tuple]):
-        """更新数据"""
+        """更新数据 - 优化为增量更新"""
         # 检查是否需要显示封单列
-        has_seal = any(item[5] for item in new_data)  # item[5] is seal_type
+        has_seal = any(item[5] for item in new_data) if new_data else False
 
         # 布局变更检测
         layout_changed = has_seal != self._show_seal_column
+        row_count_changed = len(new_data) != len(self._data)
 
-        self.beginResetModel()
-        self._data = new_data
-        self._show_seal_column = has_seal
-        self.endResetModel()
-
-        return layout_changed
+        # 如果行数和布局都没变，使用增量更新（更快）
+        if not layout_changed and not row_count_changed and self._data:
+            self._data = new_data
+            self._show_seal_column = has_seal
+            # 仅发送 dataChanged 信号，避免全量刷新
+            self.dataChanged.emit(
+                self.index(0, 0),
+                self.index(len(self._data) - 1, self.columnCount() - 1)
+            )
+            return False
+        else:
+            # 行数或布局变化时才全量重置
+            self.beginResetModel()
+            self._data = new_data
+            self._show_seal_column = has_seal
+            self.endResetModel()
+            return layout_changed or row_count_changed
 
     def set_font_size(self, size: int):
         self._font_size = size

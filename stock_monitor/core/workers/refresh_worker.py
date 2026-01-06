@@ -82,12 +82,15 @@ class RefreshWorker(QtCore.QThread):
 
     def run(self):
         """线程执行入口"""
-        # 减少启动延迟，给系统网络连接一些初始化时间
-        app_logger.info("后台刷新线程启动，等待1秒初始化网络连接...")
-        self.msleep(1000)
+        # 快速预热，首次数据获取时自然完成初始化
+        app_logger.info("后台刷新线程启动...")
+        self.msleep(200)
 
         if not self._is_running:
             return
+
+        # 首次启动标记：无论是否开市，都先获取一次数据
+        first_fetch_done = False
 
         while self._is_running:
             try:
@@ -103,11 +106,11 @@ class RefreshWorker(QtCore.QThread):
                     self._smart_sleep(5)
                     continue
 
-                # 检查市场状态
+                # 检查市场状态（首次启动跳过此检查，确保至少获取一次数据）
                 market_open = is_market_open()
                 
-                # 如果市场关闭，根据距离开市时间决定休眠时长
-                if not market_open:
+                # 如果市场关闭且不是首次启动，则休眠等待
+                if not market_open and first_fetch_done:
                     sleep_duration = self._get_pre_market_sleep_time()
                     if sleep_duration < 60:
                         app_logger.debug(f"临近开市，缩短休眠至{sleep_duration}秒")
@@ -144,6 +147,11 @@ class RefreshWorker(QtCore.QThread):
                     self._last_successful_update = time.time()
 
                 self._consecutive_failures = 0
+                
+                # 标记首次获取已完成
+                if not first_fetch_done:
+                    first_fetch_done = True
+                    app_logger.info("首次行情获取完成，后续将根据市场状态决定是否刷新")
 
                 # 休眠
                 sleep_time = local_refresh_interval

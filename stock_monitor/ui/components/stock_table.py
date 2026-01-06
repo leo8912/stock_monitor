@@ -194,17 +194,11 @@ class StockTable(QtWidgets.QTableView):
             # 委托给模型更新
             layout_changed = self._model.update_data(stocks)
 
-            # 如果列结构发生变化（如显示/隐藏封单列），重新调整列宽
+            # 仅在布局变化时调整列宽（如显示/隐藏封单列，或行数变化）
             if layout_changed:
                 self._resize_columns()
-            else:
-                # 即使结构没变，内容变了也可能需要微调列宽，但为了性能可以不每次都调
-                # 为了防止数字跳动导致宽度变化过大，可以适当限制
-                # 这里保持原逻辑：每次数据更新都调整列宽，确保内容完整显示
-                self._resize_columns()
-
-            # 通知父窗口调整大小 (因为行数可能变化)
-            self._notify_parent_window_height_adjustment()
+                # 布局变化时通知父窗口调整大小
+                self._notify_parent_window_height_adjustment()
 
         except Exception as e:
             app_logger.error(f"更新表格数据时发生错误: {e}")

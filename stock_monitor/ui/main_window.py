@@ -533,10 +533,6 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
             self.table.hide()
             QtWidgets.QApplication.processEvents()
 
-            self.loading_label.show()
-            self.table.hide()
-            QtWidgets.QApplication.processEvents()
-
             stocks = self.viewModel.get_stock_list_data(stocks_list)
 
             # 使用 update_data 更新数据，不需要手动清理
@@ -551,11 +547,7 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
             error_stocks = [
                 ("数据加载异常", "--", "--", COLORS.STOCK_NEUTRAL, "", "")
             ] * max(3, len(stocks_list) if stocks_list else 3)
-            self.table.setRowCount(0)
-            self.table.clearContents()
-            self.table.update_data(error_stocks)  # type: ignore
-            self.table.viewport().update()
-            self.table.repaint()
+            self.table.update_data(error_stocks)
             self.adjust_window_height()
 
             self.loading_label.hide()
