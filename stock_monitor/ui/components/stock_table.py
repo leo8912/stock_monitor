@@ -78,6 +78,9 @@ class StockTable(QtWidgets.QTableView):
         # 设置模型字体大小
         self._model.set_font_size(self.font_size)
         self._set_table_style(self.font_family, self.font_size)
+        
+        # 首次显示标记，用于确保窗口显示后重新计算列宽
+        self._first_show_done = False
 
     def _set_table_style(self, font_family: str, font_size: int) -> None:
         """
@@ -206,6 +209,27 @@ class StockTable(QtWidgets.QTableView):
     def wheelEvent(self, event):
         """禁用滚轮"""
         pass
+
+    def showEvent(self, event):
+        """窗口显示事件 - 确保首次显示后列宽正确"""
+        super().showEvent(event)
+        # 首次显示时，延迟重新计算列宽
+        # 这解决了开机启动时 Qt 事件循环未完全就绪导致列宽计算错误的问题
+        if not self._first_show_done:
+            self._first_show_done = True
+            # 使用 QTimer 延迟执行，确保窗口完全渲染后再计算列宽
+            QtCore.QTimer.singleShot(100, self._delayed_resize_columns)
+
+    def _delayed_resize_columns(self):
+        """延迟重新计算列宽"""
+        try:
+            # 强制处理事件队列，确保布局完成
+            QtWidgets.QApplication.processEvents()
+            self._resize_columns()
+            self._notify_parent_window_height_adjustment()
+            app_logger.debug("首次显示后列宽已重新计算")
+        except Exception as e:
+            app_logger.warning(f"延迟计算列宽失败: {e}")
 
     def set_font_size(self, font_family: str, size: int):
         """提供给设置对话框调用的接口"""
