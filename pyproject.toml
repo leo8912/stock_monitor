@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stock_monitor"
-version = "2.9.2"
+version = "2.9.3"
 description = "A real-time stock monitoring application for A-shares"
 authors = [
     {name = "Stock Monitor Team"}
@@ -62,3 +62,12 @@ ignore = ["E501", "C901", "E402", "B007"]
 [tool.isort]
 profile = "black"
 multi_line_output = 3
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning",
+]

@@ -1,5 +1,19 @@
 # 更新日志
 
+## [v2.9.3] - 2026-01-15
+
+### 🔄 架构重构 (Architecture Refactoring)
+- **应用程序类抽象**: 新增 `StockMonitorApp` 类，封装应用生命周期管理逻辑。
+  - `main.py` 从约 150 行精简至约 25 行，职责更加清晰。
+  - 异常钩子、SSL 证书修复、更新状态通知等逻辑统一管理。
+
+### 🧪 测试体系 (Testing)
+- **pytest 配置优化**: 在 `pyproject.toml` 中添加 pytest 配置，解决 Windows 下的编码问题。
+- **创建 conftest.py**: 设置 UTF-8 编码环境，确保测试在中文 Windows 环境下稳定运行。
+
+### 🧹 项目清理 (Cleanup)
+- **移除本地构建脚本**: 删除 `scripts/build.py` 和 `scripts/smoke_runner.py`，保留 CI 构建方案。
+
 ## [v2.9.2] - 2026-01-15
 
 ### ⚡ 优化 (Optimization)
