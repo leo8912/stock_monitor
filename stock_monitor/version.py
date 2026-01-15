@@ -1,7 +1,8 @@
 import os
+import sys
 
 # Default version if all else fails
-__version__ = "2.9.1"
+__version__ = "2.9.2"
 
 try:
     # 1. Try to get version from installed package metadata (Python 3.8+)
@@ -11,7 +12,8 @@ try:
         __version__ = metadata.version("stock_monitor")
     except metadata.PackageNotFoundError:
         # Package is not installed
-        raise ImportError
+        raise ImportError from None
+
 except (ImportError, AttributeError):
     # 2. Fallback: Parse pyproject.toml if running from source
     try:
@@ -43,7 +45,11 @@ except (ImportError, AttributeError):
         pass
 
     # 3. Special handling for PyInstaller frozen environment
-    if __version__ == "0.0.0-dev" and getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+    if (
+        __version__ == "0.0.0-dev"
+        and getattr(sys, "frozen", False)
+        and hasattr(sys, "_MEIPASS")
+    ):
         try:
             base_path = sys._MEIPASS
             toml_path = os.path.join(base_path, "pyproject.toml")

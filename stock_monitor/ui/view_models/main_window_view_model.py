@@ -1,18 +1,21 @@
 from PyQt6.QtCore import QObject, pyqtSignal
+
+from stock_monitor.config.manager import ConfigManager
 from stock_monitor.core.container import container
+from stock_monitor.core.stock_manager import StockManager
+from stock_monitor.core.workers import MarketStatsWorker, RefreshWorker
 from stock_monitor.data.stock.stock_db import StockDatabase
 from stock_monitor.data.stock.stocks import load_stock_data
 from stock_monitor.utils.logger import app_logger
-from stock_monitor.config.manager import ConfigManager
 from stock_monitor.utils.stock_utils import StockCodeProcessor
-from stock_monitor.core.stock_manager import StockManager
-from stock_monitor.core.workers import RefreshWorker, MarketStatsWorker
+
 
 class MainWindowViewModel(QObject):
     """
     ViewModel for MainWindow
     Handles business logic and data state
     """
+
     # Signals
     stock_data_loaded = pyqtSignal(list)
     stock_data_updated = pyqtSignal(list, bool)
@@ -27,16 +30,16 @@ class MainWindowViewModel(QObject):
         self._stock_db = self._container.get(StockDatabase)
         self._config_manager = self._container.get(ConfigManager)
         self._stock_manager = self._container.get(StockManager)
-        
+
         # Initialize Workers
         self._refresh_worker = RefreshWorker()
         self._market_stats_worker = MarketStatsWorker()
-        
+
         # Connect Worker Signals
         self._refresh_worker.data_updated.connect(self.stock_data_updated.emit)
         self._refresh_worker.refresh_error.connect(self.refresh_error_occurred.emit)
         self._market_stats_worker.stats_updated.connect(self.market_stats_updated.emit)
-        
+
         self._stocks = []
 
     def load_stock_data(self):
@@ -51,11 +54,11 @@ class MainWindowViewModel(QObject):
             app_logger.error(msg)
             self.error_occurred.emit(msg)
             return []
-            
+
     def get_stock_count(self) -> int:
         """Get total number of stocks"""
         return self._stock_db.get_all_stocks_count()
-        
+
     def is_database_empty(self) -> bool:
         """Check if database is empty"""
         return self._stock_db.get_all_stocks_count() == 0
@@ -112,9 +115,34 @@ class MainWindowViewModel(QObject):
         if self._market_stats_worker.isRunning():
             self._market_stats_worker.stop_worker()
 
-    def update_workers_config(self, user_stocks: list[str] = None, refresh_interval: int = None):
+    def update_workers_config(
+        self, user_stocks: list[str] = None, refresh_interval: int = None
+    ):
         """Update worker configuration on the fly"""
         if user_stocks is not None:
             self._refresh_worker.update_stocks(user_stocks)
         if refresh_interval is not None:
             self._refresh_worker.update_interval(refresh_interval)
+
+    def load_session(self) -> dict:
+        """Load session cache"""
+        try:
+            from stock_monitor.utils.session_cache import load_session_cache
+
+            return load_session_cache()
+        except Exception as e:
+            app_logger.warning(f"Failed to load session cache: {e}")
+            return {}
+
+    def save_session(self, position: list[int], stock_data: list):
+        """Save session cache"""
+        try:
+            from stock_monitor.utils.session_cache import save_session_cache
+
+            session_data = {
+                "window_position": position,
+                "stock_data": stock_data,
+            }
+            save_session_cache(session_data)
+        except Exception as e:
+            app_logger.warning(f"Failed to save session cache: {e}")

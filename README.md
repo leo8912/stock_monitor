@@ -2,7 +2,7 @@
 
 本软件是一个用于实时监控A股行情的桌面应用程序，采用Python和PyQt6开发，具有简洁美观的界面和丰富的功能。
 
-![alt text](image.png)
+![alt text](docs/assets/image.png)
 
 ## 项目概述
 

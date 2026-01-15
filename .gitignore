@@ -65,3 +65,8 @@ docs/clean_code_review.md
 项目分析报告.md
 代码审查报告.md
 stock_monitor/cache/last_session.json
+
+# Agent artifacts
+.agent/
+stock_monitor/cache/last_session.json
+stock_monitor/cache/last_session.json

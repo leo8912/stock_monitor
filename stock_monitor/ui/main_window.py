@@ -9,23 +9,24 @@ from PyQt6.QtCore import (
 
 from stock_monitor.config.manager import ConfigManager
 from stock_monitor.core.container import container
+
 # Workers are now managed by ViewModel
 from stock_monitor.ui.components.stock_table import StockTable
 from stock_monitor.ui.constants import COLORS
 from stock_monitor.ui.dialogs.settings_dialog import NewSettingsDialog
+from stock_monitor.ui.mixins.draggable_window import DraggableWindowMixin
 from stock_monitor.ui.styles import (
     get_loading_label_style,
     get_main_window_style,
     get_table_style,
 )
+from stock_monitor.ui.view_models.main_window_view_model import MainWindowViewModel
 from stock_monitor.ui.widgets.context_menu import AppContextMenu
 from stock_monitor.ui.widgets.market_status import MarketStatusBar
 from stock_monitor.utils.helpers import resource_path
 from stock_monitor.utils.log_cleaner import schedule_log_cleanup
 from stock_monitor.utils.logger import app_logger
 from stock_monitor.utils.stock_utils import StockCodeProcessor
-from stock_monitor.ui.mixins.draggable_window import DraggableWindowMixin
-from stock_monitor.ui.view_models.main_window_view_model import MainWindowViewModel
 
 # 定义常量
 ICON_FILE = resource_path("icon.ico")
@@ -52,7 +53,7 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
         self._container = container
         # 初始化ViewModel
         self.viewModel = MainWindowViewModel()
-        
+
         self.setup_ui()
         # 尝试加载会话缓存
         if not self._try_load_session_cache():
@@ -60,10 +61,12 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
             pass
 
         # 连接 ViewModel 信号
-        self.viewModel.market_stats_updated.connect(self.market_status_bar.update_status)
+        self.viewModel.market_stats_updated.connect(
+            self.market_status_bar.update_status
+        )
         self.viewModel.stock_data_updated.connect(self._handle_refresh_data)
         self.viewModel.refresh_error_occurred.connect(self._handle_refresh_error)
-        
+
         # 启动 Workers (在 UI 设置完成后)
         # 这里的 start_workers 会在 setup_refresh_worker 中被调用，或者我们可以在这里调用
         # 但考虑到 setup_refresh_worker 可能会用到 config，我们稍后在 setup_refresh_worker 中统一启动
@@ -73,13 +76,9 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
         try:
             # 1. 保存会话缓存 (包含位置和数据)
             try:
-                from stock_monitor.utils.session_cache import save_session_cache
-
-                session_data = {
-                    "window_position": [self.x(), self.y()],
-                    "stock_data": self._get_current_stock_data(),
-                }
-                save_session_cache(session_data)
+                self.viewModel.save_session(
+                    [self.x(), self.y()], self._get_current_stock_data()
+                )
             except Exception as e:
                 app_logger.warning(f"保存会话缓存失败: {e}")
                 # Fallback to simple position save if cache fails
@@ -119,7 +118,7 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
         self.setWindowTitle("A股行情监控")
         self.setup_draggable_window()
         self.resize(320, 160)
-        
+
         # Ensure we always have an arrow cursor initially
         self.setCursor(QtCore.Qt.CursorShape.ArrowCursor)
 
@@ -151,7 +150,10 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
         self.setLayout(layout)
 
         # 设置样式
-        self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Preferred)  # type: ignore
+        self.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred,
+            QtWidgets.QSizePolicy.Policy.Preferred,
+        )  # type: ignore
 
         # 从配置中读取字体大小和字体族
         config_manager = self._container.get(ConfigManager)
@@ -199,12 +201,12 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
         config_manager = get_config_manager()
         self.refresh_interval = config_manager.get("refresh_interval", 5)
         self.current_user_stocks = self.viewModel.load_user_stocks()
-        
+
         # Workers 初始化移动到了 ViewModel，这里不需要初始化 RefreshWorker
         # 信号连接也在 __init__ 中完成了
         # self.viewModel.stock_data_updated.connect(self._handle_refresh_data)
         # self.viewModel.refresh_error_occurred.connect(self._handle_refresh_error)
-        
+
         # 连接本地信号
         self.update_table_signal.connect(self.table.update_data)
 
@@ -254,7 +256,7 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
         """设置刷新工作线程"""
         # 启动后台刷新线程 (通过 ViewModel)
         self.viewModel.start_workers(self.current_user_stocks, self.refresh_interval)
-        
+
         # 启动后立即刷新一次数据，确保界面显示
         self.refresh_now()
 
@@ -297,12 +299,10 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
                     self.activateWindow()
                 self._first_show_done = True
 
-            # 如果窗口可见，确保子组件也可见，并静默刷新置顶状态
+            # 如果窗口可见，确保子组件也可见
             if self.isVisible():
                 self.market_status_bar.show()
                 self.table.show()
-                # 静默刷新置顶状态（用户无感知）
-                self.raise_()
 
             # 隐藏加载状态
             self.loading_label.hide()
@@ -312,13 +312,7 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
 
             # 保存会话缓存
             try:
-                from stock_monitor.utils.session_cache import save_session_cache
-
-                session_data = {
-                    "window_position": [self.pos().x(), self.pos().y()],
-                    "stock_data": data,
-                }
-                save_session_cache(session_data)
+                self.viewModel.save_session([self.pos().x(), self.pos().y()], data)
             except Exception as e:
                 app_logger.warning(f"保存会话缓存失败: {e}")
         except Exception as e:
@@ -327,9 +321,7 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
     def _try_load_session_cache(self):
         """尝试加载会话缓存以加快启动速度"""
         try:
-            from stock_monitor.utils.session_cache import load_session_cache
-
-            cached_session = load_session_cache()
+            cached_session = self.viewModel.load_session()
             if cached_session:
                 # 恢复窗口位置
                 pos = cached_session.get("window_position")
@@ -382,8 +374,6 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
         except Exception as e:
             app_logger.error(f"强制显示窗口时出错: {e}")
 
-
-
     def save_position(self):
         """保存窗口位置到配置文件"""
         pos = self.pos()
@@ -398,8 +388,6 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
             self.move(pos[0], pos[1])
         else:
             self.move_to_bottom_right()
-
-
 
     def open_settings(self):
         """打开设置对话框"""
@@ -605,8 +593,6 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
             update_thread.start()
         except Exception as e:
             app_logger.error(f"异步更新数据库时出错: {e}")
-
-
 
     def load_user_stocks(self):
         """加载用户自选股列表"""
