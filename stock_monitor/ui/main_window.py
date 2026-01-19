@@ -310,11 +310,13 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
             # 调整窗口大小
             self.adjust_window_height()
 
-            # 保存会话缓存
-            try:
-                self.viewModel.save_session([self.pos().x(), self.pos().y()], data)
-            except Exception as e:
-                app_logger.warning(f"保存会话缓存失败: {e}")
+            # 保存会话缓存（仅当数据有效时）
+            # 如果所有股票都获取失败，不保存缓存，避免下次启动加载到无效数据
+            if not all_failed:
+                try:
+                    self.viewModel.save_session([self.pos().x(), self.pos().y()], data)
+                except Exception as e:
+                    app_logger.warning(f"保存会话缓存失败: {e}")
         except Exception as e:
             app_logger.error(f"刷新更新处理失败: {e}")
 
