@@ -243,7 +243,6 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
             self.show()
             self.load_position()
             self.raise_()
-            self.activateWindow()
 
         app_logger.info("主窗口初始化完成")
         app_logger.debug("主窗口UI组件初始化完成")
@@ -274,7 +273,6 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
                 self.show()
                 self.load_position()
                 self.raise_()
-                self.activateWindow()
         except Exception as e:
             app_logger.error(f"处理刷新错误时出错: {e}")
 
@@ -296,7 +294,6 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
                     self.show()
                     self.load_position()
                     self.raise_()
-                    self.activateWindow()
                 self._first_show_done = True
 
             # 如果窗口可见，确保子组件也可见
@@ -371,7 +368,6 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
                 self.show()
                 self.load_position()
                 self.raise_()
-                self.activateWindow()
                 app_logger.info("窗口已强制显示")
         except Exception as e:
             app_logger.error(f"强制显示窗口时出错: {e}")

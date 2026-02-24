@@ -44,6 +44,9 @@ class SystemTray(QtWidgets.QSystemTrayIcon):
         self.main_window.show()
         self.main_window.raise_()
         self.main_window.activateWindow()
+        # 确保置顶生效
+        if hasattr(self.main_window, "_ensure_topmost"):
+            self.main_window._ensure_topmost()
 
     def open_settings(self):
         """打开设置窗口"""
@@ -68,5 +71,8 @@ class SystemTray(QtWidgets.QSystemTrayIcon):
                 self.main_window.show()
                 self.main_window.raise_()
                 self.main_window.activateWindow()
+                # 确保置顶生效
+                if hasattr(self.main_window, "_ensure_topmost"):
+                    self.main_window._ensure_topmost()
         elif reason == QtWidgets.QSystemTrayIcon.ActivationReason.Context:
             self.contextMenu().popup(QtGui.QCursor.pos())

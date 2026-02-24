@@ -2,7 +2,7 @@ import os
 import sys
 
 # Default version if all else fails
-__version__ = "2.9.4"
+__version__ = "2.9.5"
 
 try:
     # 1. Try to get version from installed package metadata (Python 3.8+)

@@ -1,5 +1,17 @@
 # 更新日志
 
+## [v2.9.5] - 2026-02-24
+
+### 🐛 修复 (Fixes)
+- **窗口置顶稳定性修复**: 彻底解决窗口频繁丢失置顶状态，需反复手动重新置顶的问题
+  - 移除 Qt `WindowType.Tool` 标志，消除应用失焦时窗口被降到后面的根源
+  - 移除多余的 `WindowMaximizeButtonHint`，简化窗口标志组合
+  - 减少自动场景中 `activateWindow()` 的调用（4处），避免频繁抢焦点导致 Windows 撤销置顶
+  - 新增 `showEvent` 保护：每次窗口显示时自动检查并恢复 `WindowStaysOnTopHint` 标志
+  - 新增 Windows API `SetWindowPos(HWND_TOPMOST)` 兜底机制，双重保障置顶状态
+  - 使用 Windows API `WS_EX_TOOLWINDOW` 隐藏任务栏按钮，替代 Qt Tool 标志，避免其副作用
+  - 系统托盘恢复窗口时同步触发置顶兜底，确保从托盘恢复后窗口始终在最前
+
 ## [v2.9.4] - 2026-01-19
 
 ### 🐛 修复 (Fixes)
