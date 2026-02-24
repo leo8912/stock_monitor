@@ -26,7 +26,6 @@ class MainWindowViewModel(QObject):
     def __init__(self):
         super().__init__()
         self._container = container
-        self._container = container
         self._stock_db = self._container.get(StockDatabase)
         self._config_manager = self._container.get(ConfigManager)
         self._stock_manager = self._container.get(StockManager)

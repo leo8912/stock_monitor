@@ -196,9 +196,7 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
 
         # 初始化数据
         self.settings_dialog = None
-        from stock_monitor.utils.helpers import get_config_manager
-
-        config_manager = get_config_manager()
+        config_manager = self._container.get(ConfigManager)
         self.refresh_interval = config_manager.get("refresh_interval", 5)
         self.current_user_stocks = self.viewModel.load_user_stocks()
 
@@ -459,7 +457,7 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
         # 更新后台刷新线程的配置 (通过 ViewModel)
         self.viewModel.update_workers_config(stocks, refresh_interval)
 
-        # 强制刷新显示
+        # 立即同步刷新显示（只触发一次，settings_dialog 中已不再重复调用）
         self.refresh_now(stocks)
 
         # 更新主窗口字体大小
@@ -519,9 +517,12 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
             self.table.hide()
             QtWidgets.QApplication.processEvents()
 
+            # 更新当前股票列表
+            self.current_user_stocks = stocks_list
+
             stocks = self.viewModel.get_stock_list_data(stocks_list)
 
-            # 使用 update_data 更新数据，不需要手动清理
+            # 使用 update_data 更新数据
             self.table.update_data(stocks)
 
             self.adjust_window_height()
@@ -535,7 +536,6 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
             ] * max(3, len(stocks_list) if stocks_list else 3)
             self.table.update_data(error_stocks)
             self.adjust_window_height()
-
             self.loading_label.hide()
             self.table.show()
 
@@ -613,12 +613,12 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
 
     def adjust_window_height(self):
         """根据内容调整窗口高度和宽度"""
+        if self.table.rowCount() == 0:
+            return  # 无数据时不调整，避免窗口高度异常
+
         QtWidgets.QApplication.processEvents()
         vh = self.table.verticalHeader()
-        if self.table.rowCount() > 0:
-            row_height = vh.sectionSize(0)
-        else:
-            row_height = 36
+        row_height = vh.sectionSize(0)
         layout_margin = 0
         table_height = self.table.rowCount() * row_height
         new_height = table_height + layout_margin + self.market_status_bar.height()

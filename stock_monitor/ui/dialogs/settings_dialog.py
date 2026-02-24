@@ -3,35 +3,30 @@
 """
 
 import os
-from typing import Any
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
-    QDialog,
-    QVBoxLayout,
-    QHBoxLayout,
-    QGridLayout,
-    QFormLayout,
-    QLabel,
-    QListWidget,
-    QListWidgetItem,
+    QAbstractItemView,
+    QApplication,
     QCheckBox,
     QComboBox,
-    QSpinBox,
-    QSlider,
-    QPushButton,
-    QLineEdit,
-    QApplication,
-    QColorDialog,
-    QMessageBox,
-    QAbstractItemView,
+    QDialog,
     QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QPushButton,
+    QSlider,
+    QSpinBox,
+    QVBoxLayout,
 )
 
+from stock_monitor.ui.view_models.settings_view_model import SettingsViewModel
 from stock_monitor.utils.helpers import resource_path
 from stock_monitor.version import __version__
-from stock_monitor.ui.view_models.settings_view_model import SettingsViewModel
 
 
 def _safe_bool_conversion(value, default=False):
@@ -193,7 +188,6 @@ class WatchListManager:
 # ConfigManagerHandler logic moved to ViewModel
 
 
-
 class NewSettingsDialog(QDialog):
     """设置对话框类"""
 
@@ -206,7 +200,7 @@ class NewSettingsDialog(QDialog):
         # 不传递父窗口给QDialog,避免继承主窗口的置顶属性
         super().__init__(None)
         self.main_window = main_window
-        
+
         # Initialize ViewModel
         self.viewModel = SettingsViewModel()
 
@@ -311,14 +305,10 @@ class NewSettingsDialog(QDialog):
         # ViewModel Signals
         self.viewModel.search_results_updated.connect(self._on_search_results_updated)
         self.viewModel.save_completed.connect(self.accept)
-        
+
         # 连接搜索相关信号
-        self.search_input.textChanged.connect(
-            self.viewModel.search_stocks
-        )
-        self.search_input.returnPressed.connect(
-            self._on_search_return_pressed
-        )
+        self.search_input.textChanged.connect(self.viewModel.search_stocks)
+        self.search_input.returnPressed.connect(self._on_search_return_pressed)
         self.search_results.itemDoubleClicked.connect(self.add_stock_from_search)
         self.search_results.itemSelectionChanged.connect(
             lambda: self.add_button.setEnabled(
@@ -815,10 +805,10 @@ class NewSettingsDialog(QDialog):
             return
 
         for item_data in results:
-            display_text = item_data['display']
+            display_text = item_data["display"]
             item = QListWidgetItem(display_text)
             # Store code in user role
-            item.setData(Qt.ItemDataRole.UserRole, item_data['code'])
+            item.setData(Qt.ItemDataRole.UserRole, item_data["code"])
             self.search_results.addItem(item)
 
         # Clear main selection
@@ -836,7 +826,7 @@ class NewSettingsDialog(QDialog):
         """Load config via ViewModel"""
         try:
             settings = self.viewModel.load_settings()
-            
+
             # User Stocks
             self.watch_list.clear()
             user_stocks = settings.get("user_stocks", [])
@@ -845,23 +835,16 @@ class NewSettingsDialog(QDialog):
                 # But we need display text.
                 display_text = self.viewModel.get_stock_display_info(stock_code)
                 item = QListWidgetItem(display_text)
-                
+
                 # Ensure we store clean code
-                # If display text is "Emoji Name (Code)", we need Code.
-                # get_stock_display_info logic reconstructs it.
-                # But here we assume stock_code IS the code.
-                cleaned_code = stock_code.strip()
-                if " " in stock_code: # Minimal cleaning check if config has dirty data
-                     cleaned_code = stock_code.split(" ")[0] # Fallback
-                
-                # Actually, viewModel load_user_stocks already cleans it in MainWindowViewModel. 
-                # Does ConfigManager store clean codes? Yes, mostly.
+                # viewModel load_user_stocks already cleans it in MainWindowViewModel.
+                # ConfigManager stores clean codes.
                 item.setData(Qt.ItemDataRole.UserRole, stock_code)
                 self.watch_list.addItem(item)
-                
+
             # Other settings
             self.auto_start_checkbox.setChecked(settings.get("auto_start", False))
-            
+
             # Refresh interval logic
             ri = settings.get("refresh_interval", 5)
             map_val_to_text = {1: "1秒", 2: "2秒", 5: "5秒", 10: "10秒", 30: "30秒"}
@@ -871,46 +854,48 @@ class NewSettingsDialog(QDialog):
                 self.refresh_combo.setCurrentIndex(index)
             else:
                 self.refresh_combo.setCurrentIndex(1)
-                
+
             # Font size
             fs = settings.get("font_size", 13)
             self.font_size_spinbox.setValue(int(fs))
-            
+
             # Font family
             ff = settings.get("font_family", "微软雅黑")
             index = self.font_family_combo.findText(ff)
             if index >= 0:
                 self.font_family_combo.setCurrentIndex(index)
-                
+
             # Transparency
             tp = settings.get("transparency", 80)
             self.transparency_slider.setValue(int(tp))
         except Exception as e:
             from stock_monitor.utils.logger import app_logger
+
             app_logger.error(f"Failed to load config from VM: {e}")
 
     def _save_config_via_vm(self):
         """Save config via VM"""
         try:
-            stocks = self.get_stocks_from_list(self.watch_list) 
-            
+            stocks = self.get_stocks_from_list(self.watch_list)
+
             # Map refresh text to int
             map_text_to_val = {"1秒": 1, "2秒": 2, "5秒": 5, "10秒": 10, "30秒": 30}
             ri_text = self.refresh_combo.currentText()
             ri = map_text_to_val.get(ri_text, 5)
-            
+
             settings = {
                 "user_stocks": stocks,
                 "auto_start": self.auto_start_checkbox.isChecked(),
                 "refresh_interval": ri,
                 "font_size": self.font_size_spinbox.value(),
                 "font_family": self.font_family_combo.currentText(),
-                "transparency": self.transparency_slider.value()
+                "transparency": self.transparency_slider.value(),
             }
-            
+
             self.viewModel.save_settings(settings)
         except Exception as e:
             from stock_monitor.utils.logger import app_logger
+
             app_logger.error(f"Failed to save config via VM: {e}")
 
     def get_stocks_from_list(self, watch_list):
@@ -947,8 +932,6 @@ class NewSettingsDialog(QDialog):
                     else:
                         stocks.append(text)
         return stocks
-
-
 
     def add_stock_from_search(self, item):
         """将股票添加到自选股列表"""
@@ -1107,8 +1090,6 @@ class NewSettingsDialog(QDialog):
         self.move_up_button.setEnabled(row > 0)
         self.move_down_button.setEnabled(row < self.watch_list.count() - 1)
 
-
-
     def _set_auto_start(self, enabled):
         """
         设置开机启动
@@ -1228,9 +1209,7 @@ class NewSettingsDialog(QDialog):
                 f"发送配置更改信号: 股票列表={stocks}, 刷新间隔={refresh_interval}"
             )
             self.config_changed.emit(stocks, refresh_interval)
-
-            # 立即刷新数据
-            self.main_window.refresh_now(stocks)
+            # 注意：刷新逻辑已在 on_config_changed 中处理，不再重复调用 refresh_now
 
         # 更新原始列表为当前列表
         self.original_watch_list = []
@@ -1384,8 +1363,6 @@ class NewSettingsDialog(QDialog):
             from stock_monitor.utils.logger import app_logger
 
             app_logger.error(f"恢复默认设置失败: {e}")
-
-
 
     def closeEvent(self, a0):  # type: ignore
         """处理窗口关闭事件"""

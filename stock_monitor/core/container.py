@@ -8,7 +8,6 @@ from typing import Any, Callable, Optional, Union
 
 from ..config.manager import ConfigManager
 from ..core.stock_manager import StockManager
-from ..core.stock_manager import StockManager
 from ..core.stock_service import StockDataService
 from ..data.stock.stock_db import StockDatabase
 from ..utils.logger import app_logger
@@ -29,7 +28,6 @@ class DIContainer:
         if self._initialized:
             return
         self._initialized = True
-        self._services: dict[Union[type, str], Any] = {}
         self._factories: dict[Union[type, str], Callable] = {}
         self._singletons: dict[Union[type, str], Any] = {}
         app_logger.debug("DI容器初始化完成")
@@ -152,7 +150,23 @@ class DIContainer:
                         try:
                             params[param_name] = self.get(param.annotation)
                         except KeyError:
-                            pass
+                            # 区分有默认值和无默认值的参数
+                            if param.default == inspect.Parameter.empty:
+                                app_logger.error(
+                                    f"无法解析必需依赖: {cls.__name__}.{param_name} "
+                                    f"(类型: {param.annotation})"
+                                )
+                                raise KeyError(
+                                    f"无法解析必需依赖: {cls.__name__}.{param_name}"
+                                ) from None
+                            else:
+                                app_logger.debug(
+                                    f"可选依赖未找到，使用默认值: {cls.__name__}.{param_name}"
+                                )
+                    elif param.default == inspect.Parameter.empty:
+                        app_logger.warning(
+                            f"无法解析依赖且无类型注解: {cls.__name__}.{param_name}"
+                        )
 
             instance = cls(**params)
             app_logger.debug(f"自动解析并创建: {cls.__name__}")
@@ -176,7 +190,6 @@ class DIContainer:
 
     def clear(self) -> None:
         """清空所有注册的服务(主要用于测试)"""
-        self._services.clear()
         self._factories.clear()
         self._singletons.clear()
         app_logger.debug("DI容器已清空")

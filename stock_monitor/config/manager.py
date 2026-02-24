@@ -212,18 +212,24 @@ def save_config(cfg: dict[str, Any]) -> bool:
         bool: 保存是否成功
     """
     manager = ConfigManager()
+    # 确保必要的键存在，避免外部传入不完整的配置
+    manager._ensure_required_keys_exist(cfg)
     manager._config = cfg
     return manager._save_config()
 
 
 def is_market_open():
     """检查A股是否开市（包含集合竞价结束时刻）
-    
+
+    .. deprecated::
+        此函数不属于配置管理模块，保留仅为兼容性。
+        新代码请使用 stock_monitor.core.market_manager.MarketManager.is_market_open()
+
     A股交易时间:
     - 9:15-9:25 集合竞价（9:25产生开盘价）
     - 9:30-11:30 上午连续竞价
     - 13:00-15:00 下午连续竞价
-    
+
     从9:25开始获取行情，可以第一时间获取开盘价
     """
     import datetime

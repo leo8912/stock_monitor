@@ -1,5 +1,28 @@
 # 更新日志
 
+## [v2.9.6] - 2026-02-24
+
+### 🐛 修复 (Fixes)
+- **循环导入启动崩溃修复**: 修复 `stock_data_processor.py` 引入 `ui.constants` 导致 `core` → `ui` 循环依赖的启动崩溃问题
+  - 改用模块内本地颜色常量字典 `_STOCK_COLORS`，打破跨包循环引用
+- **自选股排序卡顿修复**: 修复设置中更改排序后触发三重网络请求（settings_dialog + on_config_changed + refresh_now），导致界面卡顿和 "数据加载中" 长时间显示的问题
+  - 移除 `settings_dialog.accept()` 中重复的 `refresh_now()` 调用
+  - 精简为仅在 `on_config_changed` 中触发一次同步刷新
+
+### ⚡ 优化 (Optimization)
+- **DI 容器增强**: `resolve()` 方法对缺失的必需依赖抛出 `KeyError` 而非静默跳过，提升调试效率
+- **配置管理**: `save_config()` 增加保存前校验，防止写入不完整配置
+- **网络管理**: `NetworkManager` 新增 `close()` 方法和上下文管理器支持，防止资源泄漏
+- **LRU 缓存优化**: `StockManager` 缓存 key 从全量 JSON 序列化改为关键字段元组，降低序列化开销
+- **窗口高度保护**: `adjust_window_height()` 增加边界值保护，避免异常尺寸
+
+### 🧹 代码清理 (Cleanup)
+- 移除 `error_handler.py` 模块级 `sys.excepthook` 设置，避免与应用异常钩子冲突
+- 移除 `container.py` 重复导入和 `main_window_view_model.py` 重复赋值
+- `updater.py` 移除 `os._exit()` 后不可达代码，新增未验证更新包确认对话框
+- `startup.py` 统一通过 DI 容器获取 `ConfigManager`
+- `is_market_open()` 标记为废弃，引导使用 `MarketManager.is_market_open()`
+
 ## [v2.9.5] - 2026-02-24
 
 ### 🐛 修复 (Fixes)

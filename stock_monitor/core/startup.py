@@ -18,23 +18,23 @@ def apply_pending_updates():
 def check_update_status():
     """
     检查更新状态标记文件
-    
+
     Returns:
-        tuple: (status, info) 
+        tuple: (status, info)
                status: "success" | "failed" | None
                info: 更新时间或错误信息
     """
     try:
         from stock_monitor.config.manager import get_config_dir
-        
+
         config_dir = get_config_dir()
         success_marker = os.path.join(config_dir, "update_complete.txt")
         failed_marker = os.path.join(config_dir, "update_failed.txt")
-        
+
         # 检查更新成功标记
         if os.path.exists(success_marker):
             try:
-                with open(success_marker, "r", encoding="gbk") as f:
+                with open(success_marker, encoding="gbk") as f:
                     update_time = f.read().strip()
                 os.remove(success_marker)
                 app_logger.info(f"检测到更新成功标记，更新时间: {update_time}")
@@ -43,13 +43,13 @@ def check_update_status():
                 app_logger.warning(f"读取更新成功标记失败: {e}")
                 try:
                     os.remove(success_marker)
-                except:
+                except OSError:
                     pass
-        
+
         # 检查更新失败标记
         if os.path.exists(failed_marker):
             try:
-                with open(failed_marker, "r", encoding="gbk") as f:
+                with open(failed_marker, encoding="gbk") as f:
                     error_info = f.read().strip()
                 os.remove(failed_marker)
                 app_logger.error(f"检测到更新失败标记: {error_info}")
@@ -58,9 +58,9 @@ def check_update_status():
                 app_logger.warning(f"读取更新失败标记失败: {e}")
                 try:
                     os.remove(failed_marker)
-                except:
+                except OSError:
                     pass
-        
+
         return (None, None)
     except Exception as e:
         app_logger.error(f"检查更新状态时出错: {e}")
@@ -74,12 +74,10 @@ def setup_auto_start():
     """
     try:
         from stock_monitor.config.manager import ConfigManager
+        from stock_monitor.core.container import container
 
-        # 获取配置
-        # 注意：ConfigManager 应该通过依赖注入获取，或者直接实例化（单例模式）
-        # 这里直接实例化，因为 startup 可能在 container 初始化之前或之后
-        # 为了安全，这里实例化一个新的，ConfigManager内部处理了单例/配置加载
-        config_manager = ConfigManager()
+        # 通过 DI 容器获取 ConfigManager，保持架构一致性
+        config_manager = container.get(ConfigManager)
         auto_start = config_manager.get("auto_start", False)
 
         # 获取启动文件夹路径

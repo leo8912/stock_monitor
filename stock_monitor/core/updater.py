@@ -1,6 +1,5 @@
 import os
 import shutil
-import subprocess
 import sys
 import tempfile
 import zipfile
@@ -15,6 +14,9 @@ from PyQt6.QtWidgets import QApplication, QMessageBox, QProgressDialog
 from stock_monitor.network.manager import NetworkManager
 from stock_monitor.utils.logger import app_logger
 from stock_monitor.version import __version__
+
+# 镜像源前缀，便于统一管理和切换
+GITHUB_MIRROR_PREFIX = "https://ghfast.top/"
 
 
 class AppUpdater:
@@ -135,7 +137,7 @@ class AppUpdater:
             except requests.exceptions.RequestException as e:
                 app_logger.warning(f"使用原始URL下载失败: {e}，尝试使用镜像源...")
                 # 构造镜像URL
-                mirror_url = f"https://ghfast.top/{download_url}"
+                mirror_url = f"{GITHUB_MIRROR_PREFIX}{download_url}"
                 app_logger.info(f"使用镜像URL: {mirror_url}")
                 response = requests.get(mirror_url, stream=True, timeout=30)
 
@@ -222,8 +224,19 @@ class AppUpdater:
                     app_logger.info("Hash verification passed.")
                 else:
                     app_logger.warning(
-                        "No hash found for verification, skipping security check."
+                        "未找到哈希校验值，跳过安全检查。建议人工确认更新包来源。"
                     )
+                    # 向用户显示警告，让其自行决定是否继续
+                    reply = QMessageBox.warning(
+                        parent,
+                        "安全提示",
+                        "此更新包没有提供哈希校验值，无法验证文件完整性。\n是否仍要继续安装？",
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                        QMessageBox.StandardButton.Yes,
+                    )
+                    if reply != QMessageBox.StandardButton.Yes:
+                        os.remove(download_path)
+                        return None
 
             except Exception as e:
                 app_logger.error(f"Error during hash verification: {e}")
@@ -293,7 +306,7 @@ class AppUpdater:
             main_exe_name = "stock_monitor.exe"
             current_pid = os.getpid()
             config_dir = app_dir / ".stock_monitor"
-            
+
             # 确保配置目录存在
             config_dir.mkdir(exist_ok=True)
 
@@ -343,7 +356,9 @@ exit /b 1
 
             # 4. 生成 VBS 脚本用于隐藏运行 BAT
             vbs_path = app_dir / "update_silent.vbs"
-            vbs_content = f'CreateObject("Wscript.Shell").Run """{bat_path}""", 0, False'
+            vbs_content = (
+                f'CreateObject("Wscript.Shell").Run """{bat_path}""", 0, False'
+            )
             try:
                 with open(vbs_path, "w", encoding="gbk") as f:
                     f.write(vbs_content)
@@ -370,8 +385,7 @@ exit /b 1
 
             time.sleep(1.0)
             os._exit(0)
-
-            return True
+            # 注意: os._exit(0) 后程序已终止，此处不会执行
 
         except Exception as e:
             app_logger.error(f"启动更新程序时发生错误: {e}", exc_info=True)

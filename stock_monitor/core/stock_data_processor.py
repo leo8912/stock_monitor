@@ -8,6 +8,18 @@ from typing import Any, Optional
 from stock_monitor.utils.helpers import is_equal
 from stock_monitor.utils.logger import app_logger
 
+# 涨跌颜色常量 —— 值与 ui.constants.COLORS 保持同步
+# 不直接 import ui.constants，避免 core → ui 循环依赖
+_STOCK_COLORS = {
+    "UP_LIMIT": "#FF0000",  # 涨停
+    "UP_BRIGHT": "#FF4500",  # 大涨
+    "UP": "#e74c3f",  # 上涨
+    "NEUTRAL": "#e6eaf3",  # 平盘
+    "DOWN": "#27ae60",  # 下跌
+    "DOWN_DEEP": "#1e8449",  # 大跌
+    "DOWN_LIMIT": "#145a32",  # 跌停
+}
+
 
 class StockDataProcessor:
     """股票数据处理器"""
@@ -106,21 +118,21 @@ class StockDataProcessor:
             # 计算涨跌幅
             percent = ((f_now - f_close) / f_close * 100) if f_close != 0 else 0
 
-            # 颜色逻辑 - 渐变色方案
+            # 颜色逻辑 - 使用统一的颜色常量
             if percent >= 10:
-                color = "#FF0000"  # 涨停-最亮红
+                color = _STOCK_COLORS["UP_LIMIT"]  # 涨停-最亮红
             elif percent >= 5:
-                color = "#FF4500"  # 大涨-亮红
+                color = _STOCK_COLORS["UP_BRIGHT"]  # 大涨-亮红
             elif percent > 0:
-                color = "#e74c3f"  # 上涨-标准红
+                color = _STOCK_COLORS["UP"]  # 上涨-标准红
             elif percent == 0:
-                color = "#e6eaf3"  # 平盘-灰白
+                color = _STOCK_COLORS["NEUTRAL"]  # 平盘-灰白
             elif percent > -5:
-                color = "#27ae60"  # 下跌-标准绿
+                color = _STOCK_COLORS["DOWN"]  # 下跌-标准绿
             elif percent > -10:
-                color = "#1e8449"  # 大跌-深绿
+                color = _STOCK_COLORS["DOWN_DEEP"]  # 大跌-深绿
             else:
-                color = "#145a32"  # 跌停-最深绿
+                color = _STOCK_COLORS["DOWN_LIMIT"]  # 跌停-最深绿
 
             return (f"{f_now:.2f}", f"{percent:+.2f}%", color, f_now, f_close)
 

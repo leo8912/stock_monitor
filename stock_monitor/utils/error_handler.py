@@ -125,5 +125,6 @@ def retry_on_failure(max_attempts: int = 3, delay: float = 1.0):
     return decorator
 
 
-# 设置全局异常处理器
-sys.excepthook = ErrorHandler.handle_exception
+# 注意：不再在模块级设置 sys.excepthook，
+# 异常钩子由 Application._setup_exception_hook 统一管理，
+# 避免多处覆盖导致行为不一致。

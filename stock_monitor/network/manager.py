@@ -24,6 +24,18 @@ class NetworkManager:
             }
         )
 
+    def close(self):
+        """关闭会话，释放连接资源"""
+        if self.session:
+            self.session.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+        return False
+
     def get(self, url: str, **kwargs) -> Optional[requests.Response]:
         """
         发送GET请求

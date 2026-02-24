@@ -2,7 +2,6 @@
 负责处理股票相关的业务逻辑
 """
 
-import json
 from functools import lru_cache
 from typing import Any
 
@@ -60,13 +59,14 @@ class StockManager:
         dynamic_cache_size = get_dynamic_lru_cache_size()
 
         # 定义处理股票数据的核心函数
-        def process_single_stock_data_core(code: str, info_json: str) -> tuple:
-            # 将JSON字符串转换回字典
-            try:
-                info = json.loads(info_json)
-            except Exception:
-                info = {}
-            return self._process_single_stock_data_impl(code, info)
+        # 使用关键字段作为缓存key，避免完整JSON序列化的开销
+        def process_single_stock_data_core(
+            code: str, now_price: str, close_price: str, name: str
+        ) -> tuple:
+            return self._process_single_stock_data_impl(
+                code,
+                {"now": now_price, "close": close_price, "name": name},
+            )
 
         # 应用LRU缓存装饰器
         self._process_single_stock_data_cached = lru_cache(maxsize=dynamic_cache_size)(
@@ -148,10 +148,17 @@ class StockManager:
             info = data_dict.get(code)
 
             if info:
-                # 使用带缓存的方法处理单只股票数据
+                # 使用关键字段作为缓存key，避免完整JSON序列化开销
+                now_price = str(info.get("now") or info.get("price") or "")
+                close_price = str(info.get("close") or info.get("lastPrice") or "")
+                stock_name = str(info.get("name") or code)
                 stock_item = self._process_single_stock_data_cached(
-                    code, json.dumps(info, sort_keys=True)
+                    code, now_price, close_price, stock_name
                 )
+                # 缓存只用关键字段，但实际处理需要完整数据
+                # 如果缓存命中则直接返回，否则使用完整数据处理
+                if stock_item[1] == "--":  # 缓存key不足以处理，用完整数据重新处理
+                    stock_item = self._process_single_stock_data_impl(code, info)
                 stocks.append(stock_item)
             else:
                 # 如果没有获取到数据，显示默认值
