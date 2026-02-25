@@ -68,3 +68,14 @@ stock_monitor/cache/
 
 # Agent artifacts
 .agent/
+.agents/
+
+# Agent Skills
+.agent/skills/
+.agents/skills/
+skills-lock.json
+
+
+# Agent IDE Integration
+.continue/
+
