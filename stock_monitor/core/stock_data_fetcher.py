@@ -19,14 +19,16 @@ RETRY_DELAY_SECONDS = 2  # 重试间隔(秒)
 class StockDataFetcher:
     """股票数据获取类"""
 
+    def _init_sina_quotation(self):
+        return easyquotation.use("sina")
+
+    def _init_hk_quotation(self):
+        return easyquotation.use("hkquote")
+
     def __init__(self):
         """初始化数据获取器"""
-
-        def init_sina_quotation():
-            return easyquotation.use("sina")
-
         self.sina_quotation = safe_call(
-            init_sina_quotation,
+            self._init_sina_quotation,
             default_return=None,
             exception_handler=lambda e, error_type: app_logger.error(
                 f"初始化新浪行情引擎失败: {e}"
@@ -46,12 +48,8 @@ class StockDataFetcher:
         """
         # 根据股票代码类型选择不同的行情引擎
         if code.startswith("hk"):
-
-            def init_hk_quotation():
-                return easyquotation.use("hkquote")
-
             quotation_engine = safe_call(
-                init_hk_quotation,
+                self._init_hk_quotation,
                 default_return=None,
                 exception_handler=lambda e, error_type: app_logger.error(
                     f"初始化港股行情引擎失败: {e}"
@@ -63,12 +61,8 @@ class StockDataFetcher:
             return quotation_engine
         else:
             if self.sina_quotation is None:
-
-                def init_sina_quotation():
-                    return easyquotation.use("sina")
-
                 self.sina_quotation = safe_call(
-                    init_sina_quotation,
+                    self._init_sina_quotation,
                     default_return=None,
                     exception_handler=lambda e, error_type: app_logger.error(
                         f"重新初始化新浪行情引擎失败: {e}"
@@ -211,7 +205,7 @@ class StockDataFetcher:
             # 确保sina引擎已初始化
             def init_sina_if_needed():
                 if self.sina_quotation is None:
-                    self.sina_quotation = easyquotation.use("sina")
+                    self.sina_quotation = self._init_sina_quotation()
                 return self.sina_quotation
 
             quotation_engine = safe_call(
@@ -254,11 +248,8 @@ class StockDataFetcher:
         """
         try:
             # 初始化港股引擎
-            def init_hk_quotation():
-                return easyquotation.use("hkquote")
-
             quotation_engine = safe_call(
-                init_hk_quotation,
+                self._init_hk_quotation,
                 default_return=None,
                 exception_handler=lambda e, error_type: app_logger.error(
                     f"初始化港股行情引擎失败: {e}"

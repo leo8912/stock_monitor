@@ -36,9 +36,15 @@ def save_session_cache(data: dict[str, Any]) -> bool:
         # 添加时间戳
         cache_data = {"timestamp": time.time(), "data": data}
 
-        # 写入缓存文件
-        with open(CACHE_FILE, "w", encoding="utf-8") as f:
+        # 写入缓存文件: 使用原子写入机制
+        temp_file = f"{CACHE_FILE}.tmp"
+        with open(temp_file, "w", encoding="utf-8") as f:
             json.dump(cache_data, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())  # 确保落盘
+
+        # 使用操作系统级别的原子替换
+        os.replace(temp_file, CACHE_FILE)
 
         app_logger.info(f"会话缓存保存成功: {CACHE_FILE}")
         return True

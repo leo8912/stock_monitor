@@ -27,8 +27,6 @@ def get_quotation_engine(market_type: str = "sina") -> Optional[Any]:
 
 def is_market_open() -> bool:
     """检查A股是否开市"""
-    # 复用config/manager.py中的实现
-
     now = datetime.datetime.now()
     if now.weekday() >= 5:  # 周末
         return False

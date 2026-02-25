@@ -766,13 +766,95 @@ class NewSettingsDialog(QDialog):
     def check_for_updates(self):
         """检查更新"""
         try:
+            from PyQt6.QtCore import Qt
+            from PyQt6.QtWidgets import QApplication, QMessageBox, QProgressDialog
+
             from stock_monitor.core.updater import app_updater
 
             # 使用统一的更新流程
             result = app_updater.check_for_updates()
             if result is True:
-                # 有新版本，执行更新
-                app_updater.perform_update(self)
+                # 有新版本，显示提示框
+                latest_version = (
+                    app_updater.latest_release_info.get("tag_name", "")
+                    .replace("stock_monitor_", "")
+                    .replace("v", "")
+                )
+                release_body = app_updater.latest_release_info.get(
+                    "body", "暂无更新说明"
+                )
+
+                message = f"发现新版本!\n\n当前版本: {app_updater.current_version}\n最新版本: {latest_version}\n\n更新说明:\n{release_body}\n\n是否现在更新?"
+
+                reply = QMessageBox.question(
+                    self,
+                    "发现新版本",
+                    message,
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.Yes,
+                )
+
+                if reply == QMessageBox.StandardButton.Yes:
+                    progress_dialog = QProgressDialog(
+                        "正在下载更新...", "取消", 0, 100, self
+                    )
+                    progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+                    progress_dialog.setWindowTitle("下载更新")
+                    progress_dialog.setAutoClose(True)
+                    progress_dialog.setAutoReset(True)
+                    progress_dialog.show()
+
+                    def progress_cb(percent):
+                        progress_dialog.setValue(percent)
+                        QApplication.processEvents()
+
+                    def is_cancelled_cb():
+                        QApplication.processEvents()
+                        return progress_dialog.wasCanceled()
+
+                    def security_warn_cb(warn_msg):
+                        reply_warn = QMessageBox.warning(
+                            self,
+                            "安全提示",
+                            warn_msg,
+                            QMessageBox.StandardButton.Yes
+                            | QMessageBox.StandardButton.No,
+                            QMessageBox.StandardButton.Yes,
+                        )
+                        return reply_warn == QMessageBox.StandardButton.Yes
+
+                    def error_cb(err_msg):
+                        QMessageBox.critical(
+                            self, "更新错误", err_msg, QMessageBox.StandardButton.Ok
+                        )
+
+                    # 下载更新
+                    update_file = app_updater.download_update(
+                        progress_callback=progress_cb,
+                        is_cancelled_callback=is_cancelled_cb,
+                        security_warning_callback=security_warn_cb,
+                        error_callback=error_cb,
+                    )
+
+                    progress_dialog.close()
+
+                    if update_file:
+                        # 应用更新
+                        if not app_updater.apply_update(update_file):
+                            QMessageBox.critical(
+                                self,
+                                "更新失败",
+                                "应用更新包时发生错误",
+                                QMessageBox.StandardButton.Ok,
+                            )
+                    else:
+                        if not progress_dialog.wasCanceled():
+                            QMessageBox.warning(
+                                self,
+                                "下载失败",
+                                "更新包下载失败,请检查网络连接后重试。",
+                                QMessageBox.StandardButton.Ok,
+                            )
             elif result is False:
                 # 确认没有新版本
                 from PyQt6.QtWidgets import QMessageBox
@@ -933,71 +1015,69 @@ class NewSettingsDialog(QDialog):
                         stocks.append(text)
         return stocks
 
+    def _handle_stock_search_added(self, code: str, name: str):
+        """处理来自搜索组件传来的添加订阅信号"""
+        # 1. 检查自选股是否已存在
+        for i in range(self.watch_list.count()):
+            item = self.watch_list.item(i)
+            if item:
+                # 优先从UserRole获取代码
+                user_data = item.data(Qt.ItemDataRole.UserRole)
+                if user_data == code:
+                    from PyQt6 import QtWidgets
+
+                    QtWidgets.QMessageBox.information(
+                        self, "提示", f"股票 {name} 已在自选股列表中"
+                    )
+                    return
+                # 如果UserRole没有，尝试从显示文本中解析
+                elif f"({code})" in item.text():
+                    from PyQt6 import QtWidgets
+
+                    QtWidgets.QMessageBox.information(
+                        self, "提示", f"股票 {name} 已在自选股列表中"
+                    )
+                    return
+
+        # 2. 从视图底层添加新的元素
+        from stock_monitor.utils.helpers import get_stock_emoji
+
+        emoji = get_stock_emoji(code, name)
+
+        display_text = f"{emoji} {name} ({code})"
+        if code.startswith("hk") and name:
+            if "-" in name:
+                name = name.split("-")[0].strip()
+            display_text = f"{emoji} {name} ({code})"
+        elif not name:
+            display_text = f"{emoji} {code}"
+
+        from PyQt6.QtWidgets import QListWidgetItem
+
+        new_item = QListWidgetItem(display_text)
+        new_item.setData(Qt.ItemDataRole.UserRole, code)
+        self.watch_list.addItem(new_item)
+
+        # 3. 触发与后端数据同步 (如果需要，这里可以调用保存配置的方法)
+        # self._save_config_via_vm() # 暂时不在这里保存，由accept统一保存
+        self.watch_list_manager.update_remove_button_state()
+        self.watch_list.clearSelection()  # 取消自选股列表的选中状态
+
     def add_stock_from_search(self, item):
         """将股票添加到自选股列表"""
-        # 检查是否已经存在于自选股列表中
-        # 解析item文本以提取股票代码
+        # 解析item文本以提取股票代码和名称
         item_text = item.text()
         import re
 
         match = re.search(r"\(([^)]+)\)", item_text)
         if match:
-            stock_code = match.group(1)
-        else:
-            # 如果找不到括号中的代码，尝试从文本中提取代码
-            # 处理类似 "sz000063 中兴通讯" 这样的格式
-            parts = item_text.split()
-            if parts:
-                # 使用股票代码处理器来验证和格式化代码
-                from stock_monitor.utils.stock_utils import StockCodeProcessor
-
-                processor = StockCodeProcessor()
-                stock_code = processor.format_stock_code(parts[0])
-                if not stock_code:
-                    # 如果第一部分不是有效的代码，尝试整个文本
-                    stock_code = processor.format_stock_code(item_text)
-            else:
-                stock_code = item_text
-
-        for i in range(self.watch_list.count()):
-            watch_item = self.watch_list.item(i)
-            if watch_item is not None:
-                # 检查watch_item中是否包含相同的股票代码
-                watch_text = watch_item.text()
-                watch_match = re.search(r"\(([^)]+)\)", watch_text)
-                if watch_match:
-                    watch_code = watch_match.group(1)
-                else:
-                    # 处理类似 "sz000063 中兴通讯" 这样的格式
-                    watch_parts = watch_text.split()
-                    if watch_parts:
-                        # 使用股票代码处理器来验证和格式化代码
-                        from stock_monitor.utils.stock_utils import StockCodeProcessor
-
-                        processor = StockCodeProcessor()
-                        watch_code = processor.format_stock_code(watch_parts[0])
-                        if not watch_code:
-                            # 如果第一部分不是有效的代码，尝试整个文本
-                            watch_code = processor.format_stock_code(watch_text)
-                    else:
-                        watch_code = watch_text
-
-                if watch_code == stock_code:
-                    # 已存在，不重复添加，给出提示
-                    from PyQt6.QtWidgets import QMessageBox
-
-                    QMessageBox.information(self, "提示", "股票已在自选股列表中")
-                    return
-
-        # 添加到自选股列表，确保格式化显示
-        # 解析股票代码和名称用于格式化显示
-        item_text = item.text()
-        match = re.search(r"\(([^)]+)\)", item_text)
-        if match:
             # 标准格式 "名称 (code)"
             code = match.group(1)
             # 提取名称部分
-            name = item_text.replace(f" ({code})", "").split()[-1]
+            name = item_text.replace(f" ({code})", "").strip()
+            # 如果名称部分包含代码，再清理一次
+            if name.endswith(code):
+                name = name[: -len(code)].strip()
         else:
             # 非标准格式，尝试解析
             parts = item_text.split()
@@ -1008,8 +1088,7 @@ class NewSettingsDialog(QDialog):
                 code = item_text
                 name = ""
 
-        # 使用股票代码处理器获取emoji并格式化显示
-        from stock_monitor.utils.helpers import get_stock_emoji
+        # 使用股票代码处理器来验证和格式化代码
         from stock_monitor.utils.stock_utils import StockCodeProcessor
 
         processor = StockCodeProcessor()
@@ -1017,21 +1096,8 @@ class NewSettingsDialog(QDialog):
         if clean_code:
             code = clean_code
 
-        emoji = get_stock_emoji(code, name)
-        if name:
-            display_text = f"{emoji} {name} ({code})"
-        else:
-            display_text = f"{emoji} {code}"
-
-        from PyQt6.QtWidgets import QListWidgetItem
-
-        new_item = QListWidgetItem(display_text)
-        new_item.setData(Qt.ItemDataRole.UserRole, code)
-        self.watch_list.addItem(new_item)
-        self.watch_list_manager.update_remove_button_state()
-
-        # 取消自选股列表的选中状态
-        self.watch_list.clearSelection()
+        # 委托给信号处理器统一处理查重和插入
+        self._handle_stock_search_added(code, name)
 
     def remove_selected_stocks(self):
         """删除选中的股票"""

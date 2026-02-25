@@ -56,6 +56,7 @@ def incremental_update_stock_database() -> bool:
         # 4. 批量插入/更新数据库
         app_logger.info(f"开始更新股票数据库，共 {len(stocks_data)} 条记录...")
         from stock_monitor.core.container import container
+
         stock_db = container.get(StockDatabase)
         count = stock_db.insert_stocks(stocks_data)
         app_logger.info(f"股票数据库更新完成，共处理/更新 {count} 条记录")
@@ -66,7 +67,7 @@ def incremental_update_stock_database() -> bool:
 
             from stock_monitor.config.manager import ConfigManager
 
-            config_manager = ConfigManager()
+            config_manager = container.get(ConfigManager)
             config_manager.set("last_db_update", time.time())
             app_logger.info("数据库更新时间戳已保存")
         except Exception as e:

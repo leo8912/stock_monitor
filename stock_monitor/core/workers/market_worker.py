@@ -2,7 +2,7 @@ from typing import Any
 
 from PyQt6 import QtCore
 
-from stock_monitor.config.manager import is_market_open
+from stock_monitor.core.market_manager import MarketManager
 from stock_monitor.utils.logger import app_logger
 
 
@@ -40,7 +40,7 @@ class MarketStatsWorker(QtCore.QThread):
         while self._is_running:
             try:
                 # 检查市场是否开市，闭市期间延长刷新间隔
-                market_open = is_market_open()
+                market_open = MarketManager.is_market_open()
                 app_logger.info(
                     f"[市场统计] 市场状态检查: {'开市' if market_open else '闭市'}"
                 )

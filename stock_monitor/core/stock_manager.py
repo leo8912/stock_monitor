@@ -2,7 +2,6 @@
 负责处理股票相关的业务逻辑
 """
 
-from functools import lru_cache
 from typing import Any
 
 from ..utils.logger import app_logger
@@ -44,34 +43,12 @@ class StockManager:
     def __init__(self, stock_data_service=None):
         """初始化股票管理器"""
         self._processor = StockCodeProcessor()
-        # 缓存上一帧的股票数据，用于差异比较
-        self._last_stock_data: dict[str, str] = {}
+        # 缓存上一帧的股票数据，用于差异比较 (元组提升比较性能，减少字符串拼接开销)
+        self._last_stock_data: dict[str, tuple] = {}
         # 使用依赖注入，如果没有提供则使用全局实例
         from ..core.stock_service import stock_data_service as global_stock_data_service
 
         self._stock_data_service = stock_data_service or global_stock_data_service
-        # 初始化动态LRU缓存
-        self._init_dynamic_lru_cache()
-
-    def _init_dynamic_lru_cache(self):
-        """初始化动态LRU缓存"""
-        # 获取动态缓存大小
-        dynamic_cache_size = get_dynamic_lru_cache_size()
-
-        # 定义处理股票数据的核心函数
-        # 使用关键字段作为缓存key，避免完整JSON序列化的开销
-        def process_single_stock_data_core(
-            code: str, now_price: str, close_price: str, name: str
-        ) -> tuple:
-            return self._process_single_stock_data_impl(
-                code,
-                {"now": now_price, "close": close_price, "name": name},
-            )
-
-        # 应用LRU缓存装饰器
-        self._process_single_stock_data_cached = lru_cache(maxsize=dynamic_cache_size)(
-            process_single_stock_data_core
-        )
 
     def has_stock_data_changed(self, stocks: list[tuple]) -> bool:
         """
@@ -90,7 +67,8 @@ class StockManager:
         # 比较每只股票的数据
         for stock in stocks:
             name, price, change, color, seal_vol, seal_type = stock
-            key = f"{name}_{price}_{change}_{color}_{seal_vol}_{seal_type}"
+            # 优化：使用元组()来替代拼接字符串，避免高频请求下的GC开销
+            key = (price, change, color, seal_vol, seal_type)
 
             # 如果这只股票之前没有数据，认为发生了变化
             if name not in self._last_stock_data:
@@ -119,7 +97,7 @@ class StockManager:
         self._last_stock_data.clear()
         for stock in stocks:
             name, price, change, color, seal_vol, seal_type = stock
-            key = f"{name}_{price}_{change}_{color}_{seal_vol}_{seal_type}"
+            key = (price, change, color, seal_vol, seal_type)
             self._last_stock_data[name] = key
 
         app_logger.debug(f"更新股票数据缓存，共{len(self._last_stock_data)}只股票")
@@ -148,17 +126,8 @@ class StockManager:
             info = data_dict.get(code)
 
             if info:
-                # 使用关键字段作为缓存key，避免完整JSON序列化开销
-                now_price = str(info.get("now") or info.get("price") or "")
-                close_price = str(info.get("close") or info.get("lastPrice") or "")
-                stock_name = str(info.get("name") or code)
-                stock_item = self._process_single_stock_data_cached(
-                    code, now_price, close_price, stock_name
-                )
-                # 缓存只用关键字段，但实际处理需要完整数据
-                # 如果缓存命中则直接返回，否则使用完整数据处理
-                if stock_item[1] == "--":  # 缓存key不足以处理，用完整数据重新处理
-                    stock_item = self._process_single_stock_data_impl(code, info)
+                # 传递全量数据计算，确保买卖五档能够正确计算涨跌停封单数
+                stock_item = self._process_single_stock_data_impl(code, info)
                 stocks.append(stock_item)
             else:
                 # 如果没有获取到数据，显示默认值

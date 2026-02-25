@@ -110,12 +110,12 @@ class StockTableModel(QtCore.QAbstractTableModel):
                     | QtCore.Qt.AlignmentFlag.AlignVCenter
                 )
 
-        # 不再通过FontRole设置字体，让CSS样式表接管
-        # 这样可以避免QFont与CSS的优先级冲突
-        # elif role == QtCore.Qt.ItemDataRole.FontRole:
-        #     font = QtGui.QFont("微软雅黑", self._font_size)
-        #     font.setBold(True)
-        #     return font
+        # 恢复FontRole，以便QTableView.resizeColumnsToContents()能够正确计算实际文字宽度
+        elif role == QtCore.Qt.ItemDataRole.FontRole:
+            font = QtGui.QFont("微软雅黑")
+            font.setPixelSize(self._font_size)
+            font.setBold(True)
+            return font
 
         return None
 
@@ -149,7 +149,7 @@ class StockTableModel(QtCore.QAbstractTableModel):
             # 仅发送 dataChanged 信号，避免全量刷新
             self.dataChanged.emit(
                 self.index(0, 0),
-                self.index(len(self._data) - 1, self.columnCount() - 1)
+                self.index(len(self._data) - 1, self.columnCount() - 1),
             )
             return False
         else:

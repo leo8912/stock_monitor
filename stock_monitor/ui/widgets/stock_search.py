@@ -23,13 +23,9 @@ class StockSearchWidget(QtWidgets.QWidget):
     # 定义信号，当用户添加股票时发出
     stock_added = pyqtSignal(str, str)  # code, name
 
-    def __init__(
-        self, stock_data_source: StockDataSource, stock_list=None, sync_callback=None
-    ):
+    def __init__(self, stock_data_source: StockDataSource):
         super().__init__()
         self.stock_data_source = stock_data_source
-        self.stock_list = stock_list
-        self.sync_callback = sync_callback
         self._pending_search_text = ""
         self._search_throttle_timer = QtCore.QTimer(self)
         self._search_throttle_timer.setSingleShot(True)
@@ -244,7 +240,7 @@ class StockSearchWidget(QtWidgets.QWidget):
         self.add_btn.setEnabled(True)
 
     def add_selected_stock(self):
-        """添加选中的股票到自选股列表"""
+        """添加选中的股票，触发信号"""
         current_item = self.result_list.currentItem()
         if not current_item:
             return
@@ -256,54 +252,15 @@ class StockSearchWidget(QtWidgets.QWidget):
         code = stock["code"]
         name = stock["name"]
 
-        # 检查股票是否已存在
-        if self._is_stock_already_added(code):
-            # 如果股票已存在，给出提示
-            QtWidgets.QMessageBox.information(
-                self, "提示", f"股票 {name} 已在自选股列表中"
-            )
-            return
-
-        # 添加到股票列表，确保是新增而不是覆盖最后一项
-        if self.stock_list:
-            from stock_monitor.utils.helpers import get_stock_emoji
-
-            emoji = get_stock_emoji(code, name)
-            display = self._format_stock_display_text(code, name, emoji)
-            self.stock_list.addItem(display)  # 使用addItem而不是其他可能覆盖的方法
-
-        # 发出信号，只发送股票代码，不发送包含名称的文本
+        # 发出信号，只发送股票代码与名称，后续判重及添加交由父组件
         self.stock_added.emit(code, name)
-
-        # 调用同步回调
-        if self.sync_callback:
-            self.sync_callback()
 
         # 清空搜索框和结果列表
         self.search_input.clear()
         self.result_list.clear()
         self.add_btn.setEnabled(False)
 
-        app_logger.info(f"添加自选股: {code} {name}")
-
-    def _is_stock_already_added(self, code: str) -> bool:
-        """
-        检查股票是否已经在自选股列表中
-
-        Args:
-            code (str): 股票代码
-
-        Returns:
-            bool: 是否已添加
-        """
-        if not self.stock_list:
-            return False
-
-        for i in range(self.stock_list.count()):
-            item = self.stock_list.item(i)
-            if item and f"({code})" in item.text():
-                return True
-        return False
+        app_logger.info(f"触发添加自选股信号: {code} {name}")
 
     def _format_stock_display_text(self, code: str, name: str, emoji: str) -> str:
         """

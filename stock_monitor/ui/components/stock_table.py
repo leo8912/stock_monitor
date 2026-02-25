@@ -26,9 +26,15 @@ class StockTable(QtWidgets.QTableView):
         model: StockTableModel 实例，用于管理表格数据
     """
 
-    def __init__(self, parent=None):
+    height_adjustment_requested = QtCore.pyqtSignal()
+
+    def __init__(self, parent=None, font_family: str = "微软雅黑", font_size: int = 13):
         """初始化股票表格"""
         super().__init__(parent)
+
+        # 保存字体配置
+        self.font_family = font_family
+        self.font_size = font_size
 
         # 初始化数据模型
         self._model = StockTableModel()
@@ -60,25 +66,9 @@ class StockTable(QtWidgets.QTableView):
             QtWidgets.QSizePolicy.Policy.Preferred,
         )
 
-        # 从配置中读取字体大小和字体族
-        from stock_monitor.utils.helpers import get_config_manager
-
-        config_manager = get_config_manager()
-        self.font_size = config_manager.get("font_size", 13)
-        self.font_family = config_manager.get("font_family", "微软雅黑")
-
-        try:
-            self.font_size = int(self.font_size)
-        except (ValueError, TypeError):
-            self.font_size = 13
-
-        if self.font_size <= 0:
-            self.font_size = 13
-
-        # 设置模型字体大小
         self._model.set_font_size(self.font_size)
         self._set_table_style(self.font_family, self.font_size)
-        
+
         # 首次显示标记，用于确保窗口显示后重新计算列宽
         self._first_show_done = False
 
@@ -153,13 +143,8 @@ class StockTable(QtWidgets.QTableView):
             h_header.setStretchLastSection(False)
 
     def _notify_parent_window_height_adjustment(self) -> None:
-        """通知父窗口调整高度"""
-        if self.parent():
-            parent = self.parent()
-            if hasattr(parent, "adjust_window_height") and callable(
-                parent.adjust_window_height
-            ):
-                parent.adjust_window_height()
+        """触发布局调整请求信号以通知父窗口调整高度"""
+        self.height_adjustment_requested.emit()
 
     def rowCount(self):
         """兼容性接口：获取行数"""
@@ -235,8 +220,8 @@ class StockTable(QtWidgets.QTableView):
         """提供给设置对话框调用的接口"""
         self.font_size = size
         self.font_family = font_family
-        # 模型不再需要字体大小，因为字体由CSS控制
-        # self._model.set_font_size(size)
+        # 模型需要同步字体大小以便 FontRole 进行测量
+        self._model.set_font_size(size)
         self._set_table_style(font_family, size)
         self._resize_columns()
         self._notify_parent_window_height_adjustment()

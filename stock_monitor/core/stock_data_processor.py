@@ -137,7 +137,7 @@ class StockDataProcessor:
             return (f"{f_now:.2f}", f"{percent:+.2f}%", color, f_now, f_close)
 
         except (ValueError, TypeError, Exception) as e:
-            app_logger.warning(f"处理股票 {code} 价格信息失: {e}")
+            app_logger.warning(f"处理股票 {code} 价格信息失败: {e}")
             return None
 
     @staticmethod
@@ -157,8 +157,8 @@ class StockDataProcessor:
                 is_equal(str(now_price), str(high))
                 and is_equal(str(now_price), str(bid1))
                 and bid1_vol > 0
-                and ask1 == 0
-            ):  # ask1通常为0或卖一价，如果是涨停，卖一通常无单或价格为0？
+                and ask1 <= 1e-6
+            ):  # ask1 <= 1e-6 used to safely evaluate 0.0 or 0 for floats
                 # 注意：原始逻辑中校验的是 str(ask1) == "0.0"
                 # 这里使用更稳健的比较
 
@@ -171,14 +171,14 @@ class StockDataProcessor:
                 is_equal(str(now_price), str(low))
                 and is_equal(str(now_price), str(ask1))
                 and ask1_vol > 0
-                and bid1 == 0
+                and bid1 <= 1e-6
             ):
                 vol = int(ask1_vol)
                 display_vol = f"{int(vol/100000)}k" if vol >= 100000 else str(vol)
                 return (display_vol, "down")
 
-        except Exception:
-            pass
+        except Exception as e:
+            app_logger.debug(f"计算股票封单信息失败: {e}")
         return ("", "")
 
 

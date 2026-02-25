@@ -114,6 +114,16 @@ class StockDataService:
         app_logger.info(f"股票数据处理完成: 总计 {len(stocks)} 只股票")
         return stocks
 
+    def _init_sina_if_needed(self):
+        import easyquotation
+
+        if self.fetcher.sina_quotation is None:
+            self.fetcher.sina_quotation = easyquotation.use("sina")
+        return self.fetcher.sina_quotation
+
+    def _fetch_market_snapshot(self):
+        return self.fetcher.sina_quotation.market_snapshot(prefix=True)
+
     def get_all_market_data(self) -> Optional[dict[str, Any]]:
         """
         获取全市场股票数据
@@ -121,31 +131,20 @@ class StockDataService:
         Returns:
             Optional[Dict[str, Any]]: 全市场股票数据字典,失败返回None
         """
-        import easyquotation
-
         from ..utils.error_handler import safe_call
 
-        def init_sina_if_needed():
-            if self.fetcher.sina_quotation is None:
-                self.fetcher.sina_quotation = easyquotation.use("sina")
-            return self.fetcher.sina_quotation
-
         quotation_engine = safe_call(
-            init_sina_if_needed,
+            self._init_sina_if_needed,
             default_return=None,
             exception_handler=lambda e, error_type: app_logger.error(
-                f"初始化新浪行情引擎失败: {e}"
+                f"初始化行情引擎时失败: {e}"
             )
             or None,
         )
 
         if quotation_engine:
-
-            def fetch_market_snapshot():
-                return quotation_engine.market_snapshot(prefix=True)
-
             market_data = safe_call(
-                fetch_market_snapshot,
+                self._fetch_market_snapshot,
                 default_return=None,
                 exception_handler=lambda e, error_type: app_logger.error(
                     f"获取全市场数据失败: {e}"

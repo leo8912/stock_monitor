@@ -2,7 +2,7 @@ import time
 
 from PyQt6 import QtCore
 
-from stock_monitor.config.manager import is_market_open
+from stock_monitor.core.market_manager import MarketManager
 from stock_monitor.utils.logger import app_logger
 from stock_monitor.utils.stock_utils import StockCodeProcessor
 
@@ -109,7 +109,7 @@ class RefreshWorker(QtCore.QThread):
                     continue
 
                 # 检查市场状态（首次启动跳过此检查，确保至少获取一次数据）
-                market_open = is_market_open()
+                market_open = MarketManager.is_market_open()
 
                 # 如果市场关闭且不是首次启动，则休眠等待
                 if not market_open and first_fetch_done:

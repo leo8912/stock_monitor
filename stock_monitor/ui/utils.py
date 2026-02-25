@@ -3,7 +3,6 @@ UI工具模块
 包含通用UI辅助函数和Qt消息处理逻辑
 """
 
-import sys
 
 from PyQt6 import QtCore
 
@@ -32,13 +31,21 @@ def qt_message_handler(mode, context, message):
     elif mode == QtCore.QtMsgType.QtFatalMsg:
         msg_type = "Fatal"
 
-    # 避免日志噪音，只在严重错误时打印到stderr
+    # 避免日志噪音，只在严重错误时定向输出到应用日志系统
     if mode in (
         QtCore.QtMsgType.QtWarningMsg,
         QtCore.QtMsgType.QtCriticalMsg,
         QtCore.QtMsgType.QtFatalMsg,
     ):
-        print(f"Qt {msg_type}: {message}", file=sys.stderr)
+        from stock_monitor.utils.logger import app_logger
+
+        log_msg = f"Qt {msg_type}: {message}"
+        if mode == QtCore.QtMsgType.QtWarningMsg:
+            app_logger.warning(log_msg)
+        elif mode == QtCore.QtMsgType.QtCriticalMsg:
+            app_logger.error(log_msg)
+        elif mode == QtCore.QtMsgType.QtFatalMsg:
+            app_logger.critical(log_msg)
 
 
 def setup_qt_message_handler():

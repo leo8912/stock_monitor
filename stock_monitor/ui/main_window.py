@@ -205,8 +205,9 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
         # self.viewModel.stock_data_updated.connect(self._handle_refresh_data)
         # self.viewModel.refresh_error_occurred.connect(self._handle_refresh_error)
 
-        # 连接本地信号
+        # 初始化状态条，连接本地信号
         self.update_table_signal.connect(self.table.update_data)
+        self.table.height_adjustment_requested.connect(self.adjust_window_height)
 
         # 加载状态指示器，初始隐藏
         self.loading_label = QtWidgets.QLabel("⏳ 数据加载中...")

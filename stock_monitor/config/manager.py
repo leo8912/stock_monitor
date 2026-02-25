@@ -160,7 +160,6 @@ class ConfigManager:
         # 如果配置文件损坏，备份原文件并创建新配置
         error_msg = f"配置文件损坏({error_type})，正在创建新的配置文件..."
         app_logger.error(error_msg)
-        print(error_msg)
 
         if os.path.exists(self.config_path):
             # 备份原文件
@@ -168,7 +167,6 @@ class ConfigManager:
             shutil.copy2(self.config_path, backup_path)
             backup_msg = f"原配置文件已备份为: {backup_path}"
             app_logger.info(backup_msg)
-            print(backup_msg)
 
         # 创建默认配置文件
         default_config = self._get_default_config()
@@ -182,7 +180,6 @@ class ConfigManager:
         """处理配置文件权限错误"""
         error_msg = "配置文件权限错误，请检查文件权限"
         app_logger.error(error_msg)
-        print(error_msg)
         default_config = self._get_default_config()
         self._config = default_config
         return default_config
@@ -216,29 +213,3 @@ def save_config(cfg: dict[str, Any]) -> bool:
     manager._ensure_required_keys_exist(cfg)
     manager._config = cfg
     return manager._save_config()
-
-
-def is_market_open():
-    """检查A股是否开市（包含集合竞价结束时刻）
-
-    .. deprecated::
-        此函数不属于配置管理模块，保留仅为兼容性。
-        新代码请使用 stock_monitor.core.market_manager.MarketManager.is_market_open()
-
-    A股交易时间:
-    - 9:15-9:25 集合竞价（9:25产生开盘价）
-    - 9:30-11:30 上午连续竞价
-    - 13:00-15:00 下午连续竞价
-
-    从9:25开始获取行情，可以第一时间获取开盘价
-    """
-    import datetime
-
-    now = datetime.datetime.now()
-    if now.weekday() >= 5:  # 周末
-        return False
-    t = now.time()
-    # 9:25开始（集合竞价结束，可获取开盘价）
-    return (datetime.time(9, 25) <= t <= datetime.time(11, 30)) or (
-        datetime.time(13, 0) <= t <= datetime.time(15, 0)
-    )

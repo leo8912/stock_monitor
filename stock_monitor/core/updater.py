@@ -8,8 +8,6 @@ from typing import Any, Optional
 
 import requests
 from packaging import version
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QMessageBox, QProgressDialog
 
 from stock_monitor.network.manager import NetworkManager
 from stock_monitor.utils.logger import app_logger
@@ -83,12 +81,21 @@ class AppUpdater:
             app_logger.error(f"检查更新时发生错误: {e}")
             return None  # 网络错误或其他异常
 
-    def download_update(self, parent=None) -> Optional[str]:
+    def download_update(
+        self,
+        progress_callback=None,
+        is_cancelled_callback=None,
+        security_warning_callback=None,
+        error_callback=None,
+    ) -> Optional[str]:
         """
         下载更新包
 
         Args:
-            parent: 父窗口，用于显示进度对话框
+            progress_callback: 进度回调函数，接收(int)百分比参数
+            is_cancelled_callback: 是否取消回调函数，返回bool
+            security_warning_callback: 安全警告回调，接收(str)提示，返回bool(True继续)
+            error_callback: 错误提示回调，接收(str)错误信息
 
         Returns:
             str: 下载文件的路径，如果失败返回None
@@ -119,17 +126,9 @@ class AppUpdater:
 
             app_logger.info(f"开始下载更新: {file_name}")
 
-            # 创建临时目录用于下载
+            # 准备下载路径
             temp_dir = tempfile.mkdtemp()
             download_path = os.path.join(temp_dir, file_name)
-
-            # 显示进度对话框
-            progress_dialog = QProgressDialog("正在下载更新...", "取消", 0, 100, parent)
-            progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
-            progress_dialog.setWindowTitle("下载更新")
-            progress_dialog.setAutoClose(True)
-            progress_dialog.setAutoReset(True)
-            progress_dialog.show()
 
             # 首先尝试使用原始URL下载
             try:
@@ -155,17 +154,15 @@ class AppUpdater:
                         # 更新进度
                         if total_size > 0:
                             progress = int((downloaded_size / total_size) * 100)
-                            progress_dialog.setValue(progress)
+                            if progress_callback:
+                                progress_callback(progress)
 
                         # 处理取消操作
-                        QApplication.processEvents()
-                        if progress_dialog.wasCanceled():
+                        if is_cancelled_callback and is_cancelled_callback():
                             os.remove(download_path)
                             os.rmdir(temp_dir)
-                            app_logger.info("用户取消了下载")
+                            app_logger.info("用户确实取消了下载")
                             return None
-
-            progress_dialog.close()
 
             # --- Hash Check ---
             try:
@@ -210,33 +207,22 @@ class AppUpdater:
                     expected_hash = expected_hash.upper()
 
                     if calculated_hash != expected_hash:
-                        app_logger.error(
-                            f"Hash mismatch! Downloaded: {calculated_hash}, Expected: {expected_hash}"
-                        )
+                        err_msg = f"安全检查失败：文件哈希不匹配。\n下载的文件哈希: {calculated_hash}\n期望的哈希: {expected_hash}\n文件可能已损坏或被篡改。"
+                        app_logger.error(err_msg)
                         os.remove(download_path)
-                        QMessageBox.critical(
-                            parent,
-                            "Verify Failed",
-                            "Security check failed: File hash mismatch.\nThe file may be corrupted or tampered with.",
-                            QMessageBox.StandardButton.Ok,
-                        )
+                        if error_callback:
+                            error_callback(err_msg)
                         return None
                     app_logger.info("Hash verification passed.")
                 else:
+                    warn_msg = "此更新包没有提供哈希校验值，无法验证文件完整性。\n是否仍要继续安装？"
                     app_logger.warning(
                         "未找到哈希校验值，跳过安全检查。建议人工确认更新包来源。"
                     )
-                    # 向用户显示警告，让其自行决定是否继续
-                    reply = QMessageBox.warning(
-                        parent,
-                        "安全提示",
-                        "此更新包没有提供哈希校验值，无法验证文件完整性。\n是否仍要继续安装？",
-                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                        QMessageBox.StandardButton.Yes,
-                    )
-                    if reply != QMessageBox.StandardButton.Yes:
-                        os.remove(download_path)
-                        return None
+                    if security_warning_callback:
+                        if not security_warning_callback(warn_msg):
+                            os.remove(download_path)
+                            return None
 
             except Exception as e:
                 app_logger.error(f"Error during hash verification: {e}")
@@ -391,73 +377,13 @@ exit /b 1
             app_logger.error(f"启动更新程序时发生错误: {e}", exc_info=True)
             return False
 
-    def show_update_dialog(self, parent=None) -> bool:
-        """
-        显示更新对话框
-
-        Args:
-            parent: 父窗口
-
-        Returns:
-            bool: 用户是否同意更新
-        """
-        if not self.latest_release_info:
-            return False
-
-        latest_version = (
-            self.latest_release_info.get("tag_name", "")
-            .replace("stock_monitor_", "")
-            .replace("v", "")
-        )
-        release_body = self.latest_release_info.get("body", "暂无更新说明")
-
-        message = f"发现新版本!\n\n当前版本: {self.current_version}\n最新版本: {latest_version}\n\n更新说明:\n{release_body}\n\n是否现在更新?"
-
-        reply = QMessageBox.question(
-            parent,
-            "发现新版本",
-            message,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.Yes,
-        )
-
-        return reply == QMessageBox.StandardButton.Yes
-
     def perform_update(self, parent=None) -> bool:
-        """
-        执行完整的更新流程
-
-        Args:
-            parent: 父窗口
-
-        Returns:
-            bool: 更新是否成功
-        """
-        try:
-            # 显示更新对话框
-            if self.show_update_dialog(parent):
-                # 下载更新
-                update_file = self.download_update(parent)
-                if update_file:
-                    # 应用更新(启动updater.exe并退出)
-                    return self.apply_update(update_file)
-                else:
-                    QMessageBox.warning(
-                        parent,
-                        "下载失败",
-                        "更新包下载失败,请检查网络连接后重试。",
-                        QMessageBox.StandardButton.Ok,
-                    )
-            return False
-        except Exception as e:
-            app_logger.error(f"执行更新时发生错误: {e}")
-            QMessageBox.critical(
-                parent,
-                "更新失败",
-                f"更新过程中发生错误: {str(e)}",
-                QMessageBox.StandardButton.Ok,
-            )
-            return False
+        # 这个方法已经被弃用，它的UI逻辑应该在外层实现。
+        # 为了兼容性暂时保留，但直接返回False。应该使用外层的重构代码。
+        app_logger.warning(
+            "AppUpdater.perform_update is deprecated. Please handle UI externally."
+        )
+        return False
 
     def _run_post_update_hooks(self):
         """

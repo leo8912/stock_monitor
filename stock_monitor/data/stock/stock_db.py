@@ -269,8 +269,10 @@ class StockDatabase(StockDataSource):
                                 (code, name, pinyin, abbr, market_type),
                             )
                         updated_count += 1
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        app_logger.error(
+                            f"慢速模式：单条写入股票 {stock.get('code', '未知')} 失败: {e}"
+                        )
                 conn.commit()
                 return updated_count
         except Exception as e:
@@ -459,6 +461,3 @@ class StockDatabase(StockDataSource):
         except Exception as e:
             app_logger.error(f"获取股票数量失败: {e}")
             return 0
-
-
-
