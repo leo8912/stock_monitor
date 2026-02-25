@@ -66,74 +66,15 @@ class StockTable(QtWidgets.QTableView):
             QtWidgets.QSizePolicy.Policy.Preferred,
         )
 
-        self._model.set_font_size(self.font_size)
+        self._model.set_font_size(self.font_family, self.font_size)
         self._set_table_style(self.font_family, self.font_size)
 
         # 首次显示标记，用于确保窗口显示后重新计算列宽
         self._first_show_done = False
 
     def _set_table_style(self, font_family: str, font_size: int) -> None:
-        """
-        设置表格样式
-        """
-        try:
-            font_size = int(font_size)
-        except (ValueError, TypeError):
-            font_size = 13
-
-        if font_size <= 0:
-            font_size = 13
-
-        self.setStyleSheet(
-            f"""
-            QTableView {{
-                background: transparent;
-                border: none;
-                outline: none;
-                gridline-color: #aaa;
-                selection-background-color: transparent;
-                selection-color: #fff;
-                font-family: "{font_family}";
-                font-size: {font_size}px;
-                font-weight: bold;
-                color: #fff;
-            }}
-            QTableView::item {{
-                border: none;
-                padding: 0px;
-                background: transparent;
-                outline: none;
-            }}
-            QTableView::item:focus {{
-                border: none;
-                outline: none;
-                background: transparent;
-            }}
-            QTableView::item:selected {{
-                background: transparent;
-                color: #fff;
-                border: none;
-                outline: none;
-            }}
-            QHeaderView::section {{
-                background: transparent;
-                border: none;
-                color: transparent;
-            }}
-            QScrollBar {{
-                background: transparent;
-                width: 0px;
-                height: 0px;
-            }}
-            QScrollBar::handle {{
-                background: transparent;
-            }}
-            QScrollBar::add-line, QScrollBar::sub-line {{
-                background: transparent;
-                border: none;
-            }}
-        """
-        )
+        """设置表格样式。现在依赖全局QSS，此方法可以为空或设置动态变化的样式"""
+        pass
 
     def _resize_columns(self) -> None:
         """调整列宽"""
@@ -221,7 +162,7 @@ class StockTable(QtWidgets.QTableView):
         self.font_size = size
         self.font_family = font_family
         # 模型需要同步字体大小以便 FontRole 进行测量
-        self._model.set_font_size(size)
+        self._model.set_font_size(font_family, size)
         self._set_table_style(font_family, size)
         self._resize_columns()
         self._notify_parent_window_height_adjustment()

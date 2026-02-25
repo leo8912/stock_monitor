@@ -1,5 +1,4 @@
 import os
-import threading
 import time
 
 from PyQt6 import QtCore, QtGui, QtWidgets
@@ -15,11 +14,8 @@ from stock_monitor.ui.components.stock_table import StockTable
 from stock_monitor.ui.constants import COLORS
 from stock_monitor.ui.dialogs.settings_dialog import NewSettingsDialog
 from stock_monitor.ui.mixins.draggable_window import DraggableWindowMixin
-from stock_monitor.ui.styles import (
-    get_loading_label_style,
-    get_main_window_style,
-    get_table_style,
-)
+
+# Removed obsolete styles import
 from stock_monitor.ui.view_models.main_window_view_model import MainWindowViewModel
 from stock_monitor.ui.widgets.context_menu import AppContextMenu
 from stock_monitor.ui.widgets.market_status import MarketStatusBar
@@ -155,25 +151,8 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
             QtWidgets.QSizePolicy.Policy.Preferred,
         )  # type: ignore
 
-        # 从配置中读取字体大小和字体族
-        config_manager = self._container.get(ConfigManager)
-        font_size = config_manager.get("font_size", 13)  # 默认13px
-        font_family = config_manager.get("font_family", "微软雅黑")  # 默认微软雅黑
-
-        try:
-            font_size = int(font_size)
-        except (ValueError, TypeError):
-            font_size = 13
-
-        # 确保字体大小大于0
-        if font_size <= 0:
-            font_size = 13  # 默认字体大小
-
-        # 统一使用CSS设置字体，避免与QFont冲突
-        # 不使用 setFont()，只使用样式表
-        self.setStyleSheet(get_main_window_style(font_family, font_size))
-
-        app_logger.debug(f"主窗口字体设置: {font_family}, {font_size}px")
+        # 从配置中读取字体大小和字体族并更新表格
+        self.update_font_size()
 
         # 初始化菜单
         # 创建右键菜单，使用独立的菜单类确保样式不会被其他界面影响
@@ -211,7 +190,7 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
 
         # 加载状态指示器，初始隐藏
         self.loading_label = QtWidgets.QLabel("⏳ 数据加载中...")
-        self.loading_label.setStyleSheet(get_loading_label_style(font_size))
+        self.loading_label.setObjectName("LoadingLabel")
         self.loading_label.hide()
         layout.addWidget(self.loading_label)
 
@@ -483,20 +462,22 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
 
             app_logger.info(f"更新主窗口字体: {font_family}, {font_size}px")
 
-            # 统一使用CSS设置字体
-            self.setStyleSheet(get_main_window_style(font_family, font_size))
+            # 主窗口字体
+            self.setObjectName("MainWindow")
 
             # 更新表格字体
             if hasattr(self, "table") and self.table:
-                self.table.setStyleSheet(get_table_style(font_family, font_size))
-                # 强制刷新表格样式
-                self.table.style().unpolish(self.table)
-                self.table.style().polish(self.table)
-                self.table.update()
+                self.table.set_font_size(font_family, font_size)
+                # 触发窗口更新样式
+                from stock_monitor.ui.styles import load_global_stylesheet
+
+                qss = load_global_stylesheet(font_family, font_size)
+                if qss:
+                    self.setStyleSheet(qss)
 
             # 更新加载标签字体
             if hasattr(self, "loading_label") and self.loading_label:
-                self.loading_label.setStyleSheet(get_loading_label_style(font_size))
+                pass
 
             # 调整主窗口高度
             self.adjust_window_height()
@@ -586,10 +567,13 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
     def _update_database_async(self):
         """异步更新数据库"""
         try:
-            from stock_monitor.data.market.db_updater import update_stock_database
+            from PyQt6.QtCore import QThreadPool
 
-            update_thread = threading.Thread(target=update_stock_database, daemon=True)
-            update_thread.start()
+            from stock_monitor.data.market.db_updater import update_stock_database
+            from stock_monitor.utils.worker import WorkerRunnable
+
+            worker = WorkerRunnable(update_stock_database)
+            QThreadPool.globalInstance().start(worker)
         except Exception as e:
             app_logger.error(f"异步更新数据库时出错: {e}")
 
@@ -623,12 +607,19 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
         layout_margin = 0
         table_height = self.table.rowCount() * row_height
         new_height = table_height + layout_margin + self.market_status_bar.height()
-        self.setFixedHeight(new_height)
+        # 不使用绝对高度限制，改用 resize 让窗口可以自适应内容
 
         table_width = sum(
             self.table.columnWidth(col) for col in range(self.table.columnCount())
         )
-        self.setFixedWidth(table_width)
+
+        # 预留一点额外空间避免滚动条闪烁
+        target_width = table_width + 5
+        target_height = new_height + 5
+
+        # 不要使用 setFixedSize，这样在高分辨率或不同字体时会导致窗口卡死，允许用户自由调整
+        self.setMinimumSize(target_width, min(target_height, 200))
+        self.resize(target_width, target_height)
 
         self.layout().update()
         self.updateGeometry()

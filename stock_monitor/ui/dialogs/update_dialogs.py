@@ -23,36 +23,12 @@ class ModernProgressDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("正在更新")
-        self.setFixedSize(500, 250)
+        self.setMinimumSize(400, 200)
+        self.resize(500, 250)
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.CustomizeWindowHint)
 
         # 设置样式
-        self.setStyleSheet(
-            """
-            QDialog {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #2d2d2d, stop:1 #1e1e1e);
-                border-radius: 10px;
-            }
-            QLabel {
-                color: white;
-                font-family: "Microsoft YaHei";
-            }
-            QProgressBar {
-                border: 2px solid #555;
-                border-radius: 8px;
-                text-align: center;
-                background-color: #3d3d3d;
-                color: white;
-                font-size: 12px;
-            }
-            QProgressBar::chunk {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #0078d4, stop:1 #00a8ff);
-                border-radius: 6px;
-            }
-        """
-        )
+        self.setObjectName("ModernProgressDialog")
 
         layout = QVBoxLayout()
         layout.setContentsMargins(30, 30, 30, 30)
@@ -104,43 +80,7 @@ class UpdateNotificationDialog(QDialog):
         self.resize(600, 500)  # 默认尺寸
 
         # 美化样式
-        self.setStyleSheet(
-            """
-            QDialog {
-                background-color: #1e1e1e;
-            }
-            QLabel {
-                color: white;
-                font-family: "Microsoft YaHei";
-            }
-            QPushButton {
-                background-color: #0078d4;
-                color: white;
-                border: none;
-                border-radius: 6px;
-                padding: 10px 20px;
-                font-size: 14px;
-                min-width: 100px;
-            }
-            QPushButton:hover {
-                background-color: #108de6;
-            }
-            QPushButton#cancelButton {
-                background-color: #555;
-            }
-            QPushButton#cancelButton:hover {
-                background-color: #666;
-            }
-            QTextEdit {
-                background-color: #2d2d2d;
-                border: 1px solid #555;
-                border-radius: 6px;
-                padding: 10px;
-                color: #ddd;
-                font-size: 12px;
-            }
-        """
-        )
+        self.setObjectName("UpdateNotificationDialog")
 
         layout = QVBoxLayout()
         layout.setContentsMargins(30, 30, 30, 30)

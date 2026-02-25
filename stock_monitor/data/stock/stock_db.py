@@ -139,17 +139,18 @@ class StockDatabase(StockDataSource):
         """触发后台数据库更新"""
         try:
             # 导入并触发更新（避免循环导入）
-            import threading
+            from PyQt6.QtCore import QThreadPool
 
             from stock_monitor.data.stock.stock_updater import update_stock_database
+            from stock_monitor.utils.worker import WorkerRunnable
 
             def update_task():
                 app_logger.info("开始后台更新股票数据库...")
                 update_stock_database()
 
-            # 在后台线程中执行更新
-            update_thread = threading.Thread(target=update_task, daemon=True)
-            update_thread.start()
+            # 在 Qt 全局线程池中执行后台更新
+            worker = WorkerRunnable(update_task)
+            QThreadPool.globalInstance().start(worker)
         except Exception as e:
             app_logger.error(f"触发后台更新失败: {e}")
 

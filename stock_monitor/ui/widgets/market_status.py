@@ -37,27 +37,7 @@ class MarketStatusBar(QtWidgets.QWidget):
 
         # 创建右键菜单
         self.menu = QtWidgets.QMenu(self)
-        self.menu.setStyleSheet(
-            """
-            QMenu {
-                background-color: #2d2d2d;
-                color: white;
-                border: 1px solid #555555;
-                border-radius: 4px;
-                font-family: 'Microsoft YaHei';
-                font-size: 14px;  /* 调大字体 */
-                padding: 2px 0;   /* 减小内边距 */
-                min-width: 100px; /* 缩小最小宽度 */
-            }
-            QMenu::item {
-                padding: 4px 16px;
-                border: none;
-            }
-            QMenu::item:selected {
-                background-color: #444444;
-            }
-        """
-        )
+        self.menu.setObjectName("AppContextMenu")
         self.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self.show_context_menu)
 
@@ -122,7 +102,7 @@ class MarketStatusBar(QtWidgets.QWidget):
         # 绘制上涨部分（红色渐变）
         if up_width > 0:
             gradient = QtGui.QLinearGradient(x_pos, 0, x_pos + up_width, 0)
-            gradient.setColorAt(0, QtGui.QColor(255, 69, 0, 220))   # 亮红
+            gradient.setColorAt(0, QtGui.QColor(255, 69, 0, 220))  # 亮红
             gradient.setColorAt(1, QtGui.QColor(231, 76, 60, 200))  # 标准红
             painter.fillRect(x_pos, 0, up_width, self.height(), gradient)
             x_pos += up_width

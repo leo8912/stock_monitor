@@ -79,3 +79,4 @@ skills-lock.json
 # Agent IDE Integration
 .continue/
 
+stock_monitor/cache/last_session.json

@@ -49,17 +49,10 @@ class StockSearchWidget(QtWidgets.QWidget):
 
     def setup_ui(self):
         """初始化用户界面"""
-        # 设置整体样式
-        self.setStyleSheet(
-            """
-            QWidget {
-                background-color: #2d2d2d;
-                color: white;
-                font-family: 'Microsoft YaHei';
-                font-size: 14px;
-            }
-        """
-        )
+        # 允许接收拖拽事件
+        self.setAcceptDrops(True)
+        # 移除inline stylesheet, 设置ObjectName以便在QSS中针对此组件特殊样式
+        self.setObjectName("StockSearchWidget")
 
         # 创建主布局
         layout = QtWidgets.QVBoxLayout(self)
@@ -95,69 +88,16 @@ class StockSearchWidget(QtWidgets.QWidget):
 
     def _set_search_input_style(self):
         """设置搜索输入框样式"""
-        self.search_input.setStyleSheet(
-            """
-            QLineEdit {
-                padding: 8px;
-                border: 1px solid #555555;
-                border-radius: 4px;
-                background-color: #3d3d3d;
-                color: white;
-                font-size: 14px;
-            }
-            QLineEdit:focus {
-                border-color: #0078d4;
-            }
-        """
-        )
+        pass
 
     def _set_result_list_style(self):
         """设置结果列表样式"""
-        self.result_list.setStyleSheet(
-            """
-            QListWidget {
-                background-color: #3d3d3d;
-                border: 1px solid #555555;
-                border-radius: 4px;
-                color: white;
-                font-size: 14px;
-                padding: 5px;
-            }
-            QListWidget::item {
-                padding: 6px;
-                border-radius: 3px;
-            }
-            QListWidget::item:hover {
-                background-color: #4d4d4d;
-            }
-            QListWidget::item:selected {
-                background-color: #0078d4;
-            }
-        """
-        )
+        pass
 
     def _set_add_button_style(self):
         """设置添加按钮样式"""
-        self.add_btn.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #0078d4;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 8px;
-                font-size: 14px;
-                font-weight: bold;
-            }
-            QPushButton:disabled {
-                background-color: #555555;
-                color: #888888;
-            }
-            QPushButton:hover:!disabled {
-                background-color: #005a9e;
-            }
-        """
-        )
+        # 设置ObjectName以获取主级样式
+        self.add_btn.setObjectName("PrimaryButton")
 
     def _load_stock_data(self):
         """加载股票数据"""

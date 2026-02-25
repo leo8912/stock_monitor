@@ -20,7 +20,6 @@ from PyQt6.QtWidgets import (
     QListWidgetItem,
     QPushButton,
     QSlider,
-    QSpinBox,
     QVBoxLayout,
 )
 
@@ -102,25 +101,7 @@ class WatchListManager:
 
     def _setup_watch_list_ui(self):
         """设置自选股列表UI"""
-        self.watch_list.setStyleSheet(
-            """
-            QListWidget {
-                background-color: #3d3d3d;
-                border: 1px solid #555555;
-                border-radius: 4px;
-                color: white;
-                font-size: 12px;
-                outline: 0;
-            }
-            QListWidget::item {
-                padding: 4px;
-                border-bottom: 1px solid #333333;
-            }
-            QListWidget::item:selected {
-                background-color: #0078d4;
-            }
-        """
-        )
+        self.watch_list.setObjectName("WatchListWidget")
         self.watch_list.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
         self.watch_list.setDefaultDropAction(Qt.DropAction.MoveAction)
         self.watch_list.setDragEnabled(True)
@@ -228,7 +209,7 @@ class NewSettingsDialog(QDialog):
         self.resize(900, 700)  # 进一步调大窗口尺寸
 
         # 设置窗口样式以匹配暗色主题
-        self.setStyleSheet("QDialog { background-color: #1e1e1e; } ")
+        self.setObjectName("NewSettingsDialog")
 
         # 在Windows上设置标题栏颜色
         try:
@@ -243,19 +224,7 @@ class NewSettingsDialog(QDialog):
             pass
 
         # 为设置对话框设置固定字体，避免继承主窗口的动态字体
-        # 使用独立的样式表覆盖继承的样式
-        self.setStyleSheet(
-            """
-            QDialog {
-                font-family: "Microsoft YaHei";
-                font-size: 12px;
-            }
-            QLabel, QPushButton, QLineEdit, QListWidget, QGroupBox, QCheckBox, QComboBox, QSpinBox {
-                font-family: "Microsoft YaHei";
-                font-size: 12px;
-            }
-        """
-        )
+        # 使用独立的样式表覆盖继承的样式，此时已经由全局掌控
 
         # 创建主布局
         main_layout = QVBoxLayout()
@@ -342,7 +311,7 @@ class NewSettingsDialog(QDialog):
         self.check_update_button.clicked.connect(self.check_for_updates)
 
         # 连接设置相关信号
-        self.font_size_spinbox.valueChanged.connect(self.on_font_setting_changed)
+        self.font_size_slider.valueChanged.connect(self.on_font_setting_changed)
         self.font_family_combo.currentTextChanged.connect(self.on_font_setting_changed)
         self.transparency_slider.valueChanged.connect(self.on_transparency_changed)
 
@@ -365,74 +334,19 @@ class NewSettingsDialog(QDialog):
         search_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("输入股票代码或名称...")
-        self.search_input.setStyleSheet(
-            """
-            QLineEdit {
-                padding: 8px;
-                border: 1px solid #555555;
-                border-radius: 4px;
-                background-color: #3d3d3d;
-                color: white;
-                font-size: 14px;
-            }
-            QLineEdit:focus {
-                border-color: #0078d4;
-            }
-        """
-        )
+        self.search_input.setObjectName("SettingsSearchInput")
 
         left_layout.addWidget(search_label)
         left_layout.addWidget(self.search_input)
 
         # 搜索结果列表
         self.search_results = QListWidget()
-        self.search_results.setStyleSheet(
-            """
-            QListWidget {
-                background-color: #3d3d3d;
-                border: 1px solid #555555;
-                border-radius: 4px;
-                color: white;
-                font-size: 12px;
-                outline: 0;
-            }
-            QListWidget::item {
-                padding: 4px;
-                border-bottom: 1px solid #333333;
-            }
-            QListWidget::item:selected {
-                background-color: #0078d4;
-            }
-        """
-        )
+        self.search_results.setObjectName("SettingsSearchResults")
         left_layout.addWidget(self.search_results)
 
         # 添加按钮
         self.add_button = QPushButton("添加")
-        self.add_button.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #0078d4;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 6px 12px;
-                font-size: 14px;
-                min-width: 60px;
-                min-height: 20px;
-            }
-            QPushButton:hover {
-                background-color: #108de6;
-            }
-            QPushButton:pressed {
-                background-color: #005a9e;
-            }
-            QPushButton:disabled {
-                background-color: #555555;
-                color: #888888;
-            }
-        """
-        )
+        self.add_button.setObjectName("PrimaryButton")
         self.add_button.setEnabled(False)
 
         # 创建按钮布局
@@ -455,25 +369,7 @@ class NewSettingsDialog(QDialog):
 
         # 自选股列表
         self.watch_list = DraggableListWidget()
-        self.watch_list.setStyleSheet(
-            """
-            QListWidget {
-                background-color: #3d3d3d;
-                border: 1px solid #555555;
-                border-radius: 4px;
-                color: white;
-                font-size: 14px;
-                outline: 0;
-            }
-            QListWidget::item {
-                padding: 4px;
-                border-bottom: 1px solid #333333;
-            }
-            QListWidget::item:selected {
-                background-color: #0078d4;
-            }
-        """
-        )
+        self.watch_list.setObjectName("SettingsWatchList")
 
         # 启用拖拽排序
         self.watch_list.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
@@ -491,86 +387,16 @@ class NewSettingsDialog(QDialog):
         # 删除按钮
         self.remove_button = QPushButton("删除")
         self.remove_button.setObjectName("removeButton")
-        self.remove_button.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #dc3545;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 6px 12px;
-                font-size: 14px;
-                min-width: 60px;
-                min-height: 20px;
-            }
-            QPushButton:hover {
-                background-color: #c82333;
-            }
-            QPushButton:pressed {
-                background-color: #bd2130;
-            }
-            QPushButton:disabled {
-                background-color: #555555;
-                color: #888888;
-            }
-        """
-        )
         self.remove_button.setEnabled(False)
 
         # 上移按钮
         self.move_up_button = QPushButton("上移")
-        self.move_up_button.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #28a745;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 6px 12px;
-                font-size: 14px;
-                min-width: 60px;
-                min-height: 20px;
-            }
-            QPushButton:hover {
-                background-color: #218838;
-            }
-            QPushButton:pressed {
-                background-color: #1e7e34;
-            }
-            QPushButton:disabled {
-                background-color: #555555;
-                color: #888888;
-            }
-        """
-        )
+        self.move_up_button.setObjectName("move_up_button")
         self.move_up_button.setEnabled(False)
 
         # 下移按钮
         self.move_down_button = QPushButton("下移")
-        self.move_down_button.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #28a745;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 6px 12px;
-                font-size: 14px;
-                min-width: 60px;
-                min-height: 20px;
-            }
-            QPushButton:hover {
-                background-color: #218838;
-            }
-            QPushButton:pressed {
-                background-color: #1e7e34;
-            }
-            QPushButton:disabled {
-                background-color: #555555;
-                color: #888888;
-            }
-        """
-        )
+        self.move_down_button.setObjectName("move_down_button")
         self.move_down_button.setEnabled(False)
 
         action_layout.addWidget(self.remove_button)
@@ -599,20 +425,27 @@ class NewSettingsDialog(QDialog):
         # 字体大小设置
         font_layout = QHBoxLayout()
         font_layout.setSpacing(4)
-        self.font_size_spinbox = QSpinBox()
-        self.font_size_spinbox.setRange(10, 20)
-        self.font_size_spinbox.setValue(13)  # 默认13px
-        self.font_size_spinbox.setSuffix(" px")
-        self.font_size_spinbox.setFixedWidth(80)
+        self.font_size_slider = QSlider(Qt.Orientation.Horizontal)
+        self.font_size_slider.setRange(10, 40)
+        self.font_size_slider.setValue(13)  # 默认13px
+        self.font_size_slider.setMinimumWidth(100)
+        self.font_size_slider.setObjectName("FontSizeSlider")
+
+        self.font_size_value_label = QLabel("13px")
+        self.font_size_slider.valueChanged.connect(
+            lambda v: self.font_size_value_label.setText(f"{v}px")
+        )
+
         font_layout.addWidget(QLabel("字体大小:"))
-        font_layout.addWidget(self.font_size_spinbox)
+        font_layout.addWidget(self.font_size_slider)
+        font_layout.addWidget(self.font_size_value_label)
 
         # 字体设置
         font_family_layout = QHBoxLayout()
         font_family_layout.setSpacing(4)
         self.font_family_combo = QComboBox()
         self.font_family_combo.addItems(["微软雅黑", "宋体", "黑体", "楷体", "仿宋"])
-        self.font_family_combo.setFixedWidth(100)
+        self.font_family_combo.setMinimumWidth(100)
         font_family_layout.addWidget(QLabel("字体:"))
         font_family_layout.addWidget(self.font_family_combo)
 
@@ -622,30 +455,10 @@ class NewSettingsDialog(QDialog):
         self.transparency_slider = QSlider(Qt.Orientation.Horizontal)
         self.transparency_slider.setRange(0, 100)
         self.transparency_slider.setValue(80)
-        self.transparency_slider.setFixedWidth(130)  # 缩小宽度
+        self.transparency_slider.setMinimumWidth(100)
 
-        # 极简滑块样式
-        self.transparency_slider.setStyleSheet(
-            """
-            QSlider::groove:horizontal {
-                border: none;
-                height: 4px;
-                background: #3d3d3d;
-                border-radius: 2px;
-            }
-            QSlider::handle:horizontal {
-                background: #0078d4;
-                border: none;
-                width: 12px;
-                height: 12px;
-                margin: -4px 0;
-                border-radius: 6px;
-            }
-            QSlider::handle:horizontal:hover {
-                background: #1084d8;
-            }
-        """
-        )
+        # 极简滑块样式，部分基础样式移至main.qss，这里不再内联
+        self.transparency_slider.setObjectName("TransparencySlider")
 
         self.transparency_value_label = QLabel("80%")
         self.transparency_slider.valueChanged.connect(
@@ -664,25 +477,8 @@ class NewSettingsDialog(QDialog):
 
         # 添加恢复默认值按钮
         self.reset_display_button = QPushButton("恢复默认")
-        self.reset_display_button.setFixedWidth(80)
-        self.reset_display_button.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #555;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 4px 8px;
-                font-size: 12px;
-            }
-            QPushButton:hover {
-                background-color: #666;
-            }
-            QPushButton:pressed {
-                background-color: #444;
-            }
-        """
-        )
+        self.reset_display_button.setMinimumWidth(70)
+        self.reset_display_button.setObjectName("reset_display_button")
         self.reset_display_button.clicked.connect(self.reset_display_settings)
         display_row_layout.addWidget(self.reset_display_button)
 
@@ -710,7 +506,7 @@ class NewSettingsDialog(QDialog):
         # 刷新频率
         self.refresh_combo = QComboBox()
         self.refresh_combo.addItems(["1秒", "2秒", "5秒", "10秒", "30秒"])
-        self.refresh_combo.setFixedWidth(100)  # 缩小宽度
+        self.refresh_combo.setMinimumWidth(80)
         # 样式已在全局样式表中定义
 
         # 检查更新
@@ -939,7 +735,7 @@ class NewSettingsDialog(QDialog):
 
             # Font size
             fs = settings.get("font_size", 13)
-            self.font_size_spinbox.setValue(int(fs))
+            self.font_size_slider.setValue(int(fs))
 
             # Font family
             ff = settings.get("font_family", "微软雅黑")
@@ -969,7 +765,7 @@ class NewSettingsDialog(QDialog):
                 "user_stocks": stocks,
                 "auto_start": self.auto_start_checkbox.isChecked(),
                 "refresh_interval": ri,
-                "font_size": self.font_size_spinbox.value(),
+                "font_size": self.font_size_slider.value(),
                 "font_family": self.font_family_combo.currentText(),
                 "transparency": self.transparency_slider.value(),
             }
@@ -1348,7 +1144,7 @@ class NewSettingsDialog(QDialog):
 
         try:
             # 获取当前字体设置
-            font_size = self.font_size_spinbox.value()
+            font_size = self.font_size_slider.value()
             font_family = self.font_family_combo.currentText()
 
             # 保存待预览的值
@@ -1412,7 +1208,7 @@ class NewSettingsDialog(QDialog):
             app_logger.info("恢复显示设置为默认值")
 
             # 恢复默认值
-            self.font_size_spinbox.setValue(13)
+            self.font_size_slider.setValue(13)
             self.font_family_combo.setCurrentText("微软雅黑")
             self.transparency_slider.setValue(80)
 

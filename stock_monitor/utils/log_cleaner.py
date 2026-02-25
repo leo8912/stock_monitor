@@ -65,18 +65,33 @@ def schedule_log_cleanup(days_to_keep: int = 7, interval_hours: int = 24) -> Non
         days_to_keep: 保留天数，默认为7天
         interval_hours: 清理间隔小时数，默认为24小时
     """
-    import threading
-    import time
+    from PyQt6.QtCore import QTimer
 
-    def cleanup_job():
-        while True:
-            clean_old_logs(days_to_keep=days_to_keep)
-            time.sleep(interval_hours * 3600)  # 转换为秒
+    from stock_monitor.utils.logger import app_logger
 
-    # 在后台线程中运行清理任务
-    cleanup_thread = threading.Thread(target=cleanup_job, daemon=True)
-    cleanup_thread.start()
     app_logger.info(
-        f"已启动日志定期清理任务，保留 {days_to_keep} 天日志，每 {interval_hours} 小时清理一次"
+        f"准备启动日志定期清理任务，保留 {days_to_keep} 天日志，清理间隔 {interval_hours} 小时"
     )
-    app_logger.debug("日志清理线程已启动")
+
+    # 首次启动立即执行一次清理
+    try:
+        clean_old_logs(days_to_keep=days_to_keep)
+    except Exception as e:
+        app_logger.error(f"首次日志清理失败: {e}")
+
+    # 将 timer 绑定到函数本身以防止被垃圾回收
+    if getattr(schedule_log_cleanup, "_timer", None) is not None:
+        schedule_log_cleanup._timer.stop()
+
+    schedule_log_cleanup._timer = QTimer()
+
+    def on_timeout():
+        try:
+            clean_old_logs(days_to_keep=days_to_keep)
+        except Exception as e:
+            app_logger.error(f"定期日志清理失败: {e}")
+
+    schedule_log_cleanup._timer.timeout.connect(on_timeout)
+    # interval_hours * 小时 -> 毫秒
+    schedule_log_cleanup._timer.start(interval_hours * 3600 * 1000)
+    app_logger.debug("日志清理 QTimer 已启动")

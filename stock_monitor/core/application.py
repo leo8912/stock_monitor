@@ -85,6 +85,30 @@ class StockMonitorApp:
         # 设置全局默认字体
         app.setFont(QFont("Microsoft YaHei", 10))
 
+        # 应用全局样式表 (仅保留静态基础样式，动态部分移至 MainWindow)
+        try:
+            from stock_monitor.ui.styles import load_global_stylesheet
+
+            # 使用默认字体加载基础全局样式
+            qss = load_global_stylesheet("Microsoft YaHei", 10)
+            if qss:
+                # 移除其中关于字体的全局设定，防止影响 SettingsDialog
+                import re
+
+                # 仅替换最前面的通配符字体设置
+                qss = re.sub(
+                    r"\* \{(.*?)\}",
+                    r"/* Font settings moved to MainWindow */",
+                    qss,
+                    count=1,
+                    flags=re.DOTALL,
+                )
+
+                app.setStyleSheet(qss)
+                app_logger.info("已成功应用基础全局样式表")
+        except Exception as e:
+            app_logger.error(f"应用基础全局样式表失败: {e}")
+
         return app
 
     def _log_config_info(self):

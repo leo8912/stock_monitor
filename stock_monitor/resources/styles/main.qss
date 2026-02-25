@@ -1,0 +1,297 @@
+/* Base Application Style */
+* {
+    font-family: "{{FONT_FAMILY}}";
+    font-size: {{FONT_SIZE}}px;
+}
+
+/* QDialog */
+QDialog {
+    background-color: #1e1e1e;
+}
+
+/* Progress Dialog */
+QDialog#ModernProgressDialog {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2d2d2d, stop:1 #1e1e1e);
+    border-radius: 10px;
+}
+
+QProgressBar {
+    border: 2px solid #555;
+    border-radius: 8px;
+    text-align: center;
+    background-color: #3d3d3d;
+    color: white;
+    font-size: 12px;
+}
+
+QProgressBar::chunk {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0078d4, stop:1 #00a8ff);
+    border-radius: 6px;
+}
+
+/* Base text */
+QLabel, QCheckBox, QRadioButton, QGroupBox {
+    color: #ffffff;
+}
+
+/* Inputs and Lists */
+QLineEdit, QTextEdit, QComboBox, QSpinBox {
+    padding: 8px;
+    border: 1px solid #555555;
+    border-radius: 4px;
+    background-color: #3d3d3d;
+    color: white;
+}
+
+QLineEdit:focus, QTextEdit:focus, QComboBox:focus, QSpinBox:focus {
+    border-color: #0078d4;
+}
+
+QListWidget {
+    background-color: #3d3d3d;
+    border: 1px solid #555555;
+    border-radius: 4px;
+    color: white;
+    outline: 0;
+    padding: 5px;
+}
+
+QListWidget::item {
+    padding: 6px;
+    border-radius: 3px;
+    border-bottom: 1px solid #333333;
+}
+
+QListWidget::item:hover {
+    background-color: #4d4d4d;
+}
+
+QListWidget::item:selected {
+    background-color: #0078d4;
+}
+
+/* Base Buttons */
+QPushButton {
+    background-color: #0078d4;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 12px;
+    min-width: 60px;
+    min-height: 20px;
+    font-weight: bold;
+}
+
+QPushButton:hover {
+    background-color: #108de6;
+}
+
+QPushButton:pressed {
+    background-color: #005a9e;
+}
+
+QPushButton:disabled {
+    background-color: #555555;
+    color: #888888;
+}
+
+/* ========== 按钮色彩层次 ========== */
+
+/* Primary：仅用于"确定"等核心提交按钮（继承上方默认蓝色） */
+
+/* Secondary：列表微操作（上移/下移/删除）— 低调深灰 */
+QPushButton#move_up_button, QPushButton#move_down_button {
+    background-color: #4a4a4a;
+    font-weight: normal;
+}
+
+QPushButton#move_up_button:hover, QPushButton#move_down_button:hover {
+    background-color: #5a5a5a;
+}
+
+QPushButton#move_up_button:pressed, QPushButton#move_down_button:pressed {
+    background-color: #3a3a3a;
+}
+
+/* Danger：删除按钮 — 柔和的暗红 */
+QPushButton#DangerButton, QPushButton#removeButton {
+    background-color: #6b3040;
+    font-weight: normal;
+}
+
+QPushButton#DangerButton:hover, QPushButton#removeButton:hover {
+    background-color: #8b3a4a;
+}
+
+QPushButton#DangerButton:pressed, QPushButton#removeButton:pressed {
+    background-color: #5a2535;
+}
+
+/* Ghost：取消、恢复默认 — 透明背景 + 边框 */
+QPushButton#CancelButton, QPushButton#cancelButton, QPushButton#reset_display_button {
+    background-color: transparent;
+    border: 1px solid #666;
+    font-weight: normal;
+}
+
+QPushButton#CancelButton:hover, QPushButton#cancelButton:hover, QPushButton#reset_display_button:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+    border-color: #888;
+}
+
+QPushButton#CancelButton:pressed, QPushButton#cancelButton:pressed, QPushButton#reset_display_button:pressed {
+    background-color: rgba(255, 255, 255, 0.04);
+    border-color: #555;
+}
+
+/* Outline：检查更新 — 线框次要按钮 */
+QPushButton#checkUpdateButton {
+    background-color: transparent;
+    border: 1px solid #0078d4;
+    color: #5ba8e6;
+    font-weight: normal;
+}
+
+QPushButton#checkUpdateButton:hover {
+    background-color: rgba(0, 120, 212, 0.15);
+}
+
+QPushButton#checkUpdateButton:pressed {
+    background-color: rgba(0, 120, 212, 0.25);
+}
+
+/* Success：保留给未来的积极操作 */
+QPushButton#SuccessButton {
+    background-color: #28a745;
+}
+
+QPushButton#SuccessButton:hover {
+    background-color: #218838;
+}
+
+QPushButton#SuccessButton:pressed {
+    background-color: #1e7e34;
+}
+
+/* QSlider for Transparency */
+QSlider::groove:horizontal {
+    border: none;
+    height: 4px;
+    background: #3d3d3d;
+    border-radius: 2px;
+}
+
+QSlider::handle:horizontal {
+    background: #0078d4;
+    border: none;
+    width: 12px;
+    height: 12px;
+    margin: -4px 0;
+    border-radius: 6px;
+}
+
+QSlider::handle:horizontal:hover {
+    background: #1084d8;
+}
+
+/* Table */
+QTableView {
+    background: transparent;
+    border: none;
+    outline: none;
+    gridline-color: #aaa;
+    selection-background-color: transparent;
+    selection-color: #fff;
+    font-weight: bold;
+    color: #fff;
+}
+
+QTableView::item {
+    border: none;
+    padding: 0px;
+    background: transparent;
+    outline: none;
+}
+
+QTableView::item:focus {
+    border: none;
+    outline: none;
+    background: transparent;
+}
+
+QTableView::item:selected {
+    background: transparent;
+    color: #fff;
+    border: none;
+    outline: none;
+}
+
+QHeaderView::section {
+    background: transparent;
+    border: none;
+    color: transparent;
+}
+
+QScrollBar {
+    background: transparent;
+    width: 0px;
+    height: 0px;
+}
+
+QScrollBar::handle {
+    background: transparent;
+}
+
+QScrollBar::add-line, QScrollBar::sub-line {
+    background: transparent;
+    border: none;
+}
+
+/* Menus */
+QMenu {
+    background-color: #2d2d2d;
+    color: white;
+    border: 1px solid #555555;
+    border-radius: 4px;
+    padding: 2px 0;
+    min-width: 100px;
+}
+
+QMenu::item {
+    padding: 4px 16px;
+    border-radius: 4px;
+    min-width: 30px;
+    border: none;
+}
+
+QMenu::item:selected {
+    background-color: #444444;
+}
+
+QMenu::separator {
+    height: 1px;
+    background: #555555;
+    margin: 2px 0;
+}
+
+/* Specific Context Menu via ObjectName */
+QMenu#AppContextMenu {
+    min-width: 0px;
+}
+
+QMenu#AppContextMenu::item {
+    padding: 2px 6px;
+    min-width: 30px;
+}
+
+QMenu#AppContextMenu::item:selected {
+    background-color: #0078d4;
+}
+
+/* Loading Label */
+QLabel#LoadingLabel {
+    color: #fff;
+    background: rgba(30, 30, 30, 0.8);
+    border-radius: 10px;
+    padding: 10px;
+}

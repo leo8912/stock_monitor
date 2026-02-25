@@ -22,72 +22,17 @@ class AppContextMenu(QtWidgets.QMenu):
 
     def setup_style(self):
         """设置菜单样式"""
-        self.setStyleSheet(
-            """
-            QMenu {
-                background-color: #2d2d2d;
-                color: white;
-                border: 1px solid #555555;
-                border-radius: 4px;
-                font-family: 'Microsoft YaHei';
-                font-size: 11px;
-                padding: 2px 0;
-                min-width: 0px;
-            }
-            QMenu::item {
-                padding: 2px 6px;  /* 进一步减小菜单项左右内边距 */
-                border-radius: 4px;
-                min-width: 30px;  /* 进一步减小最小宽度 */
-            }
-            QMenu::item:selected {
-                background-color: #0078d4;
-            }
-            QMenu::separator {
-                height: 1px;
-                background: #555555;
-                margin: 2px 0;
-            }
-        """
-        )
+        self.setObjectName("AppContextMenu")
 
     def update_font_family(self, font_family):
         """
-        更新菜单字体族，但保持尺寸样式
-
-        Args:
-            font_family (str): 新的字体族
+        更新菜单字体族，不再在组件级别执行，依赖 QApplication
         """
-        self.setStyleSheet(
-            f"""
-            QMenu {{
-                background-color: #2d2d2d;
-                color: white;
-                border: 1px solid #555555;
-                border-radius: 4px;
-                font-family: '{font_family}';
-                font-size: 11px;
-                padding: 2px 0;
-                min-width: 0px;
-            }}
-            QMenu::item {{
-                padding: 2px 6px;
-                border-radius: 4px;
-                min-width: 30px;
-            }}
-            QMenu::item:selected {{
-                background-color: #0078d4;
-            }}
-            QMenu::separator {{
-                height: 1px;
-                background: #555555;
-                margin: 2px 0;
-            }}
-        """
-        )
+        pass
 
     def restore_default_style(self):
         """恢复默认样式"""
-        self.setStyleSheet(self._default_style)
+        pass
 
 
 # 示例用法和测试代码
