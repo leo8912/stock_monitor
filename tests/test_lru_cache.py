@@ -14,7 +14,7 @@ class TestLRUCacheMechanism(unittest.TestCase):
         """测试前准备"""
         self.stock_manager = StockManager()
         # 清空缓存，确保每次测试都是干净的状态
-        self.stock_manager._process_single_stock_data_cached.cache_clear()
+        self.stock_manager._process_single_stock_data.cache_clear()
 
     def test_same_stock_data_request_should_hit_cache(self):
         """测试相同股票数据请求是否命中缓存"""
@@ -24,25 +24,21 @@ class TestLRUCacheMechanism(unittest.TestCase):
         info_json = json.dumps(info, sort_keys=True)
 
         # 第一次调用
-        result1 = self.stock_manager._process_single_stock_data_cached(code, info_json)
+        result1 = self.stock_manager._process_single_stock_data(code, info_json)
 
         # 检查缓存信息
-        cache_info_before = (
-            self.stock_manager._process_single_stock_data_cached.cache_info()
-        )
+        cache_info_before = self.stock_manager._process_single_stock_data.cache_info()
         hits_before = cache_info_before.hits
         misses_before = cache_info_before.misses
 
         # 第二次调用相同的参数
-        result2 = self.stock_manager._process_single_stock_data_cached(code, info_json)
+        result2 = self.stock_manager._process_single_stock_data(code, info_json)
 
         # 验证结果相同
         self.assertEqual(result1, result2)
 
         # 验证缓存命中
-        cache_info_after = (
-            self.stock_manager._process_single_stock_data_cached.cache_info()
-        )
+        cache_info_after = self.stock_manager._process_single_stock_data.cache_info()
         self.assertEqual(cache_info_after.hits, hits_before + 1)
         self.assertEqual(cache_info_after.misses, misses_before)
 
@@ -58,18 +54,14 @@ class TestLRUCacheMechanism(unittest.TestCase):
         info_json2 = json.dumps(info2, sort_keys=True)
 
         # 分别调用
-        result1 = self.stock_manager._process_single_stock_data_cached(
-            code1, info_json1
-        )
-        result2 = self.stock_manager._process_single_stock_data_cached(
-            code2, info_json2
-        )
+        result1 = self.stock_manager._process_single_stock_data(code1, info_json1)
+        result2 = self.stock_manager._process_single_stock_data(code2, info_json2)
 
         # 验证结果不同
         self.assertNotEqual(result1, result2)
 
         # 验证缓存未命中（两次都是miss）
-        cache_info = self.stock_manager._process_single_stock_data_cached.cache_info()
+        cache_info = self.stock_manager._process_single_stock_data.cache_info()
         self.assertEqual(cache_info.misses, 2)
         self.assertEqual(cache_info.hits, 0)
 
@@ -85,9 +77,9 @@ class TestLRUCacheMechanism(unittest.TestCase):
             code = f"stock{i}"
             info = {"name": f"股票{i}", "now": i, "close": i - 0.1}
             info_json = json.dumps(info, sort_keys=True)
-            self.stock_manager._process_single_stock_data_cached(code, info_json)
+            self.stock_manager._process_single_stock_data(code, info_json)
 
-        cache_info = self.stock_manager._process_single_stock_data_cached.cache_info()
+        cache_info = self.stock_manager._process_single_stock_data.cache_info()
 
         # 验证缓存条目数不超过限制
         self.assertLessEqual(cache_info.currsize, maxsize)
@@ -96,12 +88,12 @@ class TestLRUCacheMechanism(unittest.TestCase):
     def test_edge_cases_empty_data(self):
         """测试极端情况（如空数据）下的表现"""
         # 空字符串JSON
-        result = self.stock_manager._process_single_stock_data_cached("empty", "{}")
+        result = self.stock_manager._process_single_stock_data("empty", "{}")
         self.assertIsInstance(result, tuple)
         self.assertEqual(len(result), 6)  # 应该返回6个元素的元组
 
         # 无效JSON
-        result = self.stock_manager._process_single_stock_data_cached(
+        result = self.stock_manager._process_single_stock_data(
             "invalid", "invalid json"
         )
         self.assertIsInstance(result, tuple)
@@ -113,7 +105,7 @@ class TestLRUCacheMechanism(unittest.TestCase):
         info = {"name": "测试", "now": None, "close": None}
         info_json = json.dumps(info, sort_keys=True)
 
-        result = self.stock_manager._process_single_stock_data_cached(code, info_json)
+        result = self.stock_manager._process_single_stock_data(code, info_json)
         self.assertIsInstance(result, tuple)
         self.assertEqual(len(result), 6)  # 应该返回6个元素的元组
         # 验证返回的是默认值（"--"）
@@ -144,9 +136,7 @@ class TestLRUCacheMechanism(unittest.TestCase):
             self.assertEqual(result[1][0], "招商银行")
 
             # 验证缓存被调用
-            cache_info = (
-                self.stock_manager._process_single_stock_data_cached.cache_info()
-            )
+            cache_info = self.stock_manager._process_single_stock_data.cache_info()
             self.assertEqual(cache_info.misses, 2)  # 两次新的缓存访问
 
             # 再次调用同样的数据
@@ -158,9 +148,7 @@ class TestLRUCacheMechanism(unittest.TestCase):
             result2 = self.stock_manager.get_stock_list_data(stock_codes)
 
             # 验证缓存命中
-            cache_info2 = (
-                self.stock_manager._process_single_stock_data_cached.cache_info()
-            )
+            cache_info2 = self.stock_manager._process_single_stock_data.cache_info()
             # Expect hits to increase by 2 (for 2 items)
             self.assertEqual(cache_info2.hits, cache_info.hits + 2)
 

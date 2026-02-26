@@ -36,13 +36,13 @@ class ModernProgressDialog(QDialog):
 
         # 标题
         title = QLabel("🚀 正在更新应用")
-        title.setStyleSheet("font-size: 18px; font-weight: bold;")
+        title.setObjectName("UpdateProgressTitle")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
 
         # 状态标签
         self.status_label = QLabel("正在下载更新包...")
-        self.status_label.setStyleSheet("font-size: 14px; color: #aaa;")
+        self.status_label.setObjectName("UpdateProgressStatus")
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.status_label)
 
@@ -53,7 +53,7 @@ class ModernProgressDialog(QDialog):
 
         # 详细信息
         self.detail_label = QLabel("")
-        self.detail_label.setStyleSheet("font-size: 12px; color: #666;")
+        self.detail_label.setObjectName("UpdateProgressDetail")
         self.detail_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.detail_label)
 
@@ -89,14 +89,14 @@ class UpdateNotificationDialog(QDialog):
         # 图标和标题
         header_layout = QHBoxLayout()
         icon_label = QLabel("🎉")
-        icon_label.setStyleSheet("font-size: 48px;")
+        icon_label.setObjectName("UpdateIcon")
         header_layout.addWidget(icon_label)
 
         title_layout = QVBoxLayout()
         title = QLabel(f"发现新版本 v{version_info.get('version', 'Unknown')}")
-        title.setStyleSheet("font-size: 20px; font-weight: bold;")
+        title.setObjectName("UpdateNewTitle")
         subtitle = QLabel(f"当前版本: v{current_version}")
-        subtitle.setStyleSheet("font-size: 12px; color: #888;")
+        subtitle.setObjectName("UpdateSubtitle")
         title_layout.addWidget(title)
         title_layout.addWidget(subtitle)
         header_layout.addLayout(title_layout)
@@ -106,7 +106,7 @@ class UpdateNotificationDialog(QDialog):
 
         # 更新日志标签
         changelog_label = QLabel("更新内容：")
-        changelog_label.setStyleSheet("font-size: 14px; font-weight: bold;")
+        changelog_label.setObjectName("UpdateChangelogLabel")
         layout.addWidget(changelog_label)
 
         # 更新日志 - 使用固定高度并允许滚动

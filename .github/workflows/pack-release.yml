@@ -24,6 +24,14 @@ jobs:
         python-version: '3.11'
         cache: 'pip' # 启用 pip 缓存
 
+    - name: 缓存 PyInstaller # Cache PyInstaller builds
+      uses: actions/cache@v4
+      with:
+        path: ~\AppData\Roaming\pyinstaller
+        key: ${{ runner.os }}-pyinstaller-${{ hashFiles('**/requirements.txt', '**/requirements-dev.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pyinstaller-
+
     - name: 安装依赖项 # Install dependencies
       run: |
         python -m pip install --upgrade pip

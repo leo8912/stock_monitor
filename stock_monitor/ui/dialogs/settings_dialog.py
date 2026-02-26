@@ -562,13 +562,59 @@ class NewSettingsDialog(QDialog):
     def check_for_updates(self):
         """检查更新"""
         try:
-            from PyQt6.QtCore import Qt
-            from PyQt6.QtWidgets import QApplication, QMessageBox, QProgressDialog
+            from PyQt6.QtCore import QThread, pyqtSignal
 
             from stock_monitor.core.updater import app_updater
 
-            # 使用统一的更新流程
-            result = app_updater.check_for_updates()
+            self.check_update_button.setEnabled(False)
+            self.check_update_button.setText("检查中...")
+
+            # 内部类检查线程
+            class UpdateCheckThread(QThread):
+                finished_check = pyqtSignal(object)
+                error_occurred = pyqtSignal(str)
+
+                def run(self):
+                    try:
+                        result = app_updater.check_for_updates()
+                        self.finished_check.emit(result)
+                    except Exception as e:
+                        self.error_occurred.emit(str(e))
+
+            self._update_thread = UpdateCheckThread(self)
+            self._update_thread.finished_check.connect(self._on_update_check_result)
+            self._update_thread.error_occurred.connect(
+                lambda e: self._on_update_check_result(None, error_msg=e)
+            )
+            self._update_thread.finished.connect(self._update_thread.deleteLater)
+            self._update_thread.start()
+
+        except Exception as e:
+            from stock_monitor.utils.logger import app_logger
+
+            app_logger.error(f"启动自动更新检查失败: {e}")
+            self._on_update_check_result(None, error_msg=str(e))
+
+    def _on_update_check_result(self, result, error_msg=None):
+        """处理更新检查结果"""
+        self.check_update_button.setEnabled(True)
+        self.check_update_button.setText("检查更新")
+
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtWidgets import QApplication, QMessageBox, QProgressDialog
+
+        from stock_monitor.core.updater import app_updater
+
+        if error_msg:
+            QMessageBox.critical(
+                self,
+                "检查更新失败",
+                f"检查更新失败：{error_msg}",
+                QMessageBox.StandardButton.Ok,
+            )
+            return
+
+        try:
             if result is True:
                 # 有新版本，显示提示框
                 latest_version = (
@@ -652,9 +698,6 @@ class NewSettingsDialog(QDialog):
                                 QMessageBox.StandardButton.Ok,
                             )
             elif result is False:
-                # 确认没有新版本
-                from PyQt6.QtWidgets import QMessageBox
-
                 QMessageBox.information(
                     self,
                     "无更新",
@@ -662,9 +705,6 @@ class NewSettingsDialog(QDialog):
                     QMessageBox.StandardButton.Ok,
                 )
             else:
-                # 网络错误或其他问题
-                from PyQt6.QtWidgets import QMessageBox
-
                 QMessageBox.critical(
                     self,
                     "检查更新失败",
@@ -674,7 +714,7 @@ class NewSettingsDialog(QDialog):
         except Exception as e:
             from stock_monitor.utils.logger import app_logger
 
-            app_logger.error(f"检查更新失败: {e}")
+            app_logger.error(f"处理更新结果失败: {e}")
 
     def _on_search_results_updated(self, results):
         """Update search results from ViewModel"""

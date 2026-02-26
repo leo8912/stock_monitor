@@ -125,7 +125,7 @@ def test_market_snapshot_detail():
                         name = info.get("name", "")
                         print(f"  {code}: {name} (+{changepercent}%)")
                         count += 1
-                except:
+                except Exception:
                     pass
 
         # 查找跌停股票
@@ -139,7 +139,7 @@ def test_market_snapshot_detail():
                         name = info.get("name", "")
                         print(f"  {code}: {name} ({changepercent}%)")
                         count += 1
-                except:
+                except Exception:
                     pass
 
         # 保存完整数据到文件（前10只）
@@ -165,6 +165,16 @@ def test_market_snapshot_detail():
         import traceback
 
         traceback.print_exc()
+
+    finally:
+        # Cleanup the connection pool to prevent Windows socket leaks across tests
+        if "quotation" in locals() and hasattr(quotation, "_session"):
+            quotation._session.close()
+        elif "quotation" in locals():
+            import gc
+
+            del quotation
+            gc.collect()
 
 
 if __name__ == "__main__":

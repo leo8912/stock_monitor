@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stock_monitor"
-version = "2.9.9"
+version = "2.10.0"
 description = "A real-time stock monitoring application for A-shares"
 authors = [
     {name = "Stock Monitor Team"}
@@ -64,6 +64,7 @@ profile = "black"
 multi_line_output = 3
 
 [tool.pytest.ini_options]
+qt_api = "pyqt6"
 pythonpath = ["."]
 testpaths = ["tests"]
 addopts = "-v --tb=short"

@@ -23,18 +23,22 @@ def test_main_window_init(qtbot, monkeypatch):
 
     # 替换 ViewModel 中的 Workers
     import stock_monitor.ui.view_models.main_window_view_model
-    
+
     monkeypatch.setattr(
-        stock_monitor.ui.view_models.main_window_view_model, "RefreshWorker", lambda: mock_worker
+        stock_monitor.ui.view_models.main_window_view_model,
+        "RefreshWorker",
+        lambda: mock_worker,
     )
-    
+
     # Mock MarketStatsWorker as well
     mock_market_worker = MagicMock()
     mock_market_worker.stats_updated.connect = MagicMock()
     mock_market_worker.start_worker = MagicMock()
-    
+
     monkeypatch.setattr(
-        stock_monitor.ui.view_models.main_window_view_model, "MarketStatsWorker", lambda: mock_market_worker
+        stock_monitor.ui.view_models.main_window_view_model,
+        "MarketStatsWorker",
+        lambda: mock_market_worker,
     )
 
     # 初始化主窗口

@@ -35,11 +35,26 @@ class MainWindowViewModel(QObject):
         self._market_stats_worker = MarketStatsWorker()
 
         # Connect Worker Signals
-        self._refresh_worker.data_updated.connect(self.stock_data_updated.emit)
+        self._refresh_worker.data_updated.connect(self._on_data_updated)
         self._refresh_worker.refresh_error.connect(self.refresh_error_occurred.emit)
         self._market_stats_worker.stats_updated.connect(self.market_stats_updated.emit)
 
         self._stocks = []
+        self._latest_stock_data = []
+
+    def _on_data_updated(self, stocks, all_failed):
+        """Intercept local data updates to cache the latest data"""
+        if not all_failed:
+            self._latest_stock_data = stocks
+        self.stock_data_updated.emit(stocks, all_failed)
+
+    def get_latest_stock_data(self) -> list:
+        """Get the most recently fetched/cached stock data"""
+        return self._latest_stock_data
+
+    def set_latest_stock_data(self, data: list):
+        """Manually set the latest stock data, e.g. from session cache"""
+        self._latest_stock_data = data
 
     def load_stock_data(self):
         """Load stock data from database"""
@@ -145,3 +160,35 @@ class MainWindowViewModel(QObject):
             save_session_cache(session_data)
         except Exception as e:
             app_logger.warning(f"Failed to save session cache: {e}")
+
+    def check_and_update_database(self):
+        """检查并更新数据库（异步）"""
+        try:
+            import time
+
+            from PyQt6.QtCore import QThreadPool
+
+            from stock_monitor.data.market.db_updater import update_stock_database
+            from stock_monitor.utils.worker import WorkerRunnable
+
+            last_update = self._config_manager.get("last_db_update", 0)
+            current_time = time.time()
+
+            should_update = False
+            if current_time - last_update > 86400 or last_update == 0:
+                should_update = True
+            elif self.is_database_empty():
+                app_logger.warning("检测到股票数据库为空，强制启动更新")
+                should_update = True
+
+            if should_update:
+                worker = WorkerRunnable(update_stock_database)
+                QThreadPool.globalInstance().start(worker)
+                app_logger.info("启动时数据库更新已启动")
+
+                # 假设更新成功并不在这里记录，由 db_updater 自己控制，
+                # 但旧代码是在这里或者_update_database_if_needed里写 set()，
+                # 我们这里简单的标记一下请求更新的时间
+                self._config_manager.set("last_db_update", current_time)
+        except Exception as e:
+            app_logger.error(f"启动时数据库更新检查失败: {e}")

@@ -1,5 +1,4 @@
 import os
-import time
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 from PyQt6.QtCore import (
@@ -22,7 +21,6 @@ from stock_monitor.ui.widgets.market_status import MarketStatusBar
 from stock_monitor.utils.helpers import resource_path
 from stock_monitor.utils.log_cleaner import schedule_log_cleanup
 from stock_monitor.utils.logger import app_logger
-from stock_monitor.utils.stock_utils import StockCodeProcessor
 
 # 定义常量
 ICON_FILE = resource_path("icon.ico")
@@ -31,7 +29,7 @@ MAX_BACKGROUND_ALPHA = 255  # 透明度100时的alpha值(完全不透明)
 ALPHA_RANGE = MAX_BACKGROUND_ALPHA - MIN_BACKGROUND_ALPHA
 
 
-class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
+class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
     """
     主窗口类
     负责显示股票行情、处理用户交互和管理应用状态
@@ -73,7 +71,7 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
             # 1. 保存会话缓存 (包含位置和数据)
             try:
                 self.viewModel.save_session(
-                    [self.x(), self.y()], self._get_current_stock_data()
+                    [self.x(), self.y()], self.viewModel.get_latest_stock_data()
                 )
             except Exception as e:
                 app_logger.warning(f"保存会话缓存失败: {e}")
@@ -206,7 +204,8 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
         # 延迟一点时间再更新数据库，避免与市场状态更新冲突
         timer = QtCore.QTimer(self)
         timer.setSingleShot(True)
-        timer.timeout.connect(self._update_database_on_startup)
+        timer.timeout.connect(self.viewModel.check_and_update_database)
+        timer.start(2000)
 
         # 不再在这里显示窗口，而是在_try_load_session_cache或_on_refresh_update中显示
         # 为自身和子控件安装事件过滤器
@@ -308,6 +307,7 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
                 # 显示缓存的股票数据
                 stock_data = cached_session.get("stock_data")
                 if stock_data:
+                    self.viewModel.set_latest_stock_data(stock_data)
                     self.update_table_signal.emit(stock_data)
 
                 # 显示窗口和所有组件
@@ -372,58 +372,6 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
             self.settings_dialog.config_changed.connect(self.on_config_changed)
         self.settings_dialog.show()
 
-    # Method removed, merged into line 69
-
-    def _get_current_stock_data(self):
-        """获取当前显示的股票数据"""
-        try:
-            # 从表格中获取当前显示的数据
-            if hasattr(self, "table") and self.table:
-                # 获取表格的行数
-                row_count = self.table.rowCount()
-                stock_data = []
-
-                # 遍历每一行，提取股票数据
-                for row in range(row_count):
-                    stock_item = []
-                    # 遍历每一列
-                    for col in range(self.table.columnCount()):
-                        # 使用新的兼容性方法
-                        text = self.table.get_data_at(row, col)
-                        stock_item.append(text)
-
-                    # 确保数据格式正确（6个字段）
-                    while len(stock_item) < 6:
-                        stock_item.append("")
-
-                    # 处理股票名称（第1列），去除前后空格
-                    if len(stock_item) >= 1:
-                        name_str = stock_item[0].strip()  # 去除前后空格
-                        stock_item[0] = name_str
-
-                    # 处理涨跌幅数据（第3列），去除%符号和空格
-                    if len(stock_item) >= 3:
-                        change_str = stock_item[2].strip()  # 去除前后空格
-                        if change_str.endswith("%"):
-                            change_str = change_str[:-1]  # 去除%符号
-                        stock_item[2] = change_str.strip()  # 再次去除可能的空格
-
-                    # 添加颜色信息（第4列）- 从前台颜色获取
-                    if len(stock_item) >= 4:
-                        # 获取单元格的前台颜色（文字颜色）
-                        fg_color = self.table.get_foreground_color_at(row, 0)
-                        if fg_color:
-                            stock_item[3] = fg_color
-
-                    stock_data.append(stock_item)
-
-                return stock_data
-
-            return []
-        except Exception as e:
-            app_logger.warning(f"获取当前股票数据失败: {e}")
-            return []
-
     def on_config_changed(self, stocks, refresh_interval):
         """当配置更改时的处理函数"""
         app_logger.info(
@@ -484,12 +432,6 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
         except Exception as e:
             app_logger.error(f"更新主窗口字体大小失败: {e}")
 
-    def process_stock_data(self, data, stocks_list):
-        """处理股票数据"""
-        from stock_monitor.core.stock_service import stock_data_service
-
-        return stock_data_service.process_stock_data(data, stocks_list)
-
     def refresh_now(self, stocks_list=None):
         """立即刷新数据"""
         if stocks_list is None:
@@ -540,66 +482,12 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
         painter.setPen(QtCore.Qt.PenStyle.NoPen)  # type: ignore
         painter.drawRect(rect)
 
-    def _update_database_on_startup(self):
-        """启动时更新数据库"""
-        try:
-            config_manager = self._container.get(ConfigManager)
-            last_update = config_manager.get("last_db_update", 0)
-            current_time = time.time()
-
-            if current_time - last_update > 86400 or last_update == 0:
-                should_update = True
-            else:
-                # 检查数据库是否为空（应对路径变更情况）
-                if self.viewModel.is_database_empty():
-                    app_logger.warning("检测到股票数据库为空，强制启动更新")
-                    should_update = True
-                else:
-                    should_update = False
-
-            if should_update:
-                self._update_database_async()
-                # 不在这里保存时间戳，等更新完成后再保存
-                app_logger.info("启动时数据库更新已启动")
-        except Exception as e:
-            app_logger.error(f"启动时数据库更新检查失败: {e}")
-
-    def _update_database_async(self):
-        """异步更新数据库"""
-        try:
-            from PyQt6.QtCore import QThreadPool
-
-            from stock_monitor.data.market.db_updater import update_stock_database
-            from stock_monitor.utils.worker import WorkerRunnable
-
-            worker = WorkerRunnable(update_stock_database)
-            QThreadPool.globalInstance().start(worker)
-        except Exception as e:
-            app_logger.error(f"异步更新数据库时出错: {e}")
-
-    def load_user_stocks(self):
-        """加载用户自选股列表"""
-        return self.viewModel.load_user_stocks()
-
-    def _format_stock_code(self, code):
-        """格式化股票代码"""
-        processor = StockCodeProcessor()
-        return processor.format_stock_code(code)
-
-    def load_theme_config(self):
-        """加载主题配置"""
-        import json
-
-        try:
-            with open(resource_path("theme_config.json"), encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return {}
-
     def adjust_window_height(self):
         """根据内容调整窗口高度和宽度"""
         if self.table.rowCount() == 0:
             return  # 无数据时不调整，避免窗口高度异常
+
+        from PyQt6 import QtWidgets
 
         QtWidgets.QApplication.processEvents()
         vh = self.table.verticalHeader()
@@ -624,17 +512,25 @@ class MainWindow(DraggableWindowMixin, QtWidgets.QWidget):
         self.layout().update()
         self.updateGeometry()
 
-    def _update_database_if_needed(self):
-        """根据更新时间判断是否需要更新数据库"""
+    def load_theme_config(self):
+        """加载主题配置"""
+        import json
+
+        from stock_monitor.utils.helpers import resource_path
+
         try:
-            from stock_monitor.utils.helpers import get_config_manager
+            with open(resource_path("theme_config.json"), encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
 
-            config_manager = get_config_manager()
-            last_update = config_manager.get("last_db_update", 0)
-            current_time = time.time()
+    def _format_stock_code(self, code):
+        """格式化股票代码"""
+        from stock_monitor.utils.stock_utils import StockCodeProcessor
 
-            if current_time - last_update > 86400:
-                self._update_database_async()
-                config_manager.set("last_db_update", current_time)
-        except Exception as e:
-            app_logger.error(f"数据库更新检查失败: {e}")
+        processor = StockCodeProcessor()
+        return processor.format_stock_code(code)
+
+    def load_user_stocks(self):
+        """加载用户自选股列表"""
+        return self.viewModel.load_user_stocks()

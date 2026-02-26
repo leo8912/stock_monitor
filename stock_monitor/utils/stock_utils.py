@@ -69,7 +69,7 @@ class StockCodeProcessor:
 
         # 其他情况返回原始代码
         return code
-        
+
     @classmethod
     def clean_code(cls, stock_code: str) -> str:
         """

@@ -30,7 +30,7 @@ class TestRefreshWorker:
         pass
 
     @patch("stock_monitor.core.stock_manager.stock_manager")
-    @patch("stock_monitor.core.workers.refresh_worker.is_market_open")
+    @patch("stock_monitor.core.workers.refresh_worker.MarketManager.is_market_open")
     def test_worker_cycle(self, mock_is_market_open, mock_stock_manager):
         """测试工作线程的一个周期"""
         # 模拟市场开放
@@ -50,15 +50,15 @@ class TestRefreshWorker:
             True  # Avoid short-circuit to test dependency call
         )
 
-        # 使用 SideEffect 在循环第一次执行后停止线程，防止无限循环
+        # 使用 SideEffect 在循环第一次执行休眠时停止线程防止无限循环
         def stop_worker(*args, **kwargs):
             worker._is_running = False
             return
 
-        # Mock sleep/msleep 来中断循环
-        with patch.object(worker, "sleep", side_effect=stop_worker), patch.object(
+        # Mock sleep/msleep/smart_sleep 来中断循环
+        with patch.object(worker, "sleep", return_value=None), patch.object(
             worker, "msleep", return_value=None
-        ):
+        ), patch.object(worker, "_smart_sleep", side_effect=stop_worker):
             worker.run()
 
             # 验证调用

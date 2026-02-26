@@ -98,7 +98,7 @@ def benchmark_cache_performance(
     start_time = time.time()
     for _ in range(iterations):
         for code in stock_codes:
-            stock_manager._process_single_stock_data_cached(code, test_data[code])
+            stock_manager._process_single_stock_data(code, test_data[code])
     end_time = time.time()
 
     cache_hit_time = end_time - start_time
@@ -116,7 +116,7 @@ def benchmark_cache_performance(
                 },
                 sort_keys=True,
             )
-            stock_manager._process_single_stock_data_cached(code, modified_data)
+            stock_manager._process_single_stock_data(code, modified_data)
     end_time = time.time()
 
     cache_miss_time = end_time - start_time

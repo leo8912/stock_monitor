@@ -3,6 +3,7 @@
 负责从各种数据源获取原始股票数据
 """
 
+import concurrent.futures
 import time
 from typing import Any, Optional
 
@@ -27,6 +28,7 @@ class StockDataFetcher:
 
     def __init__(self):
         """初始化数据获取器"""
+        self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
         self.sina_quotation = safe_call(
             self._init_sina_quotation,
             default_return=None,
@@ -178,13 +180,19 @@ class StockDataFetcher:
             else:
                 sina_codes.append(code)
 
-        # 批量获取A股数据(包括指数)
+        # 并发获取A股和港股数据
+        futures = []
         if sina_codes:
-            self._fetch_sina_stocks(result, sina_codes)
-
-        # 批量获取港股数据
+            futures.append(
+                self._executor.submit(self._fetch_sina_stocks, result, sina_codes)
+            )
         if hk_codes:
-            self._fetch_hk_stocks(result, hk_codes)
+            futures.append(
+                self._executor.submit(self._fetch_hk_stocks, result, hk_codes)
+            )
+
+        # 等待所有任务完成
+        concurrent.futures.wait(futures)
 
         # 处理未能获取的数据
         for code in codes:

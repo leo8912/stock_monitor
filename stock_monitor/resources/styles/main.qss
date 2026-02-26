@@ -295,3 +295,12 @@ QLabel#LoadingLabel {
     border-radius: 10px;
     padding: 10px;
 }
+
+/* Update Dialogs */
+QLabel#UpdateProgressTitle { font-size: 18px; font-weight: bold; }
+QLabel#UpdateProgressStatus { font-size: 14px; color: #aaa; }
+QLabel#UpdateProgressDetail { font-size: 12px; color: #666; }
+QLabel#UpdateIcon { font-size: 48px; }
+QLabel#UpdateNewTitle { font-size: 20px; font-weight: bold; }
+QLabel#UpdateSubtitle { font-size: 12px; color: #888; }
+QLabel#UpdateChangelogLabel { font-size: 14px; font-weight: bold; }

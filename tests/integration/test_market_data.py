@@ -48,7 +48,7 @@ def test_market_snapshot():
                         down += 1
                     else:
                         flat += 1
-                except:
+                except Exception:
                     continue
 
             total = up + down + flat
@@ -162,7 +162,7 @@ def test_all_method():
                         down += 1
                     else:
                         flat += 1
-                except:
+                except Exception:
                     continue
 
             total = up + down + flat

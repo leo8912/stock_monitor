@@ -2,6 +2,8 @@
 负责处理股票相关的业务逻辑
 """
 
+import functools
+import json
 from typing import Any
 
 from ..utils.logger import app_logger
@@ -127,7 +129,13 @@ class StockManager:
 
             if info:
                 # 传递全量数据计算，确保买卖五档能够正确计算涨跌停封单数
-                stock_item = self._process_single_stock_data_impl(code, info)
+                # 转换为 JSON 字符串以供 LRU 缓存作 Hash Key
+                try:
+                    info_json = json.dumps(info, sort_keys=True)
+                    stock_item = self._process_single_stock_data(code, info_json)
+                except Exception:
+                    # 如果转换失败退回直调用
+                    stock_item = self._process_single_stock_data_impl(code, info)
                 stocks.append(stock_item)
             else:
                 # 如果没有获取到数据，显示默认值
@@ -177,17 +185,23 @@ class StockManager:
         app_logger.debug(f"股票 {code} 数据处理完成")
         return result
 
-    def _process_single_stock_data(self, code: str, info: dict[str, Any]) -> tuple:
+    @functools.lru_cache(maxsize=get_dynamic_lru_cache_size())  # noqa: B019
+    def _process_single_stock_data(self, code: str, info_json: str) -> tuple:
         """
-        处理单只股票的数据
+        处理单只股票的数据 (带LRU缓存)
 
         Args:
             code (str): 股票代码
-            info (Dict[str, Any]): 股票原始数据
+            info_json (str): 股票原始数据的JSON序列化字符串
 
         Returns:
             tuple: 格式化后的股票数据元组
         """
+        try:
+            info = json.loads(info_json) if isinstance(info_json, str) else info_json
+        except Exception:
+            info = {}
+
         return self._process_single_stock_data_impl(code, info)
 
 
