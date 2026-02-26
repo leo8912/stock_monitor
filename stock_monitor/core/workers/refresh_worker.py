@@ -254,8 +254,8 @@ class RefreshWorker(QtCore.QThread):
         if now.weekday() >= 5:
             return 60
 
-        # 9:20-9:25 临近上午开市（9:25开始获取行情）
-        if datetime.time(9, 20) <= t < datetime.time(9, 25):
+        # 9:10-9:15 临近上午开市（9:15开始获取行情）
+        if datetime.time(9, 10) <= t < datetime.time(9, 15):
             return 5
 
         # 12:55-13:00 临近下午开市

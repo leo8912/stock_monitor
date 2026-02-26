@@ -21,7 +21,7 @@ class MarketManager:
         if now.weekday() >= 5:  # 周末
             return False
         t = now.time()
-        return (datetime.time(9, 30) <= t <= datetime.time(11, 30)) or (
+        return (datetime.time(9, 15) <= t <= datetime.time(11, 30)) or (
             datetime.time(13, 0) <= t <= datetime.time(15, 0)
         )
 

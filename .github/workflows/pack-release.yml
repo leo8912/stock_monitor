@@ -66,6 +66,7 @@ jobs:
           --add-data "$env:ZHCONVPATH\zhcdict.json;zhconv" `
           --add-data "stock_monitor/resources/icon.ico;stock_monitor/resources" `
           --add-data "stock_monitor/resources/stocks_base.db;stock_monitor/resources" `
+          --add-data "stock_monitor/resources/styles;stock_monitor/resources/styles" `
           --hidden-import=pypinyin `
           --hidden-import=pypinyin.style `
           --hidden-import=pandas `
