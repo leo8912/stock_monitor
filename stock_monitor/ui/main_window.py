@@ -149,6 +149,10 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
             QtWidgets.QSizePolicy.Policy.Preferred,
         )  # type: ignore
 
+        # 初始化透明度缓存，避免 paintEvent 高频读取配置
+        config_manager = self._container.get(ConfigManager)
+        self._transparency = config_manager.get("transparency", 80)
+
         # 从配置中读取字体大小和字体族并更新表格
         self.update_font_size()
 
@@ -385,6 +389,13 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         # 更新后台刷新线程的配置 (通过 ViewModel)
         self.viewModel.update_workers_config(stocks, refresh_interval)
 
+        # 更新主题透明度缓存
+        config_manager = self._container.get(ConfigManager)
+        new_transparency = config_manager.get("transparency", 80)
+        if new_transparency != getattr(self, "_transparency", None):
+            self._transparency = new_transparency
+            self.update()  # 触发重绘
+
         # 立即同步刷新显示（只触发一次，settings_dialog 中已不再重复调用）
         self.refresh_now(stocks)
 
@@ -469,8 +480,8 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)  # type: ignore
         rect = self.rect()
 
-        config_manager = self._container.get(ConfigManager)
-        transparency = config_manager.get("transparency", 80)
+        # 读取缓存的透明度配置，不进行昂贵的容器获取和IO查找
+        transparency = getattr(self, "_transparency", 80)
 
         if hasattr(self, "_preview_transparency"):
             transparency = self._preview_transparency
@@ -487,9 +498,6 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         if self.table.rowCount() == 0:
             return  # 无数据时不调整，避免窗口高度异常
 
-        from PyQt6 import QtWidgets
-
-        QtWidgets.QApplication.processEvents()
         vh = self.table.verticalHeader()
         row_height = vh.sectionSize(0)
         layout_margin = 0

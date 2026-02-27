@@ -40,6 +40,8 @@ class RefreshWorker(QtCore.QThread):
         self._processor = StockCodeProcessor()
         # self._data_change_detector = DataChangeDetector() # 使用StockManager的检测器
         self._last_successful_update = 0
+        self._closing_data_fetched = False  # 当日收盘数据是否已获取
+        self._closing_data_date = None  # 记录获取收盘数据的日期，用于次日重置
 
     def start_refresh(self, user_stocks: list[str], refresh_interval: int):
         """
@@ -111,8 +113,20 @@ class RefreshWorker(QtCore.QThread):
                 # 检查市场状态（首次启动跳过此检查，确保至少获取一次数据）
                 market_open = MarketManager.is_market_open()
 
-                # 如果市场关闭且不是首次启动，则休眠等待
+                # 每日重置收盘数据获取标记
+                import datetime
+
+                today = datetime.date.today()
+                if self._closing_data_date != today:
+                    self._closing_data_fetched = False
+                    self._closing_data_date = today
+
+                # 如果市场关闭且不是首次启动，则尝试获取收盘数据或休眠等待
                 if not market_open and first_fetch_done:
+                    # 休市后尝试获取一次收盘数据
+                    if not self._closing_data_fetched:
+                        app_logger.info("市场已关闭，尝试获取收盘数据...")
+                        self._fetch_closing_data(local_user_stocks)
                     sleep_duration = self._get_pre_market_sleep_time()
                     if sleep_duration < 60:
                         app_logger.debug(f"临近开市，缩短休眠至{sleep_duration}秒")
@@ -264,3 +278,39 @@ class RefreshWorker(QtCore.QThread):
 
         # 其他时间使用正常休眠时间
         return 60
+
+    def _fetch_closing_data(self, user_stocks: list[str]):
+        """
+        休市后尝试获取一次收盘数据
+
+        如果数据源仍能返回有效数据，则用最新数据覆盖本地数据，
+        确保收盘价被正确记录。获取成功后标记已完成，不再重复获取。
+
+        Args:
+            user_stocks: 用户股票列表
+        """
+        try:
+            from stock_monitor.core.stock_manager import stock_manager
+
+            stocks, failed_count = stock_manager.fetch_and_process_stocks(user_stocks)
+
+            # 判断是否获取到了有效数据
+            all_failed = failed_count == len(user_stocks) and len(user_stocks) > 0
+
+            if not all_failed and stocks:
+                # 有有效数据，用最新数据覆盖本地
+                stock_manager.update_last_stock_data(stocks)
+                self.data_updated.emit(stocks, False)
+                self._closing_data_fetched = True
+                app_logger.info(
+                    f"收盘数据获取完成，已更新 {len(stocks)} 只股票的收盘行情"
+                )
+            else:
+                # 获取失败，也标记为已完成，避免反复尝试
+                self._closing_data_fetched = True
+                app_logger.warning("收盘数据获取失败，无有效数据返回")
+
+        except Exception as e:
+            # 异常时也标记为已完成，不影响后续闭市休眠
+            self._closing_data_fetched = True
+            app_logger.error(f"收盘数据获取异常: {e}")

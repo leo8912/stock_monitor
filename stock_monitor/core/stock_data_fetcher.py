@@ -3,6 +3,7 @@
 负责从各种数据源获取原始股票数据
 """
 
+import atexit
 import concurrent.futures
 import time
 from typing import Any, Optional
@@ -37,6 +38,26 @@ class StockDataFetcher:
             )
             or None,
         )
+
+        # 注册应用退出清理钩子，防止句柄泄露
+        atexit.register(self.close)
+
+    def close(self):
+        """释放网络资源与线程池"""
+        # 注意：此处在 atexit 触发时，不要调用 app_logger，否则会导致 ValueError: I/O operation on closed file
+
+        # 1. 停止线程池
+        if hasattr(self, "_executor") and self._executor:
+            self._executor.shutdown(wait=False)
+
+        # 2. 清理新浪请求引擎 (easyquotation 核心其实持有一个 session)
+        if hasattr(self, "sina_quotation") and self.sina_quotation is not None:
+            if hasattr(self.sina_quotation, "session") and self.sina_quotation.session:
+                try:
+                    self.sina_quotation.session.close()
+                except Exception:
+                    pass
+            self.sina_quotation = None
 
     def get_quotation_engine(self, code: str):
         """

@@ -48,12 +48,6 @@ class AppUpdater:
         """应用更新 (BAT脚本方案)"""
         return self.installer.apply_update(update_file_path)
 
-    def perform_update(self, parent=None) -> bool:
-        app_logger.warning(
-            "AppUpdater.perform_update is deprecated. Please handle UI externally."
-        )
-        return False
-
     def _run_post_update_hooks(self):
         """
         运行更新后钩子

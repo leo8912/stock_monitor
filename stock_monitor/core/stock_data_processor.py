@@ -3,9 +3,9 @@
 负责统一处理股票数据的清洗、转换和计算
 """
 
+import math
 from typing import Any, Optional
 
-from stock_monitor.utils.helpers import is_equal
 from stock_monitor.utils.logger import app_logger
 
 # 涨跌颜色常量 —— 值与 ui.constants.COLORS 保持同步
@@ -154,8 +154,8 @@ class StockDataProcessor:
             # 涨停判断
             # 简单判断：价格等于最高价，且等于买一价，且买一量>0，卖一为0
             if (
-                is_equal(str(now_price), str(high))
-                and is_equal(str(now_price), str(bid1))
+                math.isclose(now_price, high, rel_tol=1e-5)
+                and math.isclose(now_price, bid1, rel_tol=1e-5)
                 and bid1_vol > 0
                 and ask1 <= 1e-6
             ):  # ask1 <= 1e-6 used to safely evaluate 0.0 or 0 for floats
@@ -168,8 +168,8 @@ class StockDataProcessor:
 
             # 跌停判断
             if (
-                is_equal(str(now_price), str(low))
-                and is_equal(str(now_price), str(ask1))
+                math.isclose(now_price, low, rel_tol=1e-5)
+                and math.isclose(now_price, ask1, rel_tol=1e-5)
                 and ask1_vol > 0
                 and bid1 <= 1e-6
             ):
