@@ -42,6 +42,7 @@ class RefreshWorker(QtCore.QThread):
         self._last_successful_update = 0
         self._closing_data_fetched = False  # 当日收盘数据是否已获取
         self._closing_data_date = None  # 记录获取收盘数据的日期，用于次日重置
+        self._last_market_open = None  # 追踪上次市场开闭状态，用于检测状态转换
 
     def start_refresh(self, user_stocks: list[str], refresh_interval: int):
         """
@@ -112,6 +113,13 @@ class RefreshWorker(QtCore.QThread):
 
                 # 检查市场状态（首次启动跳过此检查，确保至少获取一次数据）
                 market_open = MarketManager.is_market_open()
+
+                # 检测开市→闭市的状态转换，重置收盘数据获取标志
+                # 解决中午休市(11:30)消费掉下午收盘(15:00)唯一获取机会的问题
+                if self._last_market_open is True and not market_open:
+                    self._closing_data_fetched = False
+                    app_logger.info("检测到市场从开市转为闭市，重置收盘数据获取标志")
+                self._last_market_open = market_open
 
                 # 每日重置收盘数据获取标记
                 import datetime
