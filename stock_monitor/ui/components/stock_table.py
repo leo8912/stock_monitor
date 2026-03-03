@@ -123,9 +123,11 @@ class StockTable(QtWidgets.QTableView):
             # 委托给模型更新
             layout_changed = self._model.update_data(stocks)
 
-            # 仅在布局变化时调整列宽（如显示/隐藏封单列，或行数变化）
+            # 每次数据更新都重新计算列宽，
+            # 避免涨跌幅文本变长时被截断（如 "-10.03%" 显示为 "-10.0..."）
+            self._resize_columns()
+
             if layout_changed:
-                self._resize_columns()
                 # 布局变化时通知父窗口调整大小
                 self._notify_parent_window_height_adjustment()
 
