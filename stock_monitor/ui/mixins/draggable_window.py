@@ -29,6 +29,11 @@ class DraggableWindowMixin:
             # Install event filter on self and children
             self.install_event_filters(self)
 
+            # 方案一：定时器周期性兜底，每 5 秒检查一次置顶状态
+            self._topmost_timer = QtCore.QTimer(self)
+            self._topmost_timer.timeout.connect(self._ensure_topmost)
+            self._topmost_timer.start(5000)
+
     def install_event_filters(self, widget):
         """Recursively install event filters on widget and its children"""
         if isinstance(widget, QtWidgets.QWidget):
@@ -115,6 +120,14 @@ class DraggableWindowMixin:
             self._ensure_topmost()
             # 确保任务栏按钮保持隐藏
             self._hide_from_taskbar()
+
+    def changeEvent(self, event):
+        """方案二：监听窗口激活状态变化，失去焦点时重新置顶"""
+        if isinstance(self, QtWidgets.QWidget):
+            if event.type() == QtCore.QEvent.Type.ActivationChange:
+                if not self.isActiveWindow():
+                    # 窗口失去焦点，延迟 100ms 重新置顶（避免干扰用户正在进行的操作）
+                    QtCore.QTimer.singleShot(100, self._ensure_topmost)
 
     def _ensure_topmost(self):
         """使用 Windows 原生 API 确保窗口置顶（兜底方案）"""
