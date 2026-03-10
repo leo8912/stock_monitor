@@ -289,36 +289,69 @@ class RefreshWorker(QtCore.QThread):
 
     def _fetch_closing_data(self, user_stocks: list[str]):
         """
-        休市后尝试获取一次收盘数据
+        休市后获取收盘数据
 
-        如果数据源仍能返回有效数据，则用最新数据覆盖本地数据，
-        确保收盘价被正确记录。获取成功后标记已完成，不再重复获取。
+        采用「延迟 + 多次获取」策略，确保拿到最终收盘价：
+        1. 先等待数秒，让数据源有时间更新收盘集合竞价的最终价格
+        2. 多次获取（每次间隔数秒），确保数据源已完全刷新
 
         Args:
             user_stocks: 用户股票列表
         """
-        try:
-            from stock_monitor.core.stock_manager import stock_manager
+        # 收盘数据获取策略配置
+        initial_delay = 5  # 首次获取前等待秒数
+        total_attempts = 3  # 总获取次数
+        retry_interval = 5  # 每次获取间隔秒数
 
-            stocks, failed_count = stock_manager.fetch_and_process_stocks(user_stocks)
+        # 延迟等待，让数据源有时间更新为最终收盘价
+        app_logger.info(
+            f"等待 {initial_delay} 秒后开始获取收盘数据，确保数据源已更新最终收盘价..."
+        )
+        for _ in range(initial_delay * 2):
+            if not self._is_running:
+                return
+            self.msleep(500)
 
-            # 判断是否获取到了有效数据
-            all_failed = failed_count == len(user_stocks) and len(user_stocks) > 0
-
-            if not all_failed and stocks:
-                # 有有效数据，用最新数据覆盖本地
-                stock_manager.update_last_stock_data(stocks)
-                self.data_updated.emit(stocks, False)
+        # 多次获取，逐步逼近最终收盘价
+        for attempt in range(total_attempts):
+            if not self._is_running:
                 self._closing_data_fetched = True
-                app_logger.info(
-                    f"收盘数据获取完成，已更新 {len(stocks)} 只股票的收盘行情"
+                return
+
+            try:
+                from stock_monitor.core.stock_manager import stock_manager
+
+                stocks, failed_count = stock_manager.fetch_and_process_stocks(
+                    user_stocks
                 )
-            else:
-                # 获取失败，也标记为已完成，避免反复尝试
-                self._closing_data_fetched = True
-                app_logger.warning("收盘数据获取失败，无有效数据返回")
+                all_failed = failed_count == len(user_stocks) and len(user_stocks) > 0
 
-        except Exception as e:
-            # 异常时也标记为已完成，不影响后续闭市休眠
-            self._closing_data_fetched = True
-            app_logger.error(f"收盘数据获取异常: {e}")
+                if not all_failed and stocks:
+                    # 有有效数据，用最新数据覆盖本地
+                    stock_manager.update_last_stock_data(stocks)
+                    self.data_updated.emit(stocks, False)
+                    app_logger.info(
+                        f"收盘数据获取完成（第{attempt + 1}/{total_attempts}次），"
+                        f"已更新 {len(stocks)} 只股票的收盘行情"
+                    )
+                else:
+                    app_logger.warning(
+                        f"收盘数据获取失败（第{attempt + 1}/{total_attempts}次），"
+                        "无有效数据返回"
+                    )
+
+            except Exception as e:
+                app_logger.error(
+                    f"收盘数据获取异常（第{attempt + 1}/{total_attempts}次）: {e}"
+                )
+
+            # 非最后一次获取时，等待后继续
+            if attempt < total_attempts - 1:
+                for _ in range(retry_interval * 2):
+                    if not self._is_running:
+                        self._closing_data_fetched = True
+                        return
+                    self.msleep(500)
+
+        self._closing_data_fetched = True
+        app_logger.info("收盘数据获取流程结束")
