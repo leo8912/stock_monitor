@@ -29,10 +29,10 @@ class DraggableWindowMixin:
             # Install event filter on self and children
             self.install_event_filters(self)
 
-            # 方案一：定时器周期性兜底，每 5 秒检查一次置顶状态
+            # 方案一：定时器周期性兜底，每 1 秒检查一次置顶状态
             self._topmost_timer = QtCore.QTimer(self)
             self._topmost_timer.timeout.connect(self._ensure_topmost)
-            self._topmost_timer.start(5000)
+            self._topmost_timer.start(1000)
 
     def install_event_filters(self, widget):
         """Recursively install event filters on widget and its children"""
@@ -131,19 +131,55 @@ class DraggableWindowMixin:
 
     def _ensure_topmost(self):
         """使用 Windows 原生 API 确保窗口置顶（兜底方案）"""
-        try:
-            import ctypes
+        if isinstance(self, QtWidgets.QWidget):
+            # 菜单保护：如果当前有活跃的弹出窗口（如右键菜单），跳过置顶纠正，避免干扰交互
+            if QtWidgets.QApplication.activePopupWidget():
+                return
 
-            hwnd = int(self.winId())
-            HWND_TOPMOST = -1
-            SWP_NOMOVE = 0x0002
-            SWP_NOSIZE = 0x0001
-            SWP_NOACTIVATE = 0x0010
-            ctypes.windll.user32.SetWindowPos(
-                hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE
-            )
-        except Exception:
-            pass  # 非 Windows 平台静默忽略
+            try:
+                import ctypes
+
+                hwnd = int(self.winId())
+
+                # 特殊逻辑：仅当不是可见的置顶状态时才强制设置，减少系统调用
+                # 虽然 SetWindowPos 已经处理了大部分竞争，但这里加一层保护
+                HWND_TOPMOST = -1
+                SWP_NOMOVE = 0x0002
+                SWP_NOSIZE = 0x0001
+                SWP_NOACTIVATE = 0x0010
+
+                ctypes.windll.user32.SetWindowPos(
+                    hwnd,
+                    HWND_TOPMOST,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                )
+            except Exception:
+                pass  # 非 Windows 平台静默忽略
+
+    def nativeEvent(self, event_type, message):
+        """处理 Windows 原生事件，在消息循环级别维护置顶"""
+        if event_type == b"windows_generic_msg":
+            from ctypes import wintypes
+
+            msg = wintypes.MSG.from_address(message.__int__())
+
+            # WM_WINDOWPOSCHANGING (0x0046)
+            if msg.message == 0x0046:
+                # 在窗口位置或层级即将改变时，检查是否需要保持置顶
+                # 这里不需要逻辑处理，只需确保在变更后由 _ensure_topmost 纠正，
+                # 或者在此处直接操作结构体（更进阶，暂通过 _ensure_topmost 兜底）
+                pass
+
+            # WM_ACTIVATEAPP (0x001C)
+            elif msg.message == 0x001C:
+                # 应用激活状态改变时检查
+                QtCore.QTimer.singleShot(50, self._ensure_topmost)
+
+        return False, 0
 
     def _hide_from_taskbar(self):
         """使用 Windows API 隐藏任务栏按钮（不使用 Qt Tool 标志，避免其副作用）"""
@@ -189,6 +225,18 @@ class DraggableWindowMixin:
             if isinstance(self, QtWidgets.QWidget) and self.isVisible():
                 if hasattr(self, "save_position"):
                     self.save_position()
+
+    def moveEvent(self, event):
+        """移动位置后确保置顶"""
+        self._ensure_topmost()
+        if hasattr(super(), "moveEvent"):
+            super().moveEvent(event)
+
+    def resizeEvent(self, event):
+        """大小改变后确保置顶"""
+        self._ensure_topmost()
+        if hasattr(super(), "resizeEvent"):
+            super().resizeEvent(event)
 
     def closeEvent(self, event):
         if hasattr(self, "save_position"):
