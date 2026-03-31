@@ -20,12 +20,17 @@ if zhconv_path:
     datas.append((os.path.join(zhconv_path, 'zhcdict.json'), 'zhconv'))
 
 # --- Collect dependencies ---
+binaries = []
+hiddenimports = ['pypinyin.style']
 pkgs_to_collect = ['akshare', 'pandas_ta', 'mootdx', 'pytz', 'certifi', 'pypinyin', 'lxml', 'beautifulsoup4', 'html5lib']
 for pkg in pkgs_to_collect:
-    tmp_ret = collect_all(pkg)
-    datas += tmp_ret[0]
-    binaries += tmp_ret[1]
-    hiddenimports += tmp_ret[2]
+    try:
+        tmp_ret = collect_all(pkg)
+        datas += tmp_ret[0]
+        binaries += tmp_ret[1]
+        hiddenimports += tmp_ret[2]
+    except ImportError:
+        print(f"Warning: Package {pkg} not found, skipping collection.")
 
 # Add specific hidden imports for akshare and its common sub-dependencies
 hiddenimports += [
