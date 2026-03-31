@@ -1,5 +1,5 @@
 {
-  "timestamp": 1774927815.7922332,
+  "timestamp": 1774933465.439115,
   "data": {
     "window_position": [
       -2,
@@ -9,52 +9,52 @@
       {
         "code": "sh000001",
         "name": "上证指数",
-        "price": "3908.28",
-        "change_str": "-0.38%",
+        "price": "3920.24",
+        "change_str": "-0.08%",
         "color_hex": "#27ae60",
         "seal_vol": "",
         "seal_type": "",
-        "large_order_info": "+18.9K",
+        "large_order_info": "+20.8K",
         "recent_net_out": 0.0
       },
       {
         "code": "sz000559",
         "name": "万向钱潮",
-        "price": "15.55",
-        "change_str": "+0.97%",
+        "price": "15.59",
+        "change_str": "+1.23%",
         "color_hex": "#e74c3f",
         "seal_vol": "",
         "seal_type": "",
-        "large_order_info": "+3.1K",
+        "large_order_info": "+3.4K",
         "recent_net_out": 0.0
       },
       {
         "code": "sz002600",
         "name": "领益智造",
-        "price": "12.84",
-        "change_str": "-0.77%",
+        "price": "12.86",
+        "change_str": "-0.62%",
         "color_hex": "#27ae60",
         "seal_vol": "",
         "seal_type": "",
-        "large_order_info": "-4.0K",
+        "large_order_info": "-3.9K",
         "recent_net_out": 0.0
       },
       {
         "code": "sz002407",
         "name": "多氟多",
-        "price": "27.90",
-        "change_str": "-3.29%",
+        "price": "28.11",
+        "change_str": "-2.56%",
         "color_hex": "#27ae60",
         "seal_vol": "",
         "seal_type": "",
-        "large_order_info": "-9.7K",
+        "large_order_info": "-9.5K",
         "recent_net_out": 0.0
       },
       {
         "code": "sh600460",
         "name": "士兰微",
-        "price": "25.65",
-        "change_str": "-1.16%",
+        "price": "25.74",
+        "change_str": "-0.81%",
         "color_hex": "#27ae60",
         "seal_vol": "",
         "seal_type": "",

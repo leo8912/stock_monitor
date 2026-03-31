@@ -80,9 +80,11 @@ jobs:
           --hidden-import=pandas `
           --hidden-import=pandas_ta `
           --hidden-import=mootdx `
+          --hidden-import=pytz `
           --collect-all certifi `
           --collect-all pandas_ta `
-          --collect-all mootdx
+          --collect-all mootdx `
+          --collect-all pytz
 
 
 
