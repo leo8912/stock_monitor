@@ -1083,10 +1083,27 @@ class NewSettingsDialog(QDialog):
         self.watch_list_manager.update_remove_button_state()
         self.watch_list.clearSelection()  # 取消自选股列表的选中状态
 
-    def add_stock_from_search(self, item):
+    def add_stock_from_search(self, item=None):
         """将股票添加到自选股列表"""
-        # 解析item文本以提取股票代码和名称
-        item_text = item.text()
+        # 兼容两种调用方式：
+        # 1. 来自双击搜索结果 (item 是 QListWidgetItem)
+        # 2. 来自添加按钮点击 (item 是 bool 或 None)
+        if item is None or isinstance(item, bool):
+            # 从当前选中的项获取
+            selected_items = self.search_results.selectedItems()
+            if not selected_items:
+                return
+            item = selected_items[0]
+
+        # 解析 item 文本以提取股票代码和名称
+        try:
+            item_text = item.text()
+        except AttributeError:
+            # 如果 item 没有 text() 方法，直接返回
+            from stock_monitor.utils.logger import app_logger
+
+            app_logger.warning(f"无效的 item 类型：{type(item)}")
+            return
         import re
 
         match = re.search(r"\(([^)]+)\)", item_text)

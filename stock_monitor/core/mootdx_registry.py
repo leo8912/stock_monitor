@@ -42,6 +42,7 @@ class MootdxNameRegistry:
     def sync_mootdx_names(self):
         """全量同步 mootdx 名称字典"""
         if self.mootdx_client is None:
+            app_logger.warning("mootdx client 未初始化，跳过名称同步")
             return
         app_logger.info("本地缓存中存在未知名称，触发 mootdx 全量字典同步...")
         try:
@@ -58,7 +59,12 @@ class MootdxNameRegistry:
             self._save_name_cache()
             app_logger.info(f"全量字典同步完毕，共计 {len(full_df)} 只标的写入缓存。")
         except Exception as e:
-            app_logger.error(f"全量同步 mootdx 名称字典失败: {e}")
+            # 使用 print 作为兜底，防止日志系统已关闭
+            try:
+                app_logger.error(f"全量同步 mootdx 名称字典失败：{e}")
+            except (ValueError, AttributeError):
+                # 日志系统可能已关闭，使用标准输出
+                print(f"ERROR: 全量同步 mootdx 名称字典失败：{e}")
 
     def get_name(self, code: str) -> str:
         """从缓存安全获取名称"""
@@ -68,7 +74,10 @@ class MootdxNameRegistry:
         """若存在缺失则批量挂起同步，并设置兜底"""
         if not missing_codes:
             return
-        self.sync_mootdx_names()
+        # 只有在 mootdx_client 可用时才尝试同步
+        if self.mootdx_client is not None:
+            self.sync_mootdx_names()
+        # 为所有缺失的代码设置兜底值
         for c in missing_codes:
             if c not in self._name_cache:
                 self._name_cache[c] = c
