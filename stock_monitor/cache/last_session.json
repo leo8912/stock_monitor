@@ -1,5 +1,5 @@
 {
-  "timestamp": 1774924062.978862,
+  "timestamp": 1774927815.7922332,
   "data": {
     "window_position": [
       -2,
@@ -9,56 +9,56 @@
       {
         "code": "sh000001",
         "name": "上证指数",
-        "price": "3943.00",
-        "change_str": "+0.50%",
-        "color_hex": "#e74c3f",
+        "price": "3908.28",
+        "change_str": "-0.38%",
+        "color_hex": "#27ae60",
         "seal_vol": "",
         "seal_type": "",
-        "large_order_info": "+8.7K",
+        "large_order_info": "+18.9K",
         "recent_net_out": 0.0
       },
       {
         "code": "sz000559",
         "name": "万向钱潮",
-        "price": "15.72",
-        "change_str": "+2.08%",
+        "price": "15.55",
+        "change_str": "+0.97%",
         "color_hex": "#e74c3f",
         "seal_vol": "",
         "seal_type": "",
-        "large_order_info": "+4.6K",
+        "large_order_info": "+3.1K",
         "recent_net_out": 0.0
       },
       {
         "code": "sz002600",
         "name": "领益智造",
-        "price": "13.08",
-        "change_str": "+1.08%",
-        "color_hex": "#e74c3f",
+        "price": "12.84",
+        "change_str": "-0.77%",
+        "color_hex": "#27ae60",
         "seal_vol": "",
         "seal_type": "",
-        "large_order_info": "+2.8K",
-        "recent_net_out": 644844.0
+        "large_order_info": "-4.0K",
+        "recent_net_out": 0.0
       },
       {
         "code": "sz002407",
         "name": "多氟多",
-        "price": "28.40",
-        "change_str": "-1.56%",
+        "price": "27.90",
+        "change_str": "-3.29%",
         "color_hex": "#27ae60",
         "seal_vol": "",
         "seal_type": "",
-        "large_order_info": "-7.6K",
+        "large_order_info": "-9.7K",
         "recent_net_out": 0.0
       },
       {
         "code": "sh600460",
         "name": "士兰微",
-        "price": "26.05",
-        "change_str": "+0.39%",
-        "color_hex": "#e74c3f",
+        "price": "25.65",
+        "change_str": "-1.16%",
+        "color_hex": "#27ae60",
         "seal_vol": "",
         "seal_type": "",
-        "large_order_info": "-0.3K",
+        "large_order_info": "-3.4K",
         "recent_net_out": 0.0
       }
     ]
