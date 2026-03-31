@@ -174,14 +174,28 @@ print(f"Total hidden imports: {len(hiddenimports)}")
 print(f"Total data files: {len(datas)}")
 print(f"=========================\n")
 
-# 设置自定义 hooks 目录
-hooks_dir = os.path.join(os.path.dirname(__file__), 'stock_monitor', 'hooks')
+# 设置自定义 hooks 目录 - 使用工作目录而非 __file__
+import sys
+if getattr(sys, 'frozen', False):
+    # 如果是打包后的环境
+    application_path = os.path.dirname(sys.executable)
+else:
+    # 如果是开发环境
+    application_path = os.getcwd()
+
+hooks_dir = os.path.join(application_path, 'stock_monitor', 'hooks')
 if os.path.exists(hooks_dir):
     print(f"Using custom hooks from: {hooks_dir}")
     hooks_path = [hooks_dir]
 else:
-    print("No custom hooks directory found")
-    hooks_path = []
+    # 尝试相对路径
+    hooks_dir_alt = os.path.join(os.getcwd(), 'stock_monitor', 'hooks')
+    if os.path.exists(hooks_dir_alt):
+        print(f"Using custom hooks from: {hooks_dir_alt}")
+        hooks_path = [hooks_dir_alt]
+    else:
+        print("No custom hooks directory found")
+        hooks_path = []
 
 block_cipher = None
 
