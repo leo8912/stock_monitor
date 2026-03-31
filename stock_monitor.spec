@@ -20,19 +20,13 @@ if zhconv_path:
     datas.append((os.path.join(zhconv_path, 'zhcdict.json'), 'zhconv'))
 
 # --- Collect dependencies ---
-binaries = []
-hiddenimports = ['pypinyin.style']
-pkgs_to_collect = ['akshare', 'pandas_ta', 'mootdx', 'pytz', 'certifi', 'pypinyin', 'lxml', 'beautifulsoup4', 'html5lib']
-for pkg in pkgs_to_collect:
-    try:
-        tmp_ret = collect_all(pkg)
-        datas += tmp_ret[0]
-        binaries += tmp_ret[1]
-        hiddenimports += tmp_ret[2]
-    except ImportError:
-        print(f"Warning: Package {pkg} not found, skipping collection.")
+from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
-# Add specific hidden imports for akshare and its common sub-dependencies
+binaries = []
+hiddenimports = ['pypinyin.style', 'curl_cffi']
+pkgs_to_collect = ['akshare', 'pandas_ta', 'mootdx', 'pytz', 'certifi', 'pypinyin', 'lxml', 'beautifulsoup4', 'html5lib']
+
+# Additional hidden imports for network and data processing (critical for akshare)
 hiddenimports += [
     'pandas',
     'requests',
@@ -40,7 +34,30 @@ hiddenimports += [
     'charset_normalizer',
     'idna',
     'sqlalchemy',
+    'numpy',
+    'PIL',
+    'openpyxl',
+    'tabulate',
+    'tqdm',
+    'xlrd',
 ]
+
+for pkg in pkgs_to_collect:
+    try:
+        # Collect submodules explicitly
+        hiddenimports += collect_submodules(pkg)
+        # Collect data files explicitly
+        datas += collect_data_files(pkg)
+        # Try full collect if available
+        tmp_ret = collect_all(pkg)
+        datas += tmp_ret[0]
+        binaries += tmp_ret[1]
+        hiddenimports += tmp_ret[2]
+    except (ImportError, Exception) as e:
+        print(f"Warning: Issue collecting {pkg}: {str(e)}")
+
+# Remove duplicates from hiddenimports
+hiddenimports = list(set(hiddenimports))
 
 block_cipher = None
 
