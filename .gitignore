@@ -1,4 +1,4 @@
-# 忽略prompt文件夹
+# 忽略 prompt 文件夹
 prompt/
 
 # 忽略虚拟环境目录
@@ -28,11 +28,10 @@ config.json
 .DS_Store
 Thumbs.db
 
-# 忽略IDE相关文件
+# 忽略 IDE 相关文件
 .vscode/
 .idea/
 .lingma/
-
 
 # 忽略临时文件
 *.tmp
@@ -56,32 +55,30 @@ sha256.txt
 *.zip
 *.exe
 
-# 忽略日志目录
-logs/
-stock_monitor/logs/
+# 忽略特定的报告和分析文件
 docs/clean_code_review.md
-.agent/workflows/stock.md
 开机启动分析报告.md
 项目分析报告.md
 代码审查报告.md
-stock_monitor/cache/
 
-# Agent artifacts
+# 忽略运行时生成的日志和数据
+logs/
+stock_monitor/logs/
+stock_monitor/cache/
+stock_monitor/.stock_monitor/*.db
+stock_monitor/.stock_monitor/*.db-shm
+stock_monitor/.stock_monitor/*.db-wal
+stock_monitor/.stock_monitor/*.json
+# 排除 config.json 如果需要手动配置（通常建议忽略）
+stock_monitor/.stock_monitor/config.json
+
+# Agent 相关
 .agent/
 .agents/
-
-# Agent Skills
-.agent/skills/
 .agents/skills/
+.agent/skills/
+.agent/workflows/stock.md
 skills-lock.json
 
-
-# Agent IDE Integration
+# 其他工具
 .continue/
-
-stock_monitor/cache/last_session.json
-stock_monitor/.stock_monitor/stocks.db
-stock_monitor/cache/last_session.json
-stock_monitor/cache/last_session.json
-stock_monitor/.stock_monitor/stocks.db
-stock_monitor/cache/last_session.json
