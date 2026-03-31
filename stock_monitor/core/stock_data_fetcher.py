@@ -33,7 +33,8 @@ class StockDataFetcher:
         # 延迟初始化 mootdx 行情引擎 - 在使用时才创建
         self._mootdx_client = None
 
-        self.name_registry = MootdxNameRegistry(self._mootdx_client)
+        # 传入 self 引用，让 name_registry 可以访问父对象
+        self.name_registry = MootdxNameRegistry(parent=self)
 
         # 注册应用退出清理钩子，防止句柄泄露
         atexit.register(self.close)

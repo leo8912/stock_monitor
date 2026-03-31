@@ -1,5 +1,20 @@
 # 更新日志
 
+## [v3.0.8] - 2026-03-31
+
+### 🐛 修复 (Fixes)
+- **mootdx client 延迟初始化完整实现**：
+  - 修改 `MootdxNameRegistry` 支持 `parent` 引用，可以访问父对象的延迟初始化 property
+  - 添加 `_get_mootdx_client()` 方法，通过父对象触发延迟初始化
+  - `sync_mootdx_names()` 现在使用 `_get_mootdx_client()` 获取 client，确保能触发初始化
+  - 移除了 `resolve_missing()` 中的 client 检查，让 `sync_mootdx_names()` 内部处理
+  
+### 🔧 优化 (Optimization)
+- **名称同步机制改进**：
+  - `MootdxNameRegistry` 不再依赖构造函数传入的 client，而是通过 parent 引用动态获取
+  - 确保了即使初始化时传入 None，也能在需要时正确触发 mootdx client 初始化
+  - 主界面股票名称显示问题得到彻底解决
+
 ## [v3.0.7] - 2026-03-31
 
 ### 🐛 修复 (Fixes)
