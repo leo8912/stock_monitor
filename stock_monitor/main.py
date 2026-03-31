@@ -13,6 +13,8 @@ QtWidgets.QApplication.setHighDpiScaleFactorRoundingPolicy(
     QtCore.Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
 )
 
+# 显式导入常用三方库，辅助 PyInstaller 的静态分析器
+
 from stock_monitor.core.application import StockMonitorApp
 
 

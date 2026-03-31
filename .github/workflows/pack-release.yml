@@ -68,25 +68,7 @@ jobs:
 
     - name: 使用PyInstaller构建主程序 # Build main program with PyInstaller
       run: |
-        pyinstaller -y -w -i stock_monitor/resources/icon.ico -n stock_monitor stock_monitor/main.py `
-          --add-data "pyproject.toml;." `
-          --add-data "$env:EQPATH\stock_codes.conf;easyquotation" `
-          --add-data "$env:ZHCONVPATH\zhcdict.json;zhconv" `
-          --add-data "stock_monitor/resources/icon.ico;stock_monitor/resources" `
-          --add-data "stock_monitor/resources/stocks_base.db;stock_monitor/resources" `
-          --add-data "stock_monitor/resources/styles;stock_monitor/resources/styles" `
-          --hidden-import=pypinyin `
-          --hidden-import=pypinyin.style `
-          --hidden-import=pandas `
-          --hidden-import=pandas_ta `
-          --hidden-import=mootdx `
-          --hidden-import=pytz `
-          --hidden-import=akshare `
-          --collect-all certifi `
-          --collect-all pandas_ta `
-          --collect-all mootdx `
-          --collect-all pytz `
-          --collect-all akshare
+        pyinstaller -y stock_monitor.spec
 
 
 
