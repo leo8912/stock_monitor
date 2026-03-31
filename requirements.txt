@@ -10,3 +10,4 @@ openpyxl==3.1.5
 pandas-ta>=0.3.14b0
 mootdx>=0.1.7
 pytz>=2026.1
+akshare>=1.15.58

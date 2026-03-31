@@ -3,8 +3,7 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "stock_monitor"
-version = "3.0.1"
+version = "3.0.2"
 description = "A real-time stock monitoring application for A-shares"
 authors = [
     {name = "Stock Monitor Team"}
@@ -21,6 +20,7 @@ dependencies = [
     "openpyxl>=3.0.7",
     "pandas-ta>=0.3.14",
     "mootdx>=0.1.7",
+    "akshare>=1.15.58",
 ]
 requires-python = ">=3.9"
 

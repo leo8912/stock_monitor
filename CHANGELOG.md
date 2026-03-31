@@ -1,5 +1,14 @@
 # 更新日志
 
+## [v3.0.2] - 2026-03-31
+
+### 🐛 修复 (Fixes)
+- **依赖缺失修复**: 修复了由于 `akshare` 库未包含在依赖中导致的 `ModuleNotFoundError`。
+- **构建配置优化**: 更新 PyInstaller 配置，确保 `akshare` 元数据及其子依赖正确包含在发布包中。
+
+### 🚿 维护 (Maintenance)
+- **Git 仓库清理**: 彻底从 Git 历史中排除了运行时生成的缓存和数据文件夹（`cache/`, `.stock_monitor/`）。
+
 ## [v3.0.1] - 2026-03-31
 
 ### 🐛 修复 (Fixes)

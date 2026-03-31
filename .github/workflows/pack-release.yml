@@ -84,7 +84,8 @@ jobs:
           --collect-all certifi `
           --collect-all pandas_ta `
           --collect-all mootdx `
-          --collect-all pytz
+          --collect-all pytz `
+          --collect-all akshare
 
 
 

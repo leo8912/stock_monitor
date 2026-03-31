@@ -65,12 +65,8 @@ docs/clean_code_review.md
 logs/
 stock_monitor/logs/
 stock_monitor/cache/
-stock_monitor/.stock_monitor/*.db
-stock_monitor/.stock_monitor/*.db-shm
-stock_monitor/.stock_monitor/*.db-wal
-stock_monitor/.stock_monitor/*.json
-# 排除 config.json 如果需要手动配置（通常建议忽略）
-stock_monitor/.stock_monitor/config.json
+stock_monitor/.stock_monitor/
+!stock_monitor/.stock_monitor/config.json.example
 
 # Agent 相关
 .agent/
