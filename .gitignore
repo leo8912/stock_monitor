@@ -52,6 +52,7 @@ sha256.txt
 
 # 忽略打包产物
 *.spec
+!stock_monitor.spec
 *.zip
 *.exe
 
