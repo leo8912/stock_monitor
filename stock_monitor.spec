@@ -19,38 +19,23 @@ zhconv_path = os.environ.get('ZHCONVPATH')
 if zhconv_path:
     datas.append((os.path.join(zhconv_path, 'zhcdict.json'), 'zhconv'))
 
-# Collect all files for heavy packages
-tmp_ret = collect_all('akshare')
-datas += tmp_ret[0]
-tmp_ret = collect_all('pandas_ta')
-datas += tmp_ret[0]
-tmp_ret = collect_all('mootdx')
-datas += tmp_ret[0]
-tmp_ret = collect_all('pytz')
-datas += tmp_ret[0]
-tmp_ret = collect_all('certifi')
-datas += tmp_ret[0]
+# --- Collect dependencies ---
+pkgs_to_collect = ['akshare', 'pandas_ta', 'mootdx', 'pytz', 'certifi', 'pypinyin', 'lxml', 'beautifulsoup4', 'html5lib']
+for pkg in pkgs_to_collect:
+    tmp_ret = collect_all(pkg)
+    datas += tmp_ret[0]
+    binaries += tmp_ret[1]
+    hiddenimports += tmp_ret[2]
 
-binaries = []
-hiddenimports = [
-    'pypinyin',
-    'pypinyin.style',
+# Add specific hidden imports for akshare and its common sub-dependencies
+hiddenimports += [
     'pandas',
-    'pandas_ta',
-    'mootdx',
-    'pytz',
-    'akshare',
-    'lxml',
-    'beautifulsoup4',
-    'html5lib',
+    'requests',
+    'urllib3',
+    'charset_normalizer',
+    'idna',
+    'sqlalchemy',
 ]
-
-tmp_ret = collect_all('akshare')
-hiddenimports += tmp_ret[1]
-tmp_ret = collect_all('pandas_ta')
-hiddenimports += tmp_ret[1]
-tmp_ret = collect_all('mootdx')
-hiddenimports += tmp_ret[1]
 
 block_cipher = None
 
