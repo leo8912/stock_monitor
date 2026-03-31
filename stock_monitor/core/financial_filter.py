@@ -3,8 +3,7 @@ import os
 import time
 from typing import Any, Optional
 
-import akshare as ak
-
+# Deleted:import akshare as ak
 from stock_monitor.config.manager import get_config_dir
 from stock_monitor.utils.logger import app_logger
 
@@ -139,7 +138,10 @@ class FinancialFilter:
     def _fetch_and_cache(self, symbol: str) -> Optional[list[dict[str, Any]]]:
         """抓取并缓存数据"""
         try:
-            app_logger.info(f"正在从AkShare抓取财务摘要: {symbol}")
+            # 延迟导入 akshare - 在打包环境中更可靠
+            import akshare as ak
+
+            app_logger.info(f"正在从 AkShare 抓取财务摘要：{symbol}")
             # 使用同花顺摘要接口
             df = ak.stock_financial_abstract_ths(symbol=symbol, indicator="主要指标")
             if df.empty:
