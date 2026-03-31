@@ -81,6 +81,7 @@ jobs:
           --hidden-import=pandas_ta `
           --hidden-import=mootdx `
           --hidden-import=pytz `
+          --hidden-import=akshare `
           --collect-all certifi `
           --collect-all pandas_ta `
           --collect-all mootdx `
