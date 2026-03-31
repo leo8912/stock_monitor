@@ -1,5 +1,36 @@
 # 更新日志
 
+## [v3.0.6] - 2026-03-31
+
+### 🐛 修复 (Fixes)
+- **PyInstaller 打包流程全面修复**：
+  - 修复了 spec 文件语法错误（`import os` 语句粘连问题）
+  - 修复了 spec 文件中 `__file__` 未定义错误，改用 `sys.frozen` 检测运行环境
+  - 为 `akshare` 和 `mootdx` 创建了专用的 PyInstaller hook 文件
+  - 在 GitHub Actions 中强制重新安装 `akshare` 和 `mootdx` 确保路径可访问
+  - 添加了完整的依赖收集逻辑，包括所有子模块和数据文件
+  
+- **mootdx 名称同步容错增强**：
+  - 当 `mootdx_client` 未初始化时优雅降级，不再抛出 `'NoneType' object has no attribute 'write'` 错误
+  - 添加了日志系统关闭时的兜底输出机制（使用 `print`）
+  - `resolve_missing` 方法增加 client 可用性检查
+  
+- **设置对话框参数类型错误修复**：
+  - 修复了点击添加按钮时 `'bool' object has no attribute 'text'` 错误
+  - `add_stock_from_search` 方法现在兼容两种调用方式：
+    - 双击搜索结果（传递 `QListWidgetItem` 对象）
+    - 点击添加按钮（传递 `bool` 值）
+  - 添加了类型检查和异常捕获，提升用户体验
+
+### 🔧 优化 (Optimization)
+- **GitHub Actions 工作流改进**：
+  - 添加了 mootdx 安装验证步骤
+  - 调整了构建前清理步骤
+  - 增强了日志输出便于调试
+  
+### 📝 文档 (Documentation)
+- 创建了详细的 `PACKAGING_FIX.md` 文档，记录了所有 PyInstaller 打包问题的分析和解决方案
+
 ## [v3.0.5] - 2026-03-31
 
 ### 🐛 修复 (Fixes)
