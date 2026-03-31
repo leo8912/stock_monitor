@@ -30,19 +30,28 @@ class StockDataFetcher:
         """初始化数据获取器"""
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
 
-        # 初始化 mootdx 行情引擎
-        self.mootdx_client = safe_call(
-            lambda: Quotes.factory(market="std"),
-            default_return=None,
-            exception_handler=lambda e, error_type: (
-                app_logger.error(f"初始化mootdx行情引擎失败: {e}") or None
-            ),
-        )
+        # 延迟初始化 mootdx 行情引擎 - 在使用时才创建
+        self._mootdx_client = None
 
-        self.name_registry = MootdxNameRegistry(self.mootdx_client)
+        self.name_registry = MootdxNameRegistry(self._mootdx_client)
 
         # 注册应用退出清理钩子，防止句柄泄露
         atexit.register(self.close)
+
+    @property
+    def mootdx_client(self):
+        """延迟初始化 mootdx client - 只在第一次访问时创建"""
+        if self._mootdx_client is None:
+            try:
+                app_logger.info("初始化 mootdx 行情引擎...")
+                self._mootdx_client = Quotes.factory(market="std")
+                app_logger.info("mootdx 行情引擎初始化成功")
+                # 更新 name_registry 的 client
+                self.name_registry.mootdx_client = self._mootdx_client
+            except Exception as e:
+                app_logger.error(f"初始化 mootdx 行情引擎失败：{e}")
+                self._mootdx_client = None
+        return self._mootdx_client
 
     def close(self):
         """释放网络资源与线程池"""

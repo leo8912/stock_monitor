@@ -1,5 +1,21 @@
 # 更新日志
 
+## [v3.0.7] - 2026-03-31
+
+### 🐛 修复 (Fixes)
+- **mootdx client 延迟初始化修复**：
+  - 将 mootdx client 的初始化从 `__init__` 移至 `@property` 延迟加载
+  - 解决了打包后 mootdx client 初始化失败返回 None 的问题
+  - 现在 mootdx client 只在第一次访问时才创建，避免了打包环境中的路径问题
+  - 初始化成功后自动更新 `name_registry` 的 client 引用
+  - 添加了详细的日志记录初始化的成功/失败状态
+  
+### 🔧 优化 (Optimization)
+- **打包环境兼容性提升**：
+  - 延迟初始化策略使得打包后的 exe 和源代码运行行为一致
+  - 避免了 PyInstaller 打包时对 mootdx 的动态导入和 C 扩展的依赖问题
+  - 主界面现在可以正常显示股票名称
+
 ## [v3.0.6] - 2026-03-31
 
 ### 🐛 修复 (Fixes)
