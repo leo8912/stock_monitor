@@ -51,6 +51,11 @@ hiddenimports = [
     'tqdm',
     'pytz',
     'certifi',
+    # mootdx 相关
+    'mootdx',
+    'mootdx.quotes',
+    'mootdx.business',
+    'mootdx.utils',
 ]
 
 # akshare 专用隐藏导入列表
@@ -125,8 +130,25 @@ try:
 except Exception as e:
     print(f"Warning: Could not collect akshare data files: {e}")
 
-# 收集其他包的完整依赖
-pkgs_to_collect = ['pandas_ta', 'mootdx', 'pytz', 'certifi', 'pypinyin']
+# 专门处理 mootdx - 在循环之前单独处理
+try:
+    print("Collecting mootdx submodules and data files...")
+    mootdx_subs = collect_submodules('mootdx')
+    hiddenimports += mootdx_subs
+    mootdx_datas = collect_data_files('mootdx', include_py_files=True)
+    datas += mootdx_datas
+    print(f"Collected {len(mootdx_subs)} mootdx submodules and {len(mootdx_datas)} data files")
+except Exception as e:
+    print(f"Warning: Could not collect mootdx: {str(e)}")
+    # Fallback
+    try:
+        hiddenimports += collect_submodules('mootdx')
+        datas += collect_data_files('mootdx')
+    except Exception as e2:
+        print(f"Warning: Fallback collection for mootdx also failed: {str(e2)}")
+
+# 收集其他包的完整依赖（移除 mootdx 避免重复）
+pkgs_to_collect = ['pandas_ta', 'pytz', 'certifi', 'pypinyin']
 
 for pkg in pkgs_to_collect:
     try:

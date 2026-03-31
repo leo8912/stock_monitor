@@ -66,6 +66,8 @@ jobs:
         python -c "import akshare; import os; print(f'akshare path: {os.path.dirname(akshare.__file__)}')"
         echo "验证所需模块:"
         python -c "import lxml; import bs4; import html5lib; print('All parsing libraries OK')"
+        python -c "import mootdx; print(f'mootdx version: {mootdx.__version__}')"
+        python -c "from mootdx.quotes import Quotes; print('mootdx.quotes import OK')"
     
     
     - name: 查找 zhconv 的 zhcdict.json 文件 # Find zhconv zhcdict.json

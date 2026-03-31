@@ -2,11 +2,16 @@
 
 ## 问题描述
 
-GitHub Actions 自动编译的程序运行时出现 `ModuleNotFoundError: No module named 'akshare'` 错误。
+GitHub Actions 自动编译的程序运行时出现模块找不到的错误：
+1. `ModuleNotFoundError: No module named 'akshare'`
+2. `ModuleNotFoundError: No module named 'mootdx'`
 
 ## 根本原因
 
-akshare 是一个依赖关系非常复杂的库，包含大量动态导入和隐式依赖。PyInstaller 的静态分析无法完全捕获所有依赖项。
+akshare 和 mootdx 都是依赖关系非常复杂的库，包含大量动态导入和隐式依赖。PyInstaller 的静态分析无法完全捕获所有依赖项。
+
+- **akshare**: 用于获取股票财务数据、行情数据等
+- **mootdx**: 用于获取通达信行情数据
 
 ## 解决方案
 
@@ -21,12 +26,14 @@ akshare 是一个依赖关系非常复杂的库，包含大量动态导入和隐
 - ✅ 添加 pandas、lxml、bs4、html5lib 等相关依赖
 - ✅ 添加自定义 hooks 路径支持
 
-### 2. 自定义 PyInstaller Hook
+### 2. 自定义 PyInstaller Hooks
 
-**文件**: `stock_monitor/hooks/hook-akshare.py`
+**文件**: 
+- `stock_monitor/hooks/hook-akshare.py`
+- `stock_monitor/hooks/hook-mootdx.py`
 
 功能：
-- 专门为 akshare 创建独立的 hook 文件
+- 专门为 akshare 和 mootdx 创建独立的 hook 文件
 - 显式声明所有可能的动态导入
 - 收集所有数据文件和子模块
 
@@ -80,6 +87,13 @@ pyinstaller -y stock_monitor.spec
 - akshare.common
 - akshare.utils
 
+### mootdx 核心模块
+- mootdx.quotes
+- mootdx.business
+- mootdx.utils
+- mootdx.client
+- mootdx.factory
+
 ### 解析库
 - lxml
 - beautifulsoup4 (bs4)
@@ -114,6 +128,7 @@ pyinstaller -y stock_monitor.spec
 
 - `stock_monitor.spec` - PyInstaller 配置文件
 - `stock_monitor/hooks/hook-akshare.py` - akshare 专用 hook
+- `stock_monitor/hooks/hook-mootdx.py` - mootdx 专用 hook
 - `.github/workflows/pack-release.yml` - CI/CD 工作流
 - `requirements.txt` - Python 依赖列表
 - `PACKAGING_FIX.md` - 本修复说明文档
