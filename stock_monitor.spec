@@ -1,6 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all, collect_submodules, collect_data_files
-import osdatas = [
+import os
+
+datas = [
     ('pyproject.toml', '.'),
     ('stock_monitor/resources/icon.ico', 'stock_monitor/resources'),
     ('stock_monitor/resources/stocks_base.db', 'stock_monitor/resources'),
