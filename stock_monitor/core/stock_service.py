@@ -117,12 +117,13 @@ class StockDataService:
     def _init_sina_if_needed(self):
         import easyquotation
 
-        if self.fetcher.sina_quotation is None:
-            self.fetcher.sina_quotation = easyquotation.use("sina")
-        return self.fetcher.sina_quotation
+        if not hasattr(self, "_sina_engine") or self._sina_engine is None:
+            self._sina_engine = easyquotation.use("sina")
+        return self._sina_engine
 
     def _fetch_market_snapshot(self):
-        return self.fetcher.sina_quotation.market_snapshot(prefix=True)
+        engine = self._init_sina_if_needed()
+        return engine.market_snapshot(prefix=True)
 
     def get_all_market_data(self) -> Optional[dict[str, Any]]:
         """
@@ -136,20 +137,18 @@ class StockDataService:
         quotation_engine = safe_call(
             self._init_sina_if_needed,
             default_return=None,
-            exception_handler=lambda e, error_type: app_logger.error(
-                f"初始化行情引擎时失败: {e}"
-            )
-            or None,
+            exception_handler=lambda e, error_type: (
+                app_logger.error(f"初始化行情引擎时失败: {e}") or None
+            ),
         )
 
         if quotation_engine:
             market_data = safe_call(
                 self._fetch_market_snapshot,
                 default_return=None,
-                exception_handler=lambda e, error_type: app_logger.error(
-                    f"获取全市场数据失败: {e}"
-                )
-                or None,
+                exception_handler=lambda e, error_type: (
+                    app_logger.error(f"获取全市场数据失败: {e}") or None
+                ),
             )
             return market_data
         return None

@@ -2,7 +2,7 @@ from typing import Any
 
 from PyQt6 import QtCore
 
-from stock_monitor.core.market_manager import MarketManager
+from stock_monitor.core.market_manager import MarketManager, market_manager
 from stock_monitor.utils.logger import app_logger
 
 
@@ -73,7 +73,14 @@ class MarketStatsWorker(QtCore.QThread):
                         stats["flat_count"],
                         stats["total_count"],
                     )
-                    app_logger.info("[市场统计] 已发送更新信号")
+                    # 同步到全局管理器
+                    market_manager.update_sentiment(
+                        stats["up_count"],
+                        stats["down_count"],
+                        stats["flat_count"],
+                        stats["total_count"],
+                    )
+                    app_logger.info("[市场统计] 已同步情绪数据到管理器")
                 else:
                     app_logger.warning("[市场统计] 获取全市场数据失败，返回None")
 

@@ -9,9 +9,11 @@ import time
 from typing import Any, Optional
 
 import easyquotation
+from mootdx.quotes import Quotes
 
 from ..utils.error_handler import retry_on_failure, safe_call
 from ..utils.logger import app_logger
+from .mootdx_registry import MootdxNameRegistry
 
 # 常量定义
 MAX_RETRY_ATTEMPTS = 5  # 股票数据获取最大重试次数
@@ -21,23 +23,23 @@ RETRY_DELAY_SECONDS = 2  # 重试间隔(秒)
 class StockDataFetcher:
     """股票数据获取类"""
 
-    def _init_sina_quotation(self):
-        return easyquotation.use("sina")
-
     def _init_hk_quotation(self):
         return easyquotation.use("hkquote")
 
     def __init__(self):
         """初始化数据获取器"""
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
-        self.sina_quotation = safe_call(
-            self._init_sina_quotation,
+
+        # 初始化 mootdx 行情引擎
+        self.mootdx_client = safe_call(
+            lambda: Quotes.factory(market="std"),
             default_return=None,
-            exception_handler=lambda e, error_type: app_logger.error(
-                f"初始化新浪行情引擎失败: {e}"
-            )
-            or None,
+            exception_handler=lambda e, error_type: (
+                app_logger.error(f"初始化mootdx行情引擎失败: {e}") or None
+            ),
         )
+
+        self.name_registry = MootdxNameRegistry(self.mootdx_client)
 
         # 注册应用退出清理钩子，防止句柄泄露
         atexit.register(self.close)
@@ -50,51 +52,26 @@ class StockDataFetcher:
         if hasattr(self, "_executor") and self._executor:
             self._executor.shutdown(wait=False)
 
-        # 2. 清理新浪请求引擎 (easyquotation 核心其实持有一个 session)
-        if hasattr(self, "sina_quotation") and self.sina_quotation is not None:
-            if hasattr(self.sina_quotation, "session") and self.sina_quotation.session:
-                try:
-                    self.sina_quotation.session.close()
-                except Exception:
-                    pass
-            self.sina_quotation = None
+    def _get_name_cache_file(self):
+        # 已经转移到 MootdxNameRegistry
+        pass
 
     def get_quotation_engine(self, code: str):
         """
         根据股票代码获取相应的行情引擎
-
-        Args:
-            code (str): 股票代码
-
-        Returns:
-            行情引擎实例或None
         """
-        # 根据股票代码类型选择不同的行情引擎
         if code.startswith("hk"):
             quotation_engine = safe_call(
                 self._init_hk_quotation,
                 default_return=None,
-                exception_handler=lambda e, error_type: app_logger.error(
-                    f"初始化港股行情引擎失败: {e}"
-                )
-                or None,
+                exception_handler=lambda e, error_type: (
+                    app_logger.error(f"初始化港股行情引擎失败: {e}") or None
+                ),
             )
             if quotation_engine:
                 app_logger.debug(f"使用 hkquote 引擎获取港股 {code} 数据")
             return quotation_engine
-        else:
-            if self.sina_quotation is None:
-                self.sina_quotation = safe_call(
-                    self._init_sina_quotation,
-                    default_return=None,
-                    exception_handler=lambda e, error_type: app_logger.error(
-                        f"重新初始化新浪行情引擎失败: {e}"
-                    )
-                    or None,
-                )
-            quotation_engine = self.sina_quotation
-            app_logger.debug(f"使用 sina 引擎获取股票 {code} 数据")
-        return quotation_engine
+        return None
 
     def fetch_single_stock(
         self, quotation_engine, code: str, query_code: str
@@ -205,7 +182,7 @@ class StockDataFetcher:
         futures = []
         if sina_codes:
             futures.append(
-                self._executor.submit(self._fetch_sina_stocks, result, sina_codes)
+                self._executor.submit(self._fetch_mootdx_stocks, result, sina_codes)
             )
         if hk_codes:
             futures.append(
@@ -222,55 +199,45 @@ class StockDataFetcher:
 
         return result
 
-    def _fetch_sina_stocks(self, result: dict, sina_codes: list[str]):
+    def _fetch_mootdx_stocks(self, result: dict, sina_codes: list[str]):
         """
-        批量获取A股数据
-
-        Args:
-            result (dict): 结果字典
-            sina_codes (List[str]): A股代码列表
+        批量使用 mootdx 获取A股数据，并使用 easyquotation 缓存名称
         """
         try:
-            # 确保sina引擎已初始化
-            def init_sina_if_needed():
-                if self.sina_quotation is None:
-                    self.sina_quotation = self._init_sina_quotation()
-                return self.sina_quotation
+            if self.mootdx_client is None:
+                return
 
-            quotation_engine = safe_call(
-                init_sina_if_needed,
-                default_return=None,
-                exception_handler=lambda e, error_type: app_logger.error(
-                    f"初始化新浪行情引擎失败: {e}"
-                )
-                or None,
-            )
+            df = self.mootdx_client.quotes(symbol=sina_codes)
+            if df is None or df.empty:
+                app_logger.warning("mootdx quotes 返回空数据")
+                return
 
-            if quotation_engine:
+            records = df.to_dict("records")
 
-                def fetch_sina_stocks():
-                    # 使用prefix=True确保返回的键包含前缀
-                    return quotation_engine.stocks(sina_codes, prefix=True)
+            # 1. 甄别需要从 mootdx 查名字的代码
+            missing_names = [
+                c for c in sina_codes if c == self.name_registry.get_name(c)
+            ]
+            if missing_names:
+                self.name_registry.resolve_missing(missing_names)
 
-                sina_data = safe_call(
-                    fetch_sina_stocks,
-                    default_return={},
-                    exception_handler=lambda e, error_type: app_logger.error(
-                        f"批量获取A股数据失败: {e}"
-                    )
-                    or {},
-                )
+            # 2. 拼接数据
+            updated_count = 0
+            for code, row in zip(sina_codes, records):
+                if not isinstance(row, dict) or "price" not in row:
+                    continue
+                row["name"] = self.name_registry.get_name(code)
+                result[code] = row
+                updated_count += 1
 
-                if sina_data:
-                    result.update(sina_data)
-                    app_logger.debug(f"成功获取 {len(sina_data)} 只A股数据")
+            app_logger.debug(f"成功使用 mootdx 获取 {updated_count} 只 A 股行情")
+
         except Exception as e:
-            app_logger.error(f"批量获取A股数据时发生错误: {e}")
+            app_logger.error(f"批量获取 mootdx 基础行情失败: {e}")
 
     def _fetch_hk_stocks(self, result: dict, hk_codes: list[str]):
         """
         批量获取港股数据
-
         Args:
             result (dict): 结果字典
             hk_codes (List[str]): 港股代码列表
@@ -280,10 +247,9 @@ class StockDataFetcher:
             quotation_engine = safe_call(
                 self._init_hk_quotation,
                 default_return=None,
-                exception_handler=lambda e, error_type: app_logger.error(
-                    f"初始化港股行情引擎失败: {e}"
-                )
-                or None,
+                exception_handler=lambda e, error_type: (
+                    app_logger.error(f"初始化港股行情引擎失败: {e}") or None
+                ),
             )
 
             if quotation_engine:
@@ -300,10 +266,9 @@ class StockDataFetcher:
                 hk_data = safe_call(
                     fetch_hk_stocks,
                     default_return={},
-                    exception_handler=lambda e, error_type: app_logger.error(
-                        f"批量获取港股数据失败: {e}"
-                    )
-                    or {},
+                    exception_handler=lambda e, error_type: (
+                        app_logger.error(f"批量获取港股数据失败: {e}") or {}
+                    ),
                 )
 
                 if hk_data:
@@ -311,6 +276,8 @@ class StockDataFetcher:
                     app_logger.debug(f"成功获取 {len(hk_data)} 只港股数据")
         except Exception as e:
             app_logger.error(f"批量获取港股数据时发生错误: {e}")
+
+    # 大单流计算逻辑已转移至 QuantEngine
 
 
 # 创建全局实例

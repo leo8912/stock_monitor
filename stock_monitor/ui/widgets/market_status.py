@@ -3,7 +3,6 @@
 显示整体股市涨跌情况的可视化状态条
 """
 
-
 from PyQt6 import QtCore, QtGui, QtWidgets
 
 # 常量定义

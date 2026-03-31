@@ -7,6 +7,7 @@ from PyQt6.QtCore import (
 
 from stock_monitor.config.manager import ConfigManager
 from stock_monitor.core.container import container
+from stock_monitor.models.stock_data import StockRowData
 
 # Workers are now managed by ViewModel
 from stock_monitor.ui.components.stock_table import StockTable
@@ -61,6 +62,11 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         self.viewModel.stock_data_updated.connect(self._handle_refresh_data)
         self.viewModel.refresh_error_occurred.connect(self._handle_refresh_error)
 
+        # 初始化加载超时计时器 (10s 收敛)
+        self._loading_timer = QtCore.QTimer(self)
+        self._loading_timer.setSingleShot(True)
+        self._loading_timer.timeout.connect(self._on_loading_timeout)
+
         # 启动 Workers (在 UI 设置完成后)
         # 这里的 start_workers 会在 setup_refresh_worker 中被调用，或者我们可以在这里调用
         # 但考虑到 setup_refresh_worker 可能会用到 config，我们稍后在 setup_refresh_worker 中统一启动
@@ -106,6 +112,9 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         self._setup_window_properties()
         self._setup_ui_components()
         self._setup_event_handlers()
+
+        # 初始化数据缓存，用于即时重排交互
+        self._last_data = []
 
     def _setup_window_properties(self):
         """设置窗口属性"""
@@ -234,18 +243,24 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
 
     def setup_refresh_worker(self):
         """设置刷新工作线程"""
-        # 启动后台刷新线程 (通过 ViewModel)
+        # 启动后台刷新线程 (通过 ViewModel)，数据由后台线程获取后通过信号推送
+        # 注意：不在主线程中同步调用 refresh_now()，避免阻塞界面弹出
         self.viewModel.start_workers(self.current_user_stocks, self.refresh_interval)
-
-        # 启动后立即刷新一次数据，确保界面显示
-        self.refresh_now()
 
     def _handle_refresh_error(self):
         """处理刷新错误 - 在主线程中执行"""
         try:
             app_logger.error("连续多次刷新失败")
             error_stocks = [
-                ("网络连接异常", "--", "--", COLORS.STOCK_NEUTRAL, "", "")
+                StockRowData(
+                    code="网络连接异常",
+                    name="网络连接异常",
+                    price="--",
+                    change_str="--",
+                    color_hex=COLORS.STOCK_NEUTRAL,
+                    seal_vol="",
+                    seal_type="",
+                )
             ] * max(3, len(self.current_user_stocks))
             self.update_table_signal.emit(error_stocks)
 
@@ -266,7 +281,24 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
             all_failed: 是否所有股票都获取失败
         """
         try:
-            # 更新表格数据
+            # 1. 停止加载超时计时器
+            self._loading_timer.stop()
+
+            # 缓存最新数据副本，用于即时重排交互优化
+            self._last_data = data
+
+            # 2. 对返回的数据进行强制排序以同步 UI 列表顺序
+            stock_order_map = {
+                code: i for i, code in enumerate(self.current_user_stocks)
+            }
+            data = sorted(
+                data,
+                key=lambda x: stock_order_map.get(
+                    x.code if hasattr(x, "code") else getattr(x, "name", ""), 999
+                ),
+            )
+
+            # 3. 更新表格数据
             self.update_table_signal.emit(data)
 
             # 仅在首次加载数据且窗口未显示时才强制显示
@@ -282,7 +314,7 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
                 self.market_status_bar.show()
                 self.table.show()
 
-            # 隐藏加载状态
+            # 隐藏加载状态 (由于有了 QTimer，这里仅作为成功时的正常关闭)
             self.loading_label.hide()
 
             # 调整窗口大小
@@ -324,22 +356,21 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
                 app_logger.info("使用会话缓存快速启动界面")
                 return True
             else:
-                # 没有缓存，隐藏窗口直到获取到数据
-                self.hide()
-                # 同时隐藏所有组件
-                self.market_status_bar.hide()
-                self.table.hide()
+                # 没有缓存：立即显示加载中状态，不再等待数据
+                self.show()
+                self.load_position()
+                self.raise_()
+                self.loading_label.show()
+                app_logger.info("无会话缓存，立即显示窗口，等待后台数据")
+
         except Exception as e:
             app_logger.warning(f"加载会话缓存失败: {e}")
-            # 出错时也隐藏窗口
-            self.hide()
-            # 同时隐藏所有组件
-            self.market_status_bar.hide()
-            self.table.hide()
+            # 出错时也立即显示窗口，不阻塞用户
+            self.show()
+            self.load_position()
+            self.raise_()
+            self.loading_label.show()
 
-        # 确保在没有缓存的情况下也能最终显示窗口
-        # 使用 QTimer 在短时间内显示窗口，确保初始化完成
-        QtCore.QTimer.singleShot(100, self._ensure_window_visible)
         return False
 
     def _ensure_window_visible(self):
@@ -374,7 +405,15 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         if self.settings_dialog is None:
             self.settings_dialog = NewSettingsDialog(main_window=self)
             self.settings_dialog.config_changed.connect(self.on_config_changed)
+            # 连接手动复盘请求信号
+            self.settings_dialog.manual_report_requested.connect(
+                self.on_manual_report_requested
+            )
         self.settings_dialog.show()
+
+    def on_manual_report_requested(self):
+        """处理来自设置界面的手动复盘请求"""
+        self.viewModel.trigger_manual_report()
 
     def on_config_changed(self, stocks, refresh_interval):
         """当配置更改时的处理函数"""
@@ -389,6 +428,43 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         # 更新后台刷新线程的配置 (通过 ViewModel)
         self.viewModel.update_workers_config(stocks, refresh_interval)
 
+        # UX 优化：在触发异步刷新前，先利用上一次缓存数据按照新顺序进行本地即时重排，实现“零延迟”响应
+        if hasattr(self, "_last_data") and self._last_data:
+            stock_order_map = {code: i for i, code in enumerate(stocks)}
+            # 1. 过滤并重排现有数据
+            resorted_data = sorted(
+                [
+                    d
+                    for d in self._last_data
+                    if (d.code if hasattr(d, "code") else getattr(d, "name", ""))
+                    in stock_order_map
+                ],
+                key=lambda x: stock_order_map.get(
+                    x.code if hasattr(x, "code") else getattr(x, "name", ""), 999
+                ),
+            )
+            # 2. 补齐新加入股票的占位
+            existing_codes = {
+                (d.code if hasattr(d, "code") else getattr(d, "name", ""))
+                for d in resorted_data
+            }
+            for code in stocks:
+                if code not in existing_codes:
+                    resorted_data.insert(
+                        stock_order_map[code],
+                        StockRowData(
+                            code=code,
+                            name="加载中",
+                            price="--",
+                            change_str="--",
+                            color_hex=COLORS.STOCK_NEUTRAL,
+                            seal_vol="",
+                            seal_type="",
+                        ),
+                    )
+            # 立即渲染，消除 2s 等待感
+            self.update_table_signal.emit(resorted_data)
+
         # 更新主题透明度缓存
         config_manager = self._container.get(ConfigManager)
         new_transparency = config_manager.get("transparency", 80)
@@ -396,8 +472,8 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
             self._transparency = new_transparency
             self.update()  # 触发重绘
 
-        # 立即同步刷新显示（只触发一次，settings_dialog 中已不再重复调用）
-        self.refresh_now(stocks)
+        # 立即同步刷新显示（跳过占位，因为上面已经完成了更有意义的本地重排渲染）
+        self.refresh_now(stocks, skip_placeholders=True)
 
         # 更新主窗口字体大小
         self.update_font_size()
@@ -443,36 +519,55 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         except Exception as e:
             app_logger.error(f"更新主窗口字体大小失败: {e}")
 
-    def refresh_now(self, stocks_list=None):
-        """立即刷新数据"""
+    def refresh_now(self, stocks_list=None, skip_placeholders=False):
+        """
+        发起立即刷新请求（异步）
+        不再阻塞 UI 线程，实际更新由 _handle_refresh_data 信号处理器完成
+        """
         if stocks_list is None:
             stocks_list = self.current_user_stocks
-        try:
-            self.loading_label.show()
-            self.table.hide()
-            QtWidgets.QApplication.processEvents()
 
-            # 更新当前股票列表
+        try:
+            # 更新本地缓存的列表
             self.current_user_stocks = stocks_list
 
-            stocks = self.viewModel.get_stock_list_data(stocks_list)
+            # 开启 10s 超时强制收敛，解决“数据加载中”状态残留问题
+            self._loading_timer.start(10000)
 
-            # 使用 update_data 更新数据
-            self.table.update_data(stocks)
+            # 仅在非跳过模式下发送占位数据 (UX 优化: 防止覆盖本地重排的结果)
+            if not skip_placeholders:
+                placeholder_data = []
+                for code in stocks_list:
+                    # 填充符合 StockRowData 定义的数据
+                    placeholder_data.append(
+                        StockRowData(
+                            code=code,
+                            name="加载中",
+                            price="--",
+                            change_str="--",
+                            color_hex=COLORS.STOCK_NEUTRAL,
+                            seal_vol="",
+                            seal_type="",
+                        )
+                    )
+                self.update_table_signal.emit(placeholder_data)
+                # 显示加载状态提示
+                self.loading_label.show()
 
-            self.adjust_window_height()
+            # 通过 ViewModel 向后台 Worker 发放刷新指令
+            app_logger.debug(f"请求手动异步刷新: {len(stocks_list)} 只股票")
+            self.viewModel.request_immediate_refresh(stocks_list)
 
-            self.loading_label.hide()
-            self.table.show()
         except Exception as e:
-            app_logger.error(f"行情刷新异常: {e}")
-            error_stocks = [
-                ("数据加载异常", "--", "--", COLORS.STOCK_NEUTRAL, "", "")
-            ] * max(3, len(stocks_list) if stocks_list else 3)
-            self.table.update_data(error_stocks)
-            self.adjust_window_height()
+            app_logger.error(f"发起异步刷新请求失败: {e}")
             self.loading_label.hide()
-            self.table.show()
+            self._loading_timer.stop()
+
+    def _on_loading_timeout(self):
+        """加载状态超时处理"""
+        if hasattr(self, "loading_label") and self.loading_label.isVisible():
+            self.loading_label.hide()
+            app_logger.warning("刷新请求超时 (10s)，强制收敛加载状态")
 
     def paintEvent(self, event):
         """窗口绘制事件，用于绘制半透明背景"""

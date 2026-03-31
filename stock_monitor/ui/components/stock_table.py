@@ -3,7 +3,6 @@
 用于显示股票行情数据的表格组件
 """
 
-
 from PyQt6 import QtCore, QtGui, QtWidgets
 from PyQt6.QtCore import pyqtSlot
 

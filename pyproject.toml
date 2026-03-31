@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stock_monitor"
-version = "2.10.7"
+version = "3.0.0"
 description = "A real-time stock monitoring application for A-shares"
 authors = [
     {name = "Stock Monitor Team"}
@@ -19,6 +19,8 @@ dependencies = [
     "pandas>=1.3.0",
     "zhconv>=1.4.1",
     "openpyxl>=3.0.7",
+    "pandas-ta>=0.3.14",
+    "mootdx>=0.1.7",
 ]
 requires-python = ">=3.9"
 

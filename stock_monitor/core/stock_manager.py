@@ -2,41 +2,14 @@
 负责处理股票相关的业务逻辑
 """
 
-import functools
+import concurrent.futures
 import json
 from typing import Any
 
+from ..core.quant_engine import QuantEngine
+from ..models.stock_data import StockRowData
 from ..utils.logger import app_logger
 from ..utils.stock_utils import StockCodeProcessor
-
-# LRU缓存大小常量
-LRU_CACHE_SIZE = 128
-
-
-# 添加动态调整LRU缓存大小的函数
-def get_dynamic_lru_cache_size():
-    """
-    根据系统资源和使用情况动态调整LRU缓存大小
-    在资源受限环境中减小缓存大小以节省内存
-    """
-    try:
-        import psutil
-
-        # 获取可用内存（GB）
-        available_memory_gb = psutil.virtual_memory().available / (1024**3)
-
-        # 根据可用内存动态调整缓存大小
-        if available_memory_gb < 1:  # 可用内存小于1GB
-            return 64
-        elif available_memory_gb < 2:  # 可用内存小于2GB
-            return 128
-        elif available_memory_gb < 4:  # 可用内存小于4GB
-            return 256
-        else:  # 可用内存大于等于4GB
-            return 512
-    except ImportError:
-        # 如果无法导入psutil，则使用默认值
-        return LRU_CACHE_SIZE
 
 
 class StockManager:
@@ -51,111 +24,98 @@ class StockManager:
         from ..core.stock_service import stock_data_service as global_stock_data_service
 
         self._stock_data_service = stock_data_service or global_stock_data_service
+        self._quant_engine = None  # 延迟初始化
+        self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        self._large_orders_cache = {}
 
-    def has_stock_data_changed(self, stocks: list[tuple]) -> bool:
-        """
-        检查股票数据是否发生变化
-
-        Args:
-            stocks (List[tuple]): 当前股票数据列表
-
-        Returns:
-            bool: 数据是否发生变化
-        """
-        # 如果没有缓存数据，认为发生了变化
+    def has_stock_data_changed(self, stocks: list[StockRowData]) -> bool:
+        """检查股票数据是否发生变化"""
         if not self._last_stock_data:
             return True
 
-        # 比较每只股票的数据
         for stock in stocks:
-            name, price, change, color, seal_vol, seal_type = stock
-            # 优化：使用元组()来替代拼接字符串，避免高频请求下的GC开销
-            key = (price, change, color, seal_vol, seal_type)
-
-            # 如果这只股票之前没有数据，认为发生了变化
-            if name not in self._last_stock_data:
+            if stock.name not in self._last_stock_data:
+                return True
+            if self._last_stock_data[stock.name] != stock.hash_key:
                 return True
 
-            # 如果数据不匹配，认为发生了变化
-            if self._last_stock_data[name] != key:
-                return True
-
-        # 检查是否有股票被移除
-        current_names = [stock[0] for stock in stocks]
+        current_names = [s.name for s in stocks]
         for name in self._last_stock_data.keys():
             if name not in current_names:
                 return True
-
-        # 数据没有变化
         return False
 
-    def update_last_stock_data(self, stocks: list[tuple]) -> None:
-        """
-        更新最后股票数据缓存
-
-        Args:
-            stocks (List[tuple]): 当前股票数据列表
-        """
+    def update_last_stock_data(self, stocks: list[StockRowData]) -> None:
+        """更新最后股票数据缓存"""
         self._last_stock_data.clear()
         for stock in stocks:
-            name, price, change, color, seal_vol, seal_type = stock
-            key = (price, change, color, seal_vol, seal_type)
-            self._last_stock_data[name] = key
-
+            self._last_stock_data[stock.name] = stock.hash_key
         app_logger.debug(f"更新股票数据缓存，共{len(self._last_stock_data)}只股票")
+
+    def _async_fetch_large_orders(self, codes: list[str]):
+        """异步拉取大单，不阻塞主刷新线程"""
+        if self._quant_engine is None:
+            if hasattr(self._stock_data_service, "fetcher") and getattr(
+                self._stock_data_service.fetcher, "mootdx_client", None
+            ):
+                self._quant_engine = QuantEngine(
+                    self._stock_data_service.fetcher.mootdx_client
+                )
+            else:
+                return
+
+        for code in codes:
+            try:
+                res = self._quant_engine.fetch_large_orders_flow(code)
+                self._large_orders_cache[code] = res
+            except Exception as e:
+                app_logger.warning(f"获取 {code} 大单失败: {e}")
 
     def fetch_and_process_stocks(
         self, stock_codes: list[str]
-    ) -> tuple[list[tuple], int]:
-        """
-        获取并处理股票数据
-
-        Args:
-            stock_codes (List[str]): 股票代码列表
-
-        Returns:
-            Tuple[List[tuple], int]: (格式化后的股票数据列表, 失败数量)
-        """
-        # 使用依赖注入的服务获取所有股票数据
+    ) -> tuple[list[StockRowData], int]:
+        """获取并处理股票数据"""
+        # 1. 批量获取基础行情数据
         data_dict = self._stock_data_service.get_multiple_stocks_data(stock_codes)
 
-        # 计算失败数量 (值为None的)
-        failed_count = sum(1 for data in data_dict.values() if data is None)
+        # 2. 异步派发大单拉取任务，即非阻塞 UI (缓解 0.15s~+ 延时卡顿)
+        self._executor.submit(self._async_fetch_large_orders, stock_codes)
 
-        # 处理股票数据
+        # 3. 处理并整合数据
+        failed_count = sum(1 for data in data_dict.values() if data is None)
         stocks = []
         for code in stock_codes:
             info = data_dict.get(code)
-
             if info:
-                # 传递全量数据计算，确保买卖五档能够正确计算涨跌停封单数
-                # 转换为 JSON 字符串以供 LRU 缓存作 Hash Key
+                # 瞬间从缓存读取异步大单结果
+                info["large_order_vol"] = self._large_orders_cache.get(
+                    code, (0.0, 0.0, 0.0)
+                )
+
                 try:
                     info_json = json.dumps(info, sort_keys=True)
                     stock_item = self._process_single_stock_data(code, info_json)
                 except Exception:
-                    # 如果转换失败退回直调用
                     stock_item = self._process_single_stock_data_impl(code, info)
                 stocks.append(stock_item)
             else:
-                # 如果没有获取到数据，显示默认值
-                name = code
-                stocks.append((name, "--", "--", "#e6eaf3", "", ""))
-                app_logger.warning(f"未获取到股票 {code} 的数据")
+                stocks.append(
+                    StockRowData(
+                        code=code,
+                        name=code,
+                        price="--",
+                        change_str="--",
+                        color_hex="#e6eaf3",
+                        seal_vol="",
+                        seal_type="",
+                    )
+                )
 
         app_logger.debug(f"共处理 {len(stocks)} 只股票数据")
         return stocks, failed_count
 
-    def get_stock_list_data(self, stock_codes: list[str]) -> list[tuple]:
-        """
-        获取股票列表数据
-
-        Args:
-            stock_codes (List[str]): 股票代码列表
-
-        Returns:
-            List[tuple]: 格式化后的股票数据列表
-        """
+    def get_stock_list_data(self, stock_codes: list[str]) -> list[StockRowData]:
+        """获取股票列表数据"""
         stocks, _ = self.fetch_and_process_stocks(stock_codes)
         return stocks
 
@@ -168,35 +128,17 @@ class StockManager:
         """
         return self._stock_data_service.get_all_market_data()
 
-    def _process_single_stock_data_impl(self, code: str, info: dict[str, Any]) -> tuple:
-        """
-        处理单只股票的数据的实际实现
-
-        Args:
-            code (str): 股票代码
-            info (Dict[str, Any]): 股票原始数据
-
-        Returns:
-            tuple: 格式化后的股票数据元组
-        """
+    def _process_single_stock_data_impl(
+        self, code: str, info: dict[str, Any]
+    ) -> StockRowData:
+        """处理单只股票的数据的实际实现"""
         from ..core.stock_data_processor import stock_processor
 
         result = stock_processor.process_raw_data(code, info)
-        app_logger.debug(f"股票 {code} 数据处理完成")
         return result
 
-    @functools.lru_cache(maxsize=get_dynamic_lru_cache_size())  # noqa: B019
-    def _process_single_stock_data(self, code: str, info_json: str) -> tuple:
-        """
-        处理单只股票的数据 (带LRU缓存)
-
-        Args:
-            code (str): 股票代码
-            info_json (str): 股票原始数据的JSON序列化字符串
-
-        Returns:
-            tuple: 格式化后的股票数据元组
-        """
+    def _process_single_stock_data(self, code: str, info_json: str) -> StockRowData:
+        """处理单只股票的数据"""
         try:
             info = json.loads(info_json) if isinstance(info_json, str) else info_json
         except Exception:

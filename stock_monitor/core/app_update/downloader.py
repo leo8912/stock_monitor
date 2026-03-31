@@ -229,17 +229,17 @@ class UpdateDownloader:
                         continue  # 继续重试（会从断点续传）
 
                     app_logger.info(
-                        f"使用{source_name}下载成功，" f"共 {downloaded_size} 字节"
+                        f"使用{source_name}下载成功，共 {downloaded_size} 字节"
                     )
                     return True
 
                 except requests.exceptions.Timeout:
                     app_logger.warning(
-                        f"{source_name}下载超时" f"（第{retry + 1}/{MAX_RETRIES}次）"
+                        f"{source_name}下载超时（第{retry + 1}/{MAX_RETRIES}次）"
                     )
                 except requests.exceptions.ConnectionError:
                     app_logger.warning(
-                        f"{source_name}连接失败" f"（第{retry + 1}/{MAX_RETRIES}次）"
+                        f"{source_name}连接失败（第{retry + 1}/{MAX_RETRIES}次）"
                     )
                 except requests.exceptions.ChunkedEncodingError:
                     app_logger.warning(
@@ -249,8 +249,7 @@ class UpdateDownloader:
                     )
                 except requests.exceptions.RequestException as e:
                     app_logger.warning(
-                        f"{source_name}请求异常"
-                        f"（第{retry + 1}/{MAX_RETRIES}次）: {e}"
+                        f"{source_name}请求异常（第{retry + 1}/{MAX_RETRIES}次）: {e}"
                     )
 
             app_logger.warning(f"{source_name}已达最大重试次数，切换下一个源")

@@ -6,6 +6,7 @@
 import math
 from typing import Any, Optional
 
+from stock_monitor.models.stock_data import StockRowData
 from stock_monitor.utils.logger import app_logger
 
 # 涨跌颜色常量 —— 值与 ui.constants.COLORS 保持同步
@@ -34,7 +35,7 @@ class StockDataProcessor:
             raw_data: 原始数据字典
 
         Returns:
-            Tuple: (name, price, change_str, color, seal_vol, seal_type)
+            StockRowData: 填充完毕的单行股票数据对象
         """
         # 1. 处理特殊股票名称（如上证指数）
         info = StockDataProcessor._handle_special_stocks(code, raw_data)
@@ -46,14 +47,59 @@ class StockDataProcessor:
         price_info = StockDataProcessor._extract_price_info(code, info)
 
         if not price_info:
-            return (name, "--", "--", "#e6eaf3", "", "")
+            return StockRowData(
+                code=code,
+                name=name,
+                price="--",
+                change_str="--",
+                color_hex="#e6eaf3",
+                seal_vol="",
+                seal_type="",
+            )
 
         price, change_str, color, now_price, close_price = price_info
 
         # 4. 计算封单信息
         seal_vol, seal_type = StockDataProcessor._calculate_seal_info(info, now_price)
 
-        return (name, price, change_str, color, seal_vol, seal_type)
+        # 5. 处理大单信息 (large_order_vol 格式: (buy_vol, sell_vol, recent_net))
+        large_order_vol = raw_data.get("large_order_vol", (0.0, 0.0, 0.0))
+        large_order_info = ""
+        recent_net_out = 0.0  # 传递给 UI 的实时净流入量（手），用于动态着色
+
+        if isinstance(large_order_vol, (tuple, list)) and len(large_order_vol) >= 2:
+            buy_vol = float(large_order_vol[0])
+            sell_vol = float(large_order_vol[1])
+            recent_net = float(large_order_vol[2]) if len(large_order_vol) > 2 else 0.0
+        else:
+            buy_vol = float(large_order_vol) if large_order_vol else 0.0
+            sell_vol = 0.0
+            recent_net = 0.0
+
+        if buy_vol > 0 or sell_vol > 0:
+            net = buy_vol - sell_vol
+            # 换算单位为千个“万”（相当于除以一千万），并增加大写 K 后缀
+            # 对应规则：1000万净流入 -> 1.0K
+            net_10m = net / 10000000.0
+            val_str = f"{abs(net_10m):.1f}K"
+            sign = "+" if net >= 0 else "-"
+            recent_net_out = recent_net
+
+            # 简化逻辑，展示今日真实大单金额净流入
+            large_order_info = f"{sign}{val_str}"
+
+        # 返回数据类实例
+        return StockRowData(
+            code=code,
+            name=name,
+            price=price,
+            change_str=change_str,
+            color_hex=color,
+            seal_vol=seal_vol,
+            seal_type=seal_type,
+            large_order_info=large_order_info,
+            recent_net_out=recent_net_out,
+        )
 
     @staticmethod
     def _handle_special_stocks(code: str, info: dict[str, Any]) -> dict[str, Any]:
@@ -89,7 +135,12 @@ class StockDataProcessor:
         """
         try:
             now = info.get("now") or info.get("price")
-            close = info.get("close") or info.get("lastPrice") or now
+            close = (
+                info.get("close")
+                or info.get("last_close")
+                or info.get("lastPrice")
+                or now
+            )
 
             # 价格有效性检查与回退逻辑
             is_now_valid = False
@@ -148,8 +199,16 @@ class StockDataProcessor:
             low = float(info.get("low", 0))
             bid1 = float(info.get("bid1", 0))
             ask1 = float(info.get("ask1", 0))
-            bid1_vol = float(info.get("bid1_volume", 0) or info.get("volume_2", 0))
-            ask1_vol = float(info.get("ask1_volume", 0) or info.get("volume_3", 0))
+            bid1_vol = float(
+                info.get("bid1_volume", 0)
+                or info.get("bid_vol1", 0)
+                or info.get("volume_2", 0)
+            )
+            ask1_vol = float(
+                info.get("ask1_volume", 0)
+                or info.get("ask_vol1", 0)
+                or info.get("volume_3", 0)
+            )
 
             # 涨停判断
             # 简单判断：价格等于最高价，且等于买一价，且买一量>0，卖一为0
@@ -163,7 +222,7 @@ class StockDataProcessor:
                 # 这里使用更稳健的比较
 
                 vol = int(bid1_vol)
-                display_vol = f"{int(vol/100000)}k" if vol >= 100000 else str(vol)
+                display_vol = f"{int(vol / 100000)}k" if vol >= 100000 else str(vol)
                 return (display_vol, "up")
 
             # 跌停判断
@@ -174,7 +233,7 @@ class StockDataProcessor:
                 and bid1 <= 1e-6
             ):
                 vol = int(ask1_vol)
-                display_vol = f"{int(vol/100000)}k" if vol >= 100000 else str(vol)
+                display_vol = f"{int(vol / 100000)}k" if vol >= 100000 else str(vol)
                 return (display_vol, "down")
 
         except Exception as e:

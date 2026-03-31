@@ -7,6 +7,7 @@ import inspect
 from typing import Any, Callable, Optional, Union
 
 from ..config.manager import ConfigManager
+from ..core.stock_data_fetcher import StockDataFetcher
 from ..core.stock_manager import StockManager
 from ..core.stock_service import StockDataService
 from ..data.stock.stock_db import StockDatabase
@@ -118,6 +119,9 @@ class DIContainer:
         elif service_type == StockDatabase:
             app_logger.debug("自动创建StockDatabase")
             return StockDatabase()
+        elif service_type == StockDataFetcher:
+            app_logger.debug("自动创建StockDataFetcher")
+            return StockDataFetcher()
 
         return None
 

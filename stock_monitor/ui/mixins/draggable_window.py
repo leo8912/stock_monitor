@@ -29,10 +29,10 @@ class DraggableWindowMixin:
             # Install event filter on self and children
             self.install_event_filters(self)
 
-            # 方案一：定时器周期性兜底，每 1 秒检查一次置顶状态
-            self._topmost_timer = QtCore.QTimer(self)
-            self._topmost_timer.timeout.connect(self._ensure_topmost)
-            self._topmost_timer.start(1000)
+            # 弃用定时器周期性纠正，改为消息驱动 (nativeEvent) 和属性锁定
+            # self._topmost_timer = QtCore.QTimer(self)
+            # self._topmost_timer.timeout.connect(self._ensure_topmost)
+            # self._topmost_timer.start(1000)
 
     def install_event_filters(self, widget):
         """Recursively install event filters on widget and its children"""
@@ -139,15 +139,28 @@ class DraggableWindowMixin:
             try:
                 import ctypes
 
-                hwnd = int(self.winId())
-
-                # 特殊逻辑：仅当不是可见的置顶状态时才强制设置，减少系统调用
-                # 虽然 SetWindowPos 已经处理了大部分竞争，但这里加一层保护
                 HWND_TOPMOST = -1
                 SWP_NOMOVE = 0x0002
                 SWP_NOSIZE = 0x0001
                 SWP_NOACTIVATE = 0x0010
+                SWP_FRAMECHANGED = 0x0020
+                GWL_EXSTYLE = -20
+                WS_EX_TOPMOST = 0x00000008
 
+                hwnd = int(self.winId())
+
+                # 1. 检查当前样式，如果置顶位丢失，则强行补全
+                style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+                if not (style & WS_EX_TOPMOST):
+                    ctypes.windll.user32.SetWindowLongW(
+                        hwnd, GWL_EXSTYLE, style | WS_EX_TOPMOST
+                    )
+
+                # 2. 重新应用位置（不激活窗口，仅强制置顶）
+
+                # 核心突破：Windows 的置顶窗口(TopMost)是有层级栈的。
+                # 当有新的别的置顶窗口出现时，原来置顶的窗口就会被压在下面。
+                # 只有先取消置顶（NOTOPMOST），再重新置顶（TOPMOST），系统才会把它拔出来插到栈的最顶层！
                 ctypes.windll.user32.SetWindowPos(
                     hwnd,
                     HWND_TOPMOST,
@@ -155,29 +168,50 @@ class DraggableWindowMixin:
                     0,
                     0,
                     0,
-                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED,
                 )
             except Exception:
                 pass  # 非 Windows 平台静默忽略
 
     def nativeEvent(self, event_type, message):
-        """处理 Windows 原生事件，在消息循环级别维护置顶"""
+        """处理 Windows 原生事件，在消息循环级别锁定置顶状态"""
         if event_type == b"windows_generic_msg":
+            import ctypes
             from ctypes import wintypes
 
             msg = wintypes.MSG.from_address(message.__int__())
 
-            # WM_WINDOWPOSCHANGING (0x0046)
+            # 消息拦截：0x0046 = WM_WINDOWPOSCHANGING
+            # 当窗口层级试图改变时（例如点击其他窗口导致焦点移动），将其强制拉回到 TOPMOST
             if msg.message == 0x0046:
-                # 在窗口位置或层级即将改变时，检查是否需要保持置顶
-                # 这里不需要逻辑处理，只需确保在变更后由 _ensure_topmost 纠正，
-                # 或者在此处直接操作结构体（更进阶，暂通过 _ensure_topmost 兜底）
-                pass
+                # 定义并读取 WINDOWPOS 结构体数据
+                class WINDOWPOS(ctypes.Structure):
+                    _fields_ = [
+                        ("hwnd", wintypes.HWND),
+                        ("hwndInsertAfter", wintypes.HWND),
+                        ("x", ctypes.c_int),
+                        ("y", ctypes.c_int),
+                        ("cx", ctypes.c_int),
+                        ("cy", ctypes.c_int),
+                        ("flags", ctypes.c_uint),
+                    ]
 
-            # WM_ACTIVATEAPP (0x001C)
+                # hwndInsertAfter = HWND_TOPMOST (-1)
+                pos = WINDOWPOS.from_address(msg.lParam)
+                pos.hwndInsertAfter = -1
+                # 这里不需要执行额外的 SetWindowPos，系统会根据修改后的 pos 继续动作
+
+            # 消息拦截：0x0006 = WM_ACTIVATE
+            # 监听激活态，在失去焦点时立刻重新声明主权
+            elif msg.message == 0x0006:
+                # LOWORD(wParam) == WA_INACTIVE (0)
+                if (msg.wParam & 0xFFFF) == 0:
+                    # 延迟一小会儿执行，让系统完成正常的焦点切换链
+                    QtCore.QTimer.singleShot(10, self._ensure_topmost)
+
+            # 消息拦截：0x001C = WM_ACTIVATEAPP
             elif msg.message == 0x001C:
-                # 应用激活状态改变时检查
-                QtCore.QTimer.singleShot(50, self._ensure_topmost)
+                QtCore.QTimer.singleShot(20, self._ensure_topmost)
 
         return False, 0
 
@@ -188,12 +222,29 @@ class DraggableWindowMixin:
 
             GWL_EXSTYLE = -20
             WS_EX_TOOLWINDOW = 0x00000080
+            WS_EX_TOPMOST = 0x00000008
             hwnd = int(self.winId())
             # 获取当前扩展样式
             style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-            # 添加 WS_EX_TOOLWINDOW 标志以隐藏任务栏按钮
-            ctypes.windll.user32.SetWindowLongW(
-                hwnd, GWL_EXSTYLE, style | WS_EX_TOOLWINDOW
+            # 核心修正：添加隐藏标志时，必须保留置顶标志位
+            new_style = style | WS_EX_TOOLWINDOW
+            if style & WS_EX_TOPMOST:
+                new_style |= WS_EX_TOPMOST
+
+            ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, new_style)
+            # 通知系统样式已更改
+            SWP_NOMOVE = 0x0002
+            SWP_NOSIZE = 0x0001
+            SWP_NOACTIVATE = 0x0010
+            SWP_FRAMECHANGED = 0x0020
+            ctypes.windll.user32.SetWindowPos(
+                hwnd,
+                0,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED,
             )
         except Exception:
             pass  # 非 Windows 平台静默忽略

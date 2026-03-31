@@ -28,7 +28,7 @@ def test_realtime_comparison():
     print("\n连续5次查询，对比两种方法的数据时效性：\n")
 
     for i in range(5):
-        print(f"第 {i+1} 次查询 ({datetime.now().strftime('%H:%M:%S.%f')[:-3]})")
+        print(f"第 {i + 1} 次查询 ({datetime.now().strftime('%H:%M:%S.%f')[:-3]})")
         print("-" * 80)
 
         # 方法1: market_snapshot
@@ -41,7 +41,7 @@ def test_realtime_comparison():
             print("market_snapshot:")
             print(f"  现价: {data1.get('now')}")
             print(f"  时间: {data1.get('date')} {data1.get('time')}")
-            print(f"  耗时: {time1*1000:.0f}ms")
+            print(f"  耗时: {time1 * 1000:.0f}ms")
 
         # 方法2: 单独查询
         start2 = time.time()
@@ -53,7 +53,7 @@ def test_realtime_comparison():
             print("\nstocks(单独查询):")
             print(f"  现价: {data2.get('now')}")
             print(f"  时间: {data2.get('date')} {data2.get('time')}")
-            print(f"  耗时: {time2*1000:.0f}ms")
+            print(f"  耗时: {time2 * 1000:.0f}ms")
 
         # 对比
         if test_code in snapshot and test_code in individual:

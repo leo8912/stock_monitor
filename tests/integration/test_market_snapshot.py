@@ -95,9 +95,9 @@ def test_market_snapshot_detail():
         print(f"有效股票: {total}")
         print(f"数据错误: {error_count}")
         print("\n涨跌统计:")
-        print(f"  上涨: {up_count} ({up_count/total*100:.2f}%)")
-        print(f"  下跌: {down_count} ({down_count/total*100:.2f}%)")
-        print(f"  平盘: {flat_count} ({flat_count/total*100:.2f}%)")
+        print(f"  上涨: {up_count} ({up_count / total * 100:.2f}%)")
+        print(f"  下跌: {down_count} ({down_count / total * 100:.2f}%)")
+        print(f"  平盘: {flat_count} ({flat_count / total * 100:.2f}%)")
 
         # 查看一些特殊股票
         print("\n" + "=" * 80)

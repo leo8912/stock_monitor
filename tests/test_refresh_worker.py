@@ -56,9 +56,11 @@ class TestRefreshWorker:
             return
 
         # Mock sleep/msleep/smart_sleep 来中断循环
-        with patch.object(worker, "sleep", return_value=None), patch.object(
-            worker, "msleep", return_value=None
-        ), patch.object(worker, "_smart_sleep", side_effect=stop_worker):
+        with (
+            patch.object(worker, "sleep", return_value=None),
+            patch.object(worker, "msleep", return_value=None),
+            patch.object(worker, "_smart_sleep", side_effect=stop_worker),
+        ):
             worker.run()
 
             # 验证调用

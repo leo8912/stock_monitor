@@ -1,0 +1,196 @@
+"""
+消息推送服务层
+负责将底层量化分析引擎捕捉到的高优信号，即时推送到指定的外部通信渠道（如企业微信机器人）
+"""
+
+import time
+from typing import Optional
+
+import requests
+
+from ..utils.logger import app_logger
+
+
+class NotifierService:
+    # 简单的应用 Token 缓存: {corp_id: (token, expiry_ts)}
+    _token_cache = {}
+
+    @classmethod
+    def _get_app_token(cls, corp_id: str, secret: str) -> Optional[str]:
+        """获取并快缓存企业微信应用 AccessToken"""
+        import time
+
+        now = time.time()
+
+        # 1. 检查缓存
+        if corp_id in cls._token_cache:
+            token, expiry = cls._token_cache[corp_id]
+            if now < expiry - 60:  # 提前1分钟过期
+                return token
+
+        # 2. 从服务器获取
+        try:
+            url = f"https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid={corp_id}&corpsecret={secret}"
+            resp = requests.get(url, timeout=10).json()
+            if resp.get("errcode") == 0:
+                token = resp["access_token"]
+                expires_in = resp.get("expires_in", 7200)
+                cls._token_cache[corp_id] = (token, now + expires_in)
+                return token
+            else:
+                app_logger.error(f"获取企微 App Token 失败: {resp}")
+        except Exception as e:
+            app_logger.error(f"获取企微 App Token 异常: {e}")
+        return None
+
+    @classmethod
+    def send_wecom_app_message(
+        cls, config: dict, title: str, description: str, url: str = ""
+    ) -> bool:
+        """发送企业微信应用文本卡片消息"""
+        corp_id = config.get("wecom_corpid")
+        secret = config.get("wecom_corpsecret")
+        agent_id = config.get("wecom_agentid")
+
+        if not all([corp_id, secret, agent_id]):
+            app_logger.warning("企微应用配置不全，无法发送卡片消息。")
+            return False
+
+        token = cls._get_app_token(corp_id, secret)
+        if not token:
+            return False
+
+        send_url = (
+            f"https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token={token}"
+        )
+        payload = {
+            "touser": "@all",
+            "msgtype": "textcard",
+            "agentid": agent_id,
+            "textcard": {
+                "title": title,
+                "description": description,
+                "url": url or "https://www.google.com",  # 必填，临时指向
+                "btntxt": "查看详情",
+            },
+            "safe": 0,
+        }
+
+        try:
+            resp = requests.post(send_url, json=payload, timeout=10).json()
+            if resp.get("errcode") == 0:
+                app_logger.info(f"企微应用消息发送成功: {title}")
+                return True
+            else:
+                app_logger.error(f"企微应用消息发送失败: {resp}")
+                return False
+        except Exception as e:
+            app_logger.error(f"企微应用消息推送异常: {e}")
+            return False
+
+    @staticmethod
+    def send_wecom_webhook_text(webhook_url: str, content: str) -> bool:
+        """向企业微信机器人的 Webhook 发送纯文本消息"""
+        if not webhook_url or not webhook_url.startswith("http"):
+            return False
+
+        headers = {"Content-Type": "application/json"}
+        payload = {"msgtype": "text", "text": {"content": content}}
+
+        try:
+            resp = requests.post(webhook_url, headers=headers, json=payload, timeout=5)
+            return resp.json().get("errcode") == 0
+        except Exception:
+            return False
+
+    @classmethod
+    def dispatch_alert(
+        cls,
+        config: dict,
+        symbol: str,
+        stock_name: str,
+        signals: list[str],
+        cycle_info: str = "",
+        price_info: Optional[dict] = None,
+    ) -> bool:
+        """
+        分发预警：优先使用企业应用通道，若未配置则回退到 Webhook 文字。
+        """
+        if not signals:
+            return False
+        current_time = time.strftime("%H:%M:%S")
+
+        # 准备基础信息
+        p = price_info.get("price", 0.0) if price_info else 0.0
+        pct = price_info.get("pct", 0.0) if price_info else 0.0
+        sign = "+" if pct >= 0 else ""
+
+        title = f"🚨 异动: {stock_name} ({symbol}) {sign}{pct:.2f}%"
+
+        # 信号行与历史回顾
+        signal_rows = "\n".join([f"• {s}" for s in signals])
+        desc_body = (
+            f'<div class="gray">{current_time} 实时股价: {p:.2f}</div>\n'
+            f'<div class="highlight">关键信号：</div>\n'
+            f"{signal_rows}\n"
+            f"--------------------\n"
+            f"{cycle_info}"
+        )
+
+        # 1. 尝试企业应用
+        if config.get("push_mode") == "app" or config.get("wecom_corpsecret"):
+            res = cls.send_wecom_app_message(config, title, desc_body)
+            if res:
+                return True
+
+        # 2. 回退到 Webhook
+        webhook_url = config.get("wecom_webhook", "")
+        body = f"{title}\n时间: {current_time}\n股价: {p:.2f}\n信号:\n{signal_rows}\n{cycle_info}"
+        return cls.send_wecom_webhook_text(webhook_url, body)
+
+    @classmethod
+    def dispatch_report(
+        cls, config: dict, title: str, content_items: list[str], footer: str = ""
+    ) -> bool:
+        """推送汇总型报告"""
+        if not content_items:
+            return False
+
+        # 1. 企业应用通道 (每一个股一条卡片信息，防止信息过长被隐藏)
+        if config.get("push_mode") == "app" or config.get("wecom_corpsecret"):
+            # 发送概览总卡片
+            header_desc = f"{footer}\n报告时间: {time.strftime('%Y-%m-%d %H:%M')}"
+            cls.send_wecom_app_message(config, f"📊 {title} (总览)", header_desc)
+
+            # 循环发送每一个股详情卡片
+            for item in content_items:
+                # 尝试从 "**名称** (代码)" 格式中提取标题
+                card_title = "个股表现"
+                first_line = item.split("\n")[0]
+                if "**" in first_line:
+                    card_title = first_line.replace("**", "").strip()
+
+                # 去掉第一行作为标题后的剩余内容作为描述
+                card_desc = "\n".join(item.split("\n")[1:]) if "\n" in item else item
+                cls.send_wecom_app_message(config, f"📈 {card_title}", card_desc)
+
+                # 稍微停顿，防止触发过于频繁的限制
+                time.sleep(0.5)
+            return True
+
+        # 2. Webhook Markdown 通道
+        webhook_url = config.get("wecom_webhook", "")
+        if not webhook_url:
+            return False
+
+        md_content = f"### 📊 {title}\n报告时间：{time.strftime('%Y-%m-%d %H:%M')}\n\n"
+        md_content += "\n".join(content_items)
+        if footer:
+            md_content += f"\n\n---\n{footer}"
+
+        try:
+            payload = {"msgtype": "markdown", "markdown": {"content": md_content}}
+            resp = requests.post(webhook_url, json=payload, timeout=10)
+            return resp.json().get("errcode") == 0
+        except Exception:
+            return False

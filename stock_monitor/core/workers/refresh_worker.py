@@ -44,6 +44,10 @@ class RefreshWorker(QtCore.QThread):
         self._closing_data_date = None  # 记录获取收盘数据的日期，用于次日重置
         self._last_market_open = None  # 追踪上次市场开闭状态，用于检测状态转换
 
+        # 线程同步机制：用于支持立即触发刷新
+        self._wait_condition = QtCore.QWaitCondition()
+        self._manual_trigger_flag = False
+
     def start_refresh(self, user_stocks: list[str], refresh_interval: int):
         """
         启动刷新
@@ -84,6 +88,14 @@ class RefreshWorker(QtCore.QThread):
         self._lock.unlock()
         app_logger.info(f"刷新线程间隔已更新: {refresh_interval}")
 
+    def trigger_now(self):
+        """立即触发一次刷新（中断当前的休眠）"""
+        self._lock.lock()
+        self._manual_trigger_flag = True
+        self._wait_condition.wakeAll()
+        self._lock.unlock()
+        app_logger.debug("收到手动刷新请求，已唤醒刷新线程")
+
     def run(self):
         """线程执行入口"""
         # 快速预热，首次数据获取时自然完成初始化
@@ -111,8 +123,15 @@ class RefreshWorker(QtCore.QThread):
                     self._smart_sleep(5)
                     continue
 
-                # 检查市场状态（首次启动跳过此检查，确保至少获取一次数据）
+                # 重置手动触发标志
+                self._lock.lock()
+                is_manual = self._manual_trigger_flag
+                self._manual_trigger_flag = False
+                self._lock.unlock()
+
+                # 检查市场状态（首次启动或手动触发跳过此检查，确保至少获取一次数据）
                 market_open = MarketManager.is_market_open()
+                force_fetch = not first_fetch_done or is_manual
 
                 # 检测开市→闭市的状态转换，重置收盘数据获取标志
                 # 解决中午休市(11:30)消费掉下午收盘(15:00)唯一获取机会的问题
@@ -129,8 +148,8 @@ class RefreshWorker(QtCore.QThread):
                     self._closing_data_fetched = False
                     self._closing_data_date = today
 
-                # 如果市场关闭且不是首次启动，则尝试获取收盘数据或休眠等待
-                if not market_open and first_fetch_done:
+                # 如果市场关闭且不是首次/手动启动，则尝试获取收盘数据或休眠等待
+                if not market_open and not force_fetch:
                     # 休市后尝试获取一次收盘数据
                     if not self._closing_data_fetched:
                         app_logger.info("市场已关闭，尝试获取收盘数据...")
@@ -242,21 +261,26 @@ class RefreshWorker(QtCore.QThread):
             if not self._is_running:
                 return
 
+            self._lock.lock()
+            # 使用 QWaitCondition 在锁上等待，支持超时唤醒
+            # wait 会在等待时释放锁，被唤醒或超时后重新获取锁
+            self._wait_condition.wait(self._lock, 500)
+
+            # 检查是否由于手动触发或停止而提前退出
+            if self._manual_trigger_flag or not self._is_running:
+                self._lock.unlock()
+                return
+
             # 如果需要检查配置变更
             if check_interval:
-                self._lock.lock()
                 new_interval = self.refresh_interval
-                self._lock.unlock()
-
                 # 如果刷新间隔变小了，立即结束休眠以应用新配置
-                # 如果变大了，当前循环结束后下一次自然会应用
                 if new_interval < current_interval:
-                    # app_logger.info(f"检测到刷新间隔变短 ({current_interval}->{new_interval})，立即唤醒")
+                    self._lock.unlock()
                     return
-                # 更新当前参考间隔
                 current_interval = new_interval
 
-            self.msleep(500)
+            self._lock.unlock()
 
     def _get_pre_market_sleep_time(self):
         """

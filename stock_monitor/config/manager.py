@@ -146,6 +146,12 @@ class ConfigManager:
             "github_token": "",
             "window_pos": [],
             "settings_dialog_pos": [],
+            "quant_enabled": False,
+            "wecom_webhook": "",
+            "push_mode": "webhook",
+            "wecom_corpid": "",
+            "wecom_corpsecret": "",
+            "wecom_agentid": "",
         }
 
     def _ensure_required_keys_exist(self, config: dict[str, Any]) -> None:

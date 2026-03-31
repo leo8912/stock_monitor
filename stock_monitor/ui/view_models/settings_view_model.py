@@ -1,4 +1,5 @@
-from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6 import QtCore
+from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
 from stock_monitor.config.manager import ConfigManager
 from stock_monitor.core.container import container
@@ -6,6 +7,27 @@ from stock_monitor.data.stock.stocks import load_stock_data
 from stock_monitor.utils.helpers import get_stock_emoji
 from stock_monitor.utils.logger import app_logger
 from stock_monitor.utils.stock_utils import StockCodeProcessor
+
+
+class TestScanThread(QtCore.QThread):
+    """
+    独立测试扫描线程，避免在函数内匿名实例化导致生命周期异常被回收崩溃。
+    """
+
+    finished_sig = pyqtSignal()
+    error_sig = pyqtSignal(str)
+
+    def __init__(self, worker_instance, parent=None):
+        super().__init__(parent)
+        self.worker = worker_instance
+
+    def run(self):
+        try:
+            self.worker.perform_scan()
+        except Exception as e:
+            self.error_sig.emit(str(e))
+        finally:
+            self.finished_sig.emit()
 
 
 class SettingsViewModel(QObject):
@@ -17,12 +39,19 @@ class SettingsViewModel(QObject):
     settings_loaded = pyqtSignal(dict)
     save_completed = pyqtSignal()
     search_results_updated = pyqtSignal(list)
+    error_occurred = pyqtSignal(str)
 
     def __init__(self):
         super().__init__()
         self._container = container
         self._config_manager = self._container.get(ConfigManager)
         self._processor = StockCodeProcessor()
+
+        # 搜索防抖定时器
+        self._search_timer = QTimer()
+        self._search_timer.setSingleShot(True)
+        self._search_timer.timeout.connect(self._perform_search)
+        self._last_query = ""
 
     def load_settings(self):
         """Load all settings"""
@@ -34,6 +63,13 @@ class SettingsViewModel(QObject):
             "font_family": self._config_manager.get("font_family", "微软雅黑"),
             "transparency": self._config_manager.get("transparency", 80),
             "drag_sensitivity": self._config_manager.get("drag_sensitivity", 5),
+            # Add missing quant settings for persistence
+            "quant_enabled": self._config_manager.get("quant_enabled", False),
+            "wecom_webhook": self._config_manager.get("wecom_webhook", ""),
+            "push_mode": self._config_manager.get("push_mode", "webhook"),
+            "wecom_corpid": self._config_manager.get("wecom_corpid", ""),
+            "wecom_corpsecret": self._config_manager.get("wecom_corpsecret", ""),
+            "wecom_agentid": self._config_manager.get("wecom_agentid", ""),
         }
         self.settings_loaded.emit(settings)
         return settings
@@ -43,6 +79,7 @@ class SettingsViewModel(QObject):
         try:
             for key, value in settings.items():
                 self._config_manager.set(key, value)
+
             self.save_completed.emit()
             return True
         except Exception as e:
@@ -50,8 +87,13 @@ class SettingsViewModel(QObject):
             return False
 
     def search_stocks(self, query: str):
-        """Search stocks logic"""
-        query = query.strip()
+        """搜索入口（含防抖）"""
+        self._last_query = query.strip()
+        self._search_timer.start(300)  # 300ms 防抖
+
+    def _perform_search(self):
+        """执行实际搜索逻辑"""
+        query = self._last_query
         if not query:
             self.search_results_updated.emit([])
             return
@@ -128,3 +170,38 @@ class SettingsViewModel(QObject):
         else:
             emoji = get_stock_emoji(clean_code, "")
             return f"{emoji} {clean_code}"
+
+    def test_quant_push(self, webhook: str):
+        """测试量化推送 (异步执行，避免阻塞 UI)"""
+        if not webhook:
+            self.error_occurred.emit("请先输入 Webhook 地址")
+            return
+
+        try:
+            from stock_monitor.core.workers.quant_worker import QuantWorker
+
+            worker = self._container.get(QuantWorker)
+            if worker:
+                # 记录原始配置用于恢复
+                self._old_webhook = worker.wecom_webhook
+                worker.wecom_webhook = webhook
+                worker._alert_cache.clear()
+
+                # 防止旧线程还在跑被回收
+                if hasattr(self, "_test_thread") and self._test_thread.isRunning():
+                    self.error_occurred.emit("测试正在进行中，请稍后")
+                    return
+
+                self._test_thread = TestScanThread(worker, parent=self)
+                self._test_thread.finished_sig.connect(
+                    lambda: setattr(worker, "wecom_webhook", self._old_webhook)
+                )
+                self._test_thread.error_sig.connect(
+                    lambda e: self.error_occurred.emit(f"测试推送扫描失败: {e}")
+                )
+                self._test_thread.start()
+            else:
+                self.error_occurred.emit("量化引擎未就绪")
+        except Exception as e:
+            app_logger.error(f"测试推送启动失败: {e}")
+            self.error_occurred.emit(f"测试推送启动失败: {e}")

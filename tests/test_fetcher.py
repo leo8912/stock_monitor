@@ -21,9 +21,10 @@ class TestStockFetcher(unittest.TestCase):
         # We can test _fetch_a_stocks directly or fetch_all_stocks
         # Note: fetch_all_stocks also calls fetch_hk_stocks etc.
         # Let's mock _fetch_hk_stocks and _fetch_indices to focus on A shares
-        with patch.object(
-            self.fetcher, "_fetch_hk_stocks", return_value=[]
-        ), patch.object(self.fetcher, "_fetch_indices", return_value=[]):
+        with (
+            patch.object(self.fetcher, "_fetch_hk_stocks", return_value=[]),
+            patch.object(self.fetcher, "_fetch_indices", return_value=[]),
+        ):
             # Mock get_stock_data return empty dict to avoid processing
             mock_quotation.stocks.return_value = {}
 

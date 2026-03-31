@@ -47,10 +47,19 @@ class StockDatabase(StockDataSource):
                 app_logger.info("检测到空数据库，正在初始化...")
                 self._populate_base_data()
 
+    def _get_connection(self) -> sqlite3.Connection:
+        """获取数据库连接并应用优化配置"""
+        conn = sqlite3.connect(self.db_path, timeout=20)
+        # WAL 模式极大提升并发读写性能
+        conn.execute("PRAGMA journal_mode=WAL")
+        # 配合 WAL，降低 fsync 频率
+        conn.execute("PRAGMA synchronous=NORMAL")
+        return conn
+
     def _initialize_database(self):
         """初始化数据库表结构"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._get_connection() as conn:
                 cursor = conn.cursor()
 
                 # 创建股票表
@@ -70,12 +79,33 @@ class StockDatabase(StockDataSource):
                 # 创建索引
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_name ON stocks(name)")
                 cursor.execute(
-                    "CREATE INDEX IF NOT EXISTS idx_pinyin ON stocks(pinyin)"
-                )
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_abbr ON stocks(abbr)")
-                cursor.execute(
                     "CREATE INDEX IF NOT EXISTS idx_market_type ON stocks(market_type)"
                 )
+
+                # 创建量化预警日志表
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS quant_alerts_log (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        symbol TEXT NOT NULL,
+                        name TEXT,
+                        signal_type TEXT NOT NULL,
+                        timeframe TEXT NOT NULL,
+                        status TEXT NOT NULL, -- 'START', 'CONTINUE', 'END'
+                        price REAL,
+                        win_rate REAL
+                    )
+                """
+                )
+                cursor.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_qlog_symbol ON quant_alerts_log(symbol)"
+                )
+                cursor.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_qlog_time ON quant_alerts_log(timestamp)"
+                )
+
+                # PRAGMA 优化已统一在 _get_connection 中配置
 
                 conn.commit()
                 app_logger.info("股票数据库初始化完成")
@@ -118,7 +148,7 @@ class StockDatabase(StockDataSource):
                 return
 
             # 批量插入到当前数据库
-            with sqlite3.connect(self.db_path) as conn:
+            with self._get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.executemany(
                     """
@@ -168,7 +198,7 @@ class StockDatabase(StockDataSource):
             return 0
 
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._get_connection() as conn:
                 cursor = conn.cursor()
 
                 # 准备数据
@@ -225,7 +255,7 @@ class StockDatabase(StockDataSource):
     def _insert_stocks_slow(self, stocks: list[dict[str, Any]]) -> int:
         """慢速插入模式（兼容旧版SQLite或作为降级方案）"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._get_connection() as conn:
                 cursor = conn.cursor()
                 for stock in stocks:
                     # ... (Simplified Logic for fallback) ...
@@ -291,7 +321,7 @@ class StockDatabase(StockDataSource):
             Optional[Dict[str, Any]]: 股票信息，未找到返回None
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(
                     "SELECT code, name, pinyin, abbr FROM stocks WHERE code = ?",
@@ -323,7 +353,7 @@ class StockDatabase(StockDataSource):
             List[Dict[str, Any]]: 匹配的股票列表
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._get_connection() as conn:
                 cursor = conn.cursor()
 
                 # 构建搜索查询
@@ -377,7 +407,7 @@ class StockDatabase(StockDataSource):
             List[Dict[str, Any]]: 股票列表
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(
                     "SELECT code, name, pinyin, abbr FROM stocks WHERE market_type = ?",
@@ -400,7 +430,7 @@ class StockDatabase(StockDataSource):
             int: 股票总数
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT COUNT(*) FROM stocks")
                 return cursor.fetchone()[0]
@@ -416,7 +446,7 @@ class StockDatabase(StockDataSource):
             List[Dict[str, Any]]: 所有股票数据
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(
                     "SELECT code, name, pinyin, abbr FROM stocks ORDER BY code"
@@ -438,7 +468,7 @@ class StockDatabase(StockDataSource):
             bool: 数据库是否为空
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT COUNT(*) FROM stocks")
                 count = cursor.fetchone()[0]
@@ -455,10 +485,36 @@ class StockDatabase(StockDataSource):
             int: 股票数量
         """
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT COUNT(*) FROM stocks")
                 return cursor.fetchone()[0]
         except Exception as e:
             app_logger.error(f"获取股票数量失败: {e}")
             return 0
+
+    def log_quant_signal(
+        self,
+        symbol: str,
+        name: str,
+        signal_type: str,
+        timeframe: str,
+        status: str,
+        price: float = None,
+        win_rate: float = None,
+    ):
+        """记录量化信号日志"""
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    INSERT INTO quant_alerts_log
+                    (symbol, name, signal_type, timeframe, status, price, win_rate)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                    (symbol, name, signal_type, timeframe, status, price, win_rate),
+                )
+                conn.commit()
+        except Exception as e:
+            app_logger.error(f"记录量化信号日志失败: {e}")

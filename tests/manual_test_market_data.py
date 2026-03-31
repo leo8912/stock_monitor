@@ -32,5 +32,5 @@ for _code, stock in data.items():
 print(f"上涨: {up}, 下跌: {down}, 平盘: {flat}, 总计: {total}")
 if total > 0:
     print(
-        f"上涨比例: {up/total*100:.2f}%, 下跌比例: {down/total*100:.2f}%, 平盘比例: {flat/total*100:.2f}%"
+        f"上涨比例: {up / total * 100:.2f}%, 下跌比例: {down / total * 100:.2f}%, 平盘比例: {flat / total * 100:.2f}%"
     )

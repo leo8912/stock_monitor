@@ -53,9 +53,9 @@ def test_market_snapshot():
 
             total = up + down + flat
             print("✓ 统计结果:")
-            print(f"  - 上涨: {up} ({up/total*100:.1f}%)")
-            print(f"  - 下跌: {down} ({down/total*100:.1f}%)")
-            print(f"  - 平盘: {flat} ({flat/total*100:.1f}%)")
+            print(f"  - 上涨: {up} ({up / total * 100:.1f}%)")
+            print(f"  - 下跌: {down} ({down / total * 100:.1f}%)")
+            print(f"  - 平盘: {flat} ({flat / total * 100:.1f}%)")
             print(f"  - 总计: {total}")
 
             # 显示前5只股票
@@ -167,9 +167,9 @@ def test_all_method():
 
             total = up + down + flat
             print("✓ 统计结果:")
-            print(f"  - 上涨: {up} ({up/total*100:.1f}%)")
-            print(f"  - 下跌: {down} ({down/total*100:.1f}%)")
-            print(f"  - 平盘: {flat} ({flat/total*100:.1f}%)")
+            print(f"  - 上涨: {up} ({up / total * 100:.1f}%)")
+            print(f"  - 下跌: {down} ({down / total * 100:.1f}%)")
+            print(f"  - 平盘: {flat} ({flat / total * 100:.1f}%)")
             print(f"  - 总计: {total}")
 
             return True, total

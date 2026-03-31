@@ -3,6 +3,7 @@
 """
 
 import os
+import time
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QIcon
@@ -18,9 +19,11 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QPushButton,
     QSlider,
     QVBoxLayout,
+    QWidget,
 )
 
 from stock_monitor.ui.view_models.settings_view_model import SettingsViewModel
@@ -176,6 +179,8 @@ class NewSettingsDialog(QDialog):
     settings_changed = pyqtSignal()
     # 定义配置更改信号，参数为股票列表和刷新间隔
     config_changed = pyqtSignal(list, int)
+    # 增加手动复盘信号
+    manual_report_requested = pyqtSignal()
 
     def __init__(self, main_window=None):
         # 不传递父窗口给QDialog,避免继承主窗口的置顶属性
@@ -235,6 +240,7 @@ class NewSettingsDialog(QDialog):
         # 构建UI界面
         self._setup_watchlist_ui(main_layout)
         self._setup_display_settings_ui(main_layout)
+        self._setup_quant_settings_ui(main_layout)
         self._setup_system_settings_ui(main_layout)
 
         # 初始化功能管理器（在UI组件创建之后）
@@ -309,6 +315,11 @@ class NewSettingsDialog(QDialog):
         self.ok_button.clicked.connect(self._save_config_via_vm)
         self.cancel_button.clicked.connect(self.reject)
         self.check_update_button.clicked.connect(self.check_for_updates)
+        self.test_push_button.clicked.connect(self._on_test_push_clicked)
+        self.test_app_button.clicked.connect(self._on_test_app_clicked)
+        self.btn_manual_report.clicked.connect(self.manual_report_requested.emit)
+        self.push_mode_combo.currentIndexChanged.connect(self._on_push_mode_changed)
+        self.viewModel.error_occurred.connect(self._on_vm_error)
 
         # 连接设置相关信号
         self.font_size_slider.valueChanged.connect(self.on_font_setting_changed)
@@ -486,6 +497,98 @@ class NewSettingsDialog(QDialog):
 
         display_layout.addLayout(display_row_layout)
         main_layout.addWidget(display_group)
+
+    def _setup_quant_settings_ui(self, main_layout):
+        """设置量化分析与预警UI"""
+        quant_group = QGroupBox("量化分析预警 (附带微信机器人强推)")
+        quant_layout = QVBoxLayout()
+        quant_layout.setContentsMargins(10, 10, 10, 10)
+        quant_layout.setSpacing(10)
+        quant_group.setLayout(quant_layout)
+
+        # 启动开关
+        self.quant_enabled_checkbox = QCheckBox(
+            "开启 [自动多级别共振扫描：MACD底背离 / BBands收口变盘 / 主力碎步吸筹等]"
+        )
+        self.quant_enabled_checkbox.setToolTip(
+            "开启后将在后台静默拉取 15m/30m/60m/日线 等数据并执行底层复杂算力运算。"
+        )
+        quant_layout.addWidget(self.quant_enabled_checkbox)
+
+        # --- 推送通道选择 ---
+        channel_layout = QHBoxLayout()
+        channel_layout.addWidget(QLabel("通知渠道:"))
+        self.push_mode_combo = QComboBox()
+        self.push_mode_combo.addItem("群机器人 (Webhook)", "webhook")
+        self.push_mode_combo.addItem("企业自建应用 (Agent)", "app")
+        self.push_mode_combo.setFixedWidth(150)
+        channel_layout.addWidget(self.push_mode_combo)
+        channel_layout.addStretch()
+        quant_layout.addLayout(channel_layout)
+
+        # --- Webhook 配置区域 ---
+        self.webhook_container = QWidget()
+        webhook_sub_layout = QVBoxLayout(self.webhook_container)
+        webhook_sub_layout.setContentsMargins(0, 5, 0, 5)
+
+        h_layout = QHBoxLayout()
+        h_layout.addWidget(QLabel("Webhook 地址:"))
+        self.wecom_webhook_input = QLineEdit()
+        self.wecom_webhook_input.setPlaceholderText(
+            "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..."
+        )
+        h_layout.addWidget(self.wecom_webhook_input)
+
+        self.test_push_button = QPushButton("测试机器人")
+        self.test_push_button.setObjectName("PrimaryButton")
+        self.test_push_button.setFixedWidth(100)
+        h_layout.addWidget(self.test_push_button)
+        webhook_sub_layout.addLayout(h_layout)
+        quant_layout.addWidget(self.webhook_container)
+
+        # --- 企业应用配置区域 ---
+        self.app_container = QWidget()
+        app_sub_layout = QVBoxLayout(self.app_container)
+        app_sub_layout.setContentsMargins(0, 5, 0, 5)
+
+        # CorpID
+        corp_layout = QHBoxLayout()
+        corp_layout.addWidget(QLabel("企业 ID (CorpID):"))
+        self.wecom_corpid_input = QLineEdit()
+        corp_layout.addWidget(self.wecom_corpid_input)
+
+        # Secret
+        secret_layout = QHBoxLayout()
+        secret_layout.addWidget(QLabel("应用 Secret:"))
+        self.wecom_corpsecret_input = QLineEdit()
+        secret_layout.addWidget(self.wecom_corpsecret_input)
+
+        # AgentID
+        agent_layout = QHBoxLayout()
+        agent_layout.addWidget(QLabel("应用 AgentID:"))
+        self.wecom_agentid_input = QLineEdit()
+        agent_layout.addWidget(self.wecom_agentid_input)
+
+        self.test_app_button = QPushButton("测试应用推送")
+        self.test_app_button.setObjectName("PrimaryButton")
+        self.test_app_button.setFixedWidth(120)
+        agent_layout.addWidget(self.test_app_button)
+
+        app_sub_layout.addLayout(corp_layout)
+        app_sub_layout.addLayout(secret_layout)
+        app_sub_layout.addLayout(agent_layout)
+        quant_layout.addWidget(self.app_container)
+
+        # 全量复盘按钮
+        self.btn_manual_report = QPushButton("🧩 立即执行全量复盘")
+        self.btn_manual_report.setObjectName("PrimaryButton")
+        self.btn_manual_report.setFixedWidth(180)
+        self.btn_manual_report.setToolTip(
+            "立即对所有自选股执行技术面分析并推送到企业微信"
+        )
+        quant_layout.addWidget(self.btn_manual_report, 0, Qt.AlignmentFlag.AlignCenter)
+
+        main_layout.addWidget(quant_group)
 
     def _setup_system_settings_ui(self, main_layout):
         """设置系统设置UI"""
@@ -716,6 +819,63 @@ class NewSettingsDialog(QDialog):
 
             app_logger.error(f"处理更新结果失败: {e}")
 
+    def _on_test_push_clicked(self):
+        """测试 Webhook 推送"""
+        webhook = self.wecom_webhook_input.text().strip()
+        if not webhook:
+            QMessageBox.warning(self, "提示", "请先输入 Webhook 地址")
+            return
+
+        from ...services.notifier import NotifierService
+
+        success = NotifierService.send_wecom_webhook_text(
+            webhook, "这是一条来自股票监控系统的 Webhook 测试消息 🚀"
+        )
+        if success:
+            QMessageBox.information(self, "成功", "测试消息已发出，请检查企业微信通知")
+        else:
+            QMessageBox.critical(self, "失败", "发送失败，请检查 Webhook 地址是否正确")
+
+    def _on_test_app_clicked(self):
+        """测试企业应用推送"""
+        config = {
+            "wecom_corpid": self.wecom_corpid_input.text().strip(),
+            "wecom_corpsecret": self.wecom_corpsecret_input.text().strip(),
+            "wecom_agentid": self.wecom_agentid_input.text().strip(),
+        }
+
+        if not all(config.values()):
+            QMessageBox.warning(self, "提示", "请完整填写企业 ID、Secret 和 AgentID")
+            return
+
+        from ...services.notifier import NotifierService
+
+        success = NotifierService.send_wecom_app_message(
+            config,
+            "🚀 企业应用测试成功",
+            "您的股票监控系统已成功通过企业自建应用通道连接！\n当前时间: "
+            + time.strftime("%H:%M:%S"),
+        )
+
+        if success:
+            QMessageBox.information(
+                self, "成功", "测试应用卡片已发出，请检查手机企业微信"
+            )
+        else:
+            QMessageBox.critical(self, "失败", "发送失败，请检查配置参数及网络状态")
+
+    def _on_push_mode_changed(self):
+        """根据推送模式切换 UI 显示"""
+        mode = self.push_mode_combo.currentData()
+        self.webhook_container.setVisible(mode == "webhook")
+        self.app_container.setVisible(mode == "app")
+
+    def _on_vm_error(self, message: str):
+        """处理来自 ViewModel 的错误信号"""
+        from PyQt6.QtWidgets import QMessageBox
+
+        QMessageBox.warning(self, "预警测试", message)
+
     def _on_search_results_updated(self, results):
         """Update search results from ViewModel"""
         self.search_results.clear()
@@ -786,6 +946,22 @@ class NewSettingsDialog(QDialog):
             # Transparency
             tp = settings.get("transparency", 80)
             self.transparency_slider.setValue(int(tp))
+
+            # Quant settings
+            self.quant_enabled_checkbox.setChecked(settings.get("quant_enabled", False))
+            self.wecom_webhook_input.setText(settings.get("wecom_webhook", ""))
+
+            # 新增企微应用配置加载
+            push_mode = settings.get("push_mode", "webhook")
+            index = self.push_mode_combo.findData(push_mode)
+            if index >= 0:
+                self.push_mode_combo.setCurrentIndex(index)
+
+            self.wecom_corpid_input.setText(settings.get("wecom_corpid", ""))
+            self.wecom_corpsecret_input.setText(settings.get("wecom_corpsecret", ""))
+            self.wecom_agentid_input.setText(settings.get("wecom_agentid", ""))
+
+            self._on_push_mode_changed()
         except Exception as e:
             from stock_monitor.utils.logger import app_logger
 
@@ -808,7 +984,15 @@ class NewSettingsDialog(QDialog):
                 "font_size": self.font_size_slider.value(),
                 "font_family": self.font_family_combo.currentText(),
                 "transparency": self.transparency_slider.value(),
+                "quant_enabled": self.quant_enabled_checkbox.isChecked(),
+                "wecom_webhook": self.wecom_webhook_input.text().strip(),
             }
+
+            # 新增企微应用配置保存
+            settings["push_mode"] = self.push_mode_combo.currentData()
+            settings["wecom_corpid"] = self.wecom_corpid_input.text().strip()
+            settings["wecom_corpsecret"] = self.wecom_corpsecret_input.text().strip()
+            settings["wecom_agentid"] = self.wecom_agentid_input.text().strip()
 
             self.viewModel.save_settings(settings)
         except Exception as e:

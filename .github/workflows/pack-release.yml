@@ -78,7 +78,11 @@ jobs:
           --hidden-import=pypinyin `
           --hidden-import=pypinyin.style `
           --hidden-import=pandas `
-          --collect-all certifi
+          --hidden-import=pandas_ta `
+          --hidden-import=mootdx `
+          --collect-all certifi `
+          --collect-all pandas_ta `
+          --collect-all mootdx
 
 
 

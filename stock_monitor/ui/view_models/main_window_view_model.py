@@ -2,8 +2,9 @@ from PyQt6.QtCore import QObject, pyqtSignal
 
 from stock_monitor.config.manager import ConfigManager
 from stock_monitor.core.container import container
+from stock_monitor.core.stock_data_fetcher import StockDataFetcher
 from stock_monitor.core.stock_manager import StockManager
-from stock_monitor.core.workers import MarketStatsWorker, RefreshWorker
+from stock_monitor.core.workers import MarketStatsWorker, QuantWorker, RefreshWorker
 from stock_monitor.data.stock.stock_db import StockDatabase
 from stock_monitor.data.stock.stocks import load_stock_data
 from stock_monitor.utils.logger import app_logger
@@ -29,10 +30,17 @@ class MainWindowViewModel(QObject):
         self._stock_db = self._container.get(StockDatabase)
         self._config_manager = self._container.get(ConfigManager)
         self._stock_manager = self._container.get(StockManager)
+        self._fetcher = self._container.get(StockDataFetcher)
 
         # Initialize Workers
         self._refresh_worker = RefreshWorker()
         self._market_stats_worker = MarketStatsWorker()
+
+        wecom_webhook = self._config_manager.get("wecom_webhook", "")
+        self._quant_worker = QuantWorker(self._fetcher, wecom_webhook)
+
+        # 注册到容器中，方便 SettingsViewModel 获取
+        self._container.register_singleton(QuantWorker, self._quant_worker)
 
         # Connect Worker Signals
         self._refresh_worker.data_updated.connect(self._on_data_updated)
@@ -122,12 +130,45 @@ class MainWindowViewModel(QObject):
         self._refresh_worker.start_refresh(user_stocks, refresh_interval)
         self._market_stats_worker.start_worker()
 
+        # Start quant worker if enabled
+        quant_enabled = self._config_manager.get("quant_enabled", False)
+        webhook = self._config_manager.get("wecom_webhook", "")
+        self._quant_worker.wecom_webhook = webhook
+        self._quant_worker.set_symbols(user_stocks)
+
+        if quant_enabled:
+            self._quant_worker.start_worker()
+        else:
+            self._quant_worker.stop_worker()
+
+    def request_immediate_refresh(self, user_stocks: list[str] = None):
+        """
+        请求立即刷新行情（异步）
+
+        Args:
+            user_stocks: 可选，更新要刷新的股票列表
+        """
+        if user_stocks is not None:
+            self._refresh_worker.update_stocks(user_stocks)
+
+        if not self._refresh_worker.isRunning():
+            # 确保线程已启动
+            config = self._config_manager.get_all()
+            self._refresh_worker.start_refresh(
+                user_stocks or config.get("user_stocks", []),
+                config.get("refresh_interval", 5),
+            )
+        else:
+            self._refresh_worker.trigger_now()
+
     def stop_workers(self):
         """Stop background workers"""
         if self._refresh_worker.isRunning():
             self._refresh_worker.stop_refresh()
         if self._market_stats_worker.isRunning():
             self._market_stats_worker.stop_worker()
+        if self._quant_worker.isRunning():
+            self._quant_worker.stop_worker()
 
     def update_workers_config(
         self, user_stocks: list[str] = None, refresh_interval: int = None
@@ -135,15 +176,40 @@ class MainWindowViewModel(QObject):
         """Update worker configuration on the fly"""
         if user_stocks is not None:
             self._refresh_worker.update_stocks(user_stocks)
+            self._quant_worker.set_symbols(user_stocks)
         if refresh_interval is not None:
             self._refresh_worker.update_interval(refresh_interval)
+
+        quant_enabled = self._config_manager.get("quant_enabled", False)
+        webhook = self._config_manager.get("wecom_webhook", "")
+        self._quant_worker.wecom_webhook = webhook
+
+        if quant_enabled:
+            if not self._quant_worker.isRunning():
+                self._quant_worker.start_worker()
+        else:
+            if self._quant_worker.isRunning():
+                self._quant_worker.stop_worker()
 
     def load_session(self) -> dict:
         """Load session cache"""
         try:
+            from stock_monitor.models.stock_data import StockRowData
             from stock_monitor.utils.session_cache import load_session_cache
 
-            return load_session_cache()
+            cache = load_session_cache()
+            if cache and "stock_data" in cache:
+                deserialized = []
+                for item in cache["stock_data"]:
+                    if isinstance(item, dict):
+                        # Fix for compatibility when fields are missing
+                        valid_keys = StockRowData.__dataclass_fields__.keys()
+                        safe_item = {k: v for k, v in item.items() if k in valid_keys}
+                        deserialized.append(StockRowData(**safe_item))
+                    else:
+                        deserialized.append(item)
+                cache["stock_data"] = deserialized
+            return cache or {}
         except Exception as e:
             app_logger.warning(f"Failed to load session cache: {e}")
             return {}
@@ -151,11 +217,18 @@ class MainWindowViewModel(QObject):
     def save_session(self, position: list[int], stock_data: list):
         """Save session cache"""
         try:
+            import dataclasses
+
             from stock_monitor.utils.session_cache import save_session_cache
+
+            serialized_stock_data = [
+                dataclasses.asdict(item) if dataclasses.is_dataclass(item) else item
+                for item in stock_data
+            ]
 
             session_data = {
                 "window_position": position,
-                "stock_data": stock_data,
+                "stock_data": serialized_stock_data,
             }
             save_session_cache(session_data)
         except Exception as e:
@@ -192,3 +265,9 @@ class MainWindowViewModel(QObject):
                 self._config_manager.set("last_db_update", current_time)
         except Exception as e:
             app_logger.error(f"启动时数据库更新检查失败: {e}")
+
+    def trigger_manual_report(self):
+        """立即触发手动汇总复盘报告"""
+        if self._quant_worker:
+            app_logger.info("触发手动复盘报告生成...")
+            self._quant_worker.generate_daily_summary_report("manual")
