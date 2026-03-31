@@ -49,7 +49,12 @@ class MootdxNameRegistry:
             with open(cache_file, "w", encoding="utf-8") as f:
                 json.dump(self._name_cache, f, ensure_ascii=False)
         except Exception as e:
-            app_logger.error(f"保存缓存失败: {e}")
+            # 使用 print 作为兜底
+            error_msg = f"保存缓存失败：{e}"
+            try:
+                app_logger.error(error_msg)
+            except (ValueError, AttributeError):
+                print(f"ERROR: {error_msg}")
 
     def sync_mootdx_names(self):
         """全量同步 mootdx 名称字典"""
@@ -60,9 +65,12 @@ class MootdxNameRegistry:
             return
         app_logger.info("本地缓存中存在未知名称，触发 mootdx 全量字典同步...")
         try:
+            # 调用 stocks 方法获取数据
             sz_df = client.stocks(market=0)
             sh_df = client.stocks(market=1)
             full_df = pd.concat([sz_df, sh_df])
+
+            # 更新缓存
             for _, row in full_df.iterrows():
                 code = str(row["code"]).strip()
                 name = str(row["name"]).replace("\x00", "").strip()
@@ -70,15 +78,22 @@ class MootdxNameRegistry:
                 self._name_cache["sz" + code] = name
                 self._name_cache[code] = name
 
-            self._save_name_cache()
-            app_logger.info(f"全量字典同步完毕，共计 {len(full_df)} 只标的写入缓存。")
+            # 保存缓存前检查是否有数据
+            if full_df is not None and len(full_df) > 0:
+                self._save_name_cache()
+                app_logger.info(
+                    f"全量字典同步完毕，共计 {len(full_df)} 只标的写入缓存。"
+                )
+            else:
+                app_logger.warning("获取到的数据为空")
         except Exception as e:
             # 使用 print 作为兜底，防止日志系统已关闭
+            error_msg = f"全量同步 mootdx 名称字典失败：{e}"
             try:
-                app_logger.error(f"全量同步 mootdx 名称字典失败：{e}")
+                app_logger.error(error_msg)
             except (ValueError, AttributeError):
                 # 日志系统可能已关闭，使用标准输出
-                print(f"ERROR: 全量同步 mootdx 名称字典失败：{e}")
+                print(f"ERROR: {error_msg}")
 
     def get_name(self, code: str) -> str:
         """从缓存安全获取名称"""
