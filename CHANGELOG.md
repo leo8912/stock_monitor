@@ -1,5 +1,10 @@
 # 更新日志
 
+## [v3.0.5] - 2026-03-31
+
+### 🐛 修复 (Fixes)
+- **依赖强行打包 (`akshare`)**: 移除了 PyInstaller spec 中 `collect_all` 的静默异常捕获，并添加了基于 `os.path` 直接复制整个源目录至 `datas` 队列及强制添加至 `hiddenimports` 的硬保护机制。彻底消灭在受限 CI 环境下由 C 扩展失败引发的残缺打包与运行期 `ModuleNotFoundError`。
+
 ## [v3.0.4] - 2026-03-31
 
 ### 🚀 优化 (Performance)

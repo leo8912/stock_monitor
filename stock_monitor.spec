@@ -44,17 +44,28 @@ hiddenimports += [
 
 for pkg in pkgs_to_collect:
     try:
-        # Collect submodules explicitly
-        hiddenimports += collect_submodules(pkg)
-        # Collect data files explicitly
-        datas += collect_data_files(pkg)
-        # Try full collect if available
         tmp_ret = collect_all(pkg)
         datas += tmp_ret[0]
         binaries += tmp_ret[1]
         hiddenimports += tmp_ret[2]
-    except (ImportError, Exception) as e:
-        print(f"Warning: Issue collecting {pkg}: {str(e)}")
+    except Exception as e:
+        print(f"Warning: Issue collecting {pkg} with collect_all: {str(e)}")
+        try:
+            hiddenimports += collect_submodules(pkg)
+            datas += collect_data_files(pkg)
+        except Exception as e2:
+            print(f"Warning: Fallback collection for {pkg} also failed: {str(e2)}")
+
+# Force include akshare by copying its entire directory to datas if needed,
+# and ensure it is definitely in hiddenimports.
+try:
+    import akshare
+    import os
+    akshare_path = os.path.dirname(akshare.__file__)
+    datas.append((akshare_path, 'akshare'))
+    hiddenimports.append('akshare')
+except Exception as e:
+    print(f"Critical Warning: Could not locate akshare path directly: {str(e)}")
 
 # Remove duplicates from hiddenimports
 hiddenimports = list(set(hiddenimports))
