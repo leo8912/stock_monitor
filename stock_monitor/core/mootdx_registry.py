@@ -1,5 +1,7 @@
+import io
 import json
 import os
+import sys
 
 import pandas as pd
 
@@ -93,6 +95,17 @@ class MootdxNameRegistry:
                     safe_log_error(f"访问 parent.mootdx_client 失败：{e}")
             return
 
+        # 防御 PyInstaller 窗口模式下 sys.stdout/stderr 为 None 的问题
+        # 'NoneType' object has no attribute 'write'
+        stdout_orig = sys.stdout
+        stderr_orig = sys.stderr
+        temp_out = io.StringIO()
+
+        if sys.stdout is None:
+            sys.stdout = temp_out
+        if sys.stderr is None:
+            sys.stderr = temp_out
+
         safe_log_info("本地缓存中存在未知名称，触发 mootdx 全量字典同步...")
         try:
             # 调用 stocks 方法获取数据
@@ -130,6 +143,10 @@ class MootdxNameRegistry:
             error_detail = traceback.format_exc()
             error_msg = f"全量同步 mootdx 名称字典失败：{e}\n详细堆栈:\n{error_detail}"
             safe_log_error(error_msg)
+        finally:
+            # 还原标准流
+            sys.stdout = stdout_orig
+            sys.stderr = stderr_orig
 
     def get_name(self, code: str) -> str:
         """从缓存安全获取名称"""

@@ -63,27 +63,46 @@ class UpdateInstaller:
             # 确保配置目录存在
             config_dir.mkdir(exist_ok=True)
 
-            # BAT 脚本内容 (静默模式 - 无输出，只写日志文件)
+            # BAT 脚本内容 (增强版 - 带有强制终止逻辑)
             bat_content = f"""@echo off
+setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
-:: 等待主程序退出
+:: 等待主程序退出 (最多等待 10 秒)
+set "wait_count=0"
 :loop
-tasklist | find "{current_pid}" >nul 2>&1
+tasklist /FI "PID eq {current_pid}" 2>nul | find "{current_pid}" >nul 2>&1
 if %errorlevel%==0 (
+    set /a wait_count+=1
+    if !wait_count! GTR 10 (
+        echo %date% %time% Timeout waiting for {current_pid}, attempting taskkill... >> "{config_dir.absolute()}\\update_log.txt"
+        taskkill /F /PID {current_pid} >nul 2>&1
+        goto proceed
+    )
     timeout /t 1 /nobreak >nul 2>&1
     goto loop
 )
 
+:proceed
+:: 额外保险：确保没有其他重名进程在运行（如果有多个实例）
+taskkill /F /IM "{main_exe_name}" /T >nul 2>&1
+timeout /t 1 /nobreak >nul 2>&1
+
 :: 替换文件
 xcopy /Y /E /H /R "{source_dir.absolute()}\\*" "{app_dir.absolute()}" >nul 2>&1
+if %errorlevel% NEQ 0 (
+    :: 尝试下一次重试，可能因为文件被占用需要一点点时间完全释放
+    timeout /t 2 /nobreak >nul 2>&1
+    xcopy /Y /E /H /R "{source_dir.absolute()}\\*" "{app_dir.absolute()}" >nul 2>&1
+)
+
 if %errorlevel% NEQ 0 goto error
 
 :: 清理临时文件
 rmdir /S /Q "{temp_dir.absolute()}" >nul 2>&1
 
 :: 写入更新成功标记
-echo %date% %time% > "{config_dir.absolute()}\\update_complete.txt"
+echo %date% %time% SUCCESS > "{config_dir.absolute()}\\update_complete.txt"
 
 :: 启动程序
 start "" "{app_dir.absolute()}\\{main_exe_name}"
