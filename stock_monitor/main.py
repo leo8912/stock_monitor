@@ -4,6 +4,11 @@
 用于监控A股股票实时行情
 """
 
+try:
+    import pandas_ta  # noqa: F401
+except ImportError:
+    print("Warning: pandas_ta not found, technical indicators might be unavailable")
+
 import sys
 
 from PyQt6 import QtCore, QtWidgets

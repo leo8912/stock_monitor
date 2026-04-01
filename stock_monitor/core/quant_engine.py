@@ -7,7 +7,13 @@ from collections import deque
 
 import numpy as np
 import pandas as pd
-import pandas_ta  # noqa: F401
+
+try:
+    import pandas_ta  # noqa: F401
+except ImportError:
+    from ..utils.logger import app_logger
+
+    app_logger.warning("pandas_ta 模块缺失，量化扫单指标可能受限。")
 
 from ..utils.logger import app_logger
 from .financial_filter import FinancialFilter
