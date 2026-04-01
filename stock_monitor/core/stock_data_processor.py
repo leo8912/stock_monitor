@@ -78,14 +78,20 @@ class StockDataProcessor:
 
         if buy_vol > 0 or sell_vol > 0:
             net = buy_vol - sell_vol
-            # 换算单位为千个“万”（相当于除以一千万），并增加大写 K 后缀
-            # 对应规则：1000万净流入 -> 1.0K
-            net_10m = net / 10000000.0
-            val_str = f"{abs(net_10m):.1f}K"
+            abs_net = abs(net)
+
+            # 使用标准的万/亿单位换算
+            if abs_net >= 100000000:
+                val_str = f"{abs_net / 100000000.0:.2f}亿"
+            elif abs_net >= 10000:
+                val_str = f"{abs_net / 10000.0:.1f}万"
+            else:
+                val_str = f"{int(abs_net)}"
+
             sign = "+" if net >= 0 else "-"
             recent_net_out = recent_net
 
-            # 简化逻辑，展示今日真实大单金额净流入
+            # 最终展示字符串：例如 "+3.82亿" 或 "-2745万"
             large_order_info = f"{sign}{val_str}"
 
         # 返回数据类实例

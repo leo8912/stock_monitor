@@ -3,7 +3,6 @@
 """
 
 import time
-from collections import deque
 
 import numpy as np
 import pandas as pd
@@ -648,18 +647,11 @@ class QuantEngine:
                     "last_tail": [],  # 上次处理结果的末尾 N 条记录（用于精确匹配增量）
                     "buy_vol": 0.0,
                     "sell_vol": 0.0,
-                    # 最近6次调用的增量（默认刷新5秒→约6次=30秒窗口）
-                    "buy_deltas": deque([0.0] * 6, maxlen=6),
-                    "sell_deltas": deque([0.0] * 6, maxlen=6),
                     "last_date": today,
                 }
                 is_first_fetch = True
 
             cache = self._large_order_cache[code]
-
-            # 记录调用前的大单量，用于计算本次增量
-            buy_before = cache["buy_vol"]
-            sell_before = cache["sell_vol"]
 
             BATCH_SIZE = 2000
 
@@ -667,6 +659,8 @@ class QuantEngine:
                 # ====== 首次拉取：循环获取全量当日数据 ======
                 dfs = []
                 offset = 0
+                max_reach = 1000000  # 安全熔断：100万笔
+
                 while True:
                     df = self.client.transaction(
                         symbol=pure_code, market=market, start=offset, count=BATCH_SIZE
@@ -674,15 +668,24 @@ class QuantEngine:
                     if df is None or df.empty:
                         break
 
-                    # 正确的分页累进，API实际返回长度决定 offset 的推移
                     actual_count = len(df)
                     dfs.append(df)
 
-                    if actual_count < 500:
+                    # 检查该 batch 中最老记录的时间（TDX 是倒序排列的）
+                    oldest_time = df.iloc[-1]["time"]
+
+                    if oldest_time <= "09:15":
+                        app_logger.debug(
+                            f"{code} 已回溯至开盘时刻或更早 ({oldest_time})，停止抓取。"
+                        )
+                        break
+
+                    if actual_count < BATCH_SIZE:
                         break
 
                     offset += actual_count
-                    if offset >= 50000:
+                    if offset >= max_reach:
+                        app_logger.warning(f"{code} 达到百万笔回溯上限，强制停止。")
                         break
 
                 if not dfs:
@@ -691,8 +694,8 @@ class QuantEngine:
 
                 full_df = pd.concat(dfs[::-1], ignore_index=True)
 
-                # 统计所有大单 (真实金额超过 50万 人民币)
-                full_df = full_df[full_df["time"] >= "09:15"]
+                # 统计所有大单 (从 09:25 集合竞价成交开始统计)
+                full_df = full_df[full_df["time"] >= "09:25"]
                 full_df["amount"] = full_df["price"] * full_df["vol"] * 100
                 big_orders = full_df[full_df["amount"] >= 500000]
                 if not big_orders.empty:
@@ -720,12 +723,10 @@ class QuantEngine:
                 )
 
                 if df is None or df.empty:
-                    cache["buy_deltas"].append(0.0)
-                    cache["sell_deltas"].append(0.0)
                     return (
                         cache["buy_vol"],
                         cache["sell_vol"],
-                        sum(cache["buy_deltas"]) - sum(cache["sell_deltas"]),
+                        cache["buy_vol"] - cache["sell_vol"],
                     )
 
                 new_records = df[["time", "vol", "buyorsell"]].values.tolist()
@@ -738,15 +739,13 @@ class QuantEngine:
                         f"{code} 增量匹配失败(指纹断层)，重置缓存下回合拉全量"
                     )
                     self._large_order_cache.pop(code, None)
-                    cache["buy_deltas"].append(0.0)
-                    cache["sell_deltas"].append(0.0)
                     return (
                         cache["buy_vol"],
                         cache["sell_vol"],
-                        sum(cache["buy_deltas"]) - sum(cache["sell_deltas"]),
+                        cache["buy_vol"] - cache["sell_vol"],
                     )
 
-                new_added_df = df.iloc[start_idx:]
+                new_added_df = df.iloc[start_idx + len(last_tail) :]
 
                 if not new_added_df.empty:
                     new_added_df = new_added_df.copy()
@@ -767,13 +766,9 @@ class QuantEngine:
                         df[["time", "vol", "buyorsell"]].tail(10).values.tolist()
                     )
 
-                delta_buy = cache["buy_vol"] - buy_before
-                delta_sell = cache["sell_vol"] - sell_before
-                cache["buy_deltas"].append(delta_buy)
-                cache["sell_deltas"].append(delta_sell)
-
-            recent_net = sum(cache["buy_deltas"]) - sum(cache["sell_deltas"])
-            return (cache["buy_vol"], cache["sell_vol"], recent_net)
+            # 返回全天累计大单买、卖及净流入
+            accumulated_net = cache["buy_vol"] - cache["sell_vol"]
+            return (cache["buy_vol"], cache["sell_vol"], accumulated_net)
 
         except Exception as e:
             app_logger.warning(f"获取 {code} 全量大单数据失败: {e}")

@@ -198,7 +198,7 @@ try:
 except Exception as e:
     print(f"Warning: Issue collecting zhconv: {str(e)}")
 
-# 强制包含 akshare（双重保险）
+# 强制包含 akshare 和 pandas_ta（物理注入双重保险）
 try:
     import akshare
     akshare_path = os.path.dirname(akshare.__file__)
@@ -208,6 +208,16 @@ try:
     print(f"Force included akshare from: {akshare_path}")
 except Exception as e:
     print(f"Critical Warning: Could not locate akshare path directly: {str(e)}")
+
+try:
+    import pandas_ta
+    ta_path = os.path.dirname(pandas_ta.__file__)
+    datas.append((ta_path, 'pandas_ta'))
+    if 'pandas_ta' not in hiddenimports:
+        hiddenimports.append('pandas_ta')
+    print(f"Force included pandas_ta from: {ta_path}")
+except Exception as e:
+    print(f"Critical Warning: Could not locate pandas_ta path directly: {str(e)}")
 
 # 移除重复项
 hiddenimports = list(set(hiddenimports))
