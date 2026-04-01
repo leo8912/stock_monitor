@@ -41,7 +41,7 @@ jobs:
         # 强制重新安装关键依赖以确保路径和元数据可访问
         pip install akshare --force-reinstall
         pip install mootdx --force-reinstall
-        pip install pandas-ta --force-reinstall
+        pip install pandas-ta-classic --force-reinstall
 
     - name: 验证所需文件是否存在 # Verify required files exist
       run: |
@@ -184,8 +184,8 @@ jobs:
         print(content[:200])
 
         # 构造正则表达式匹配特定版本的日志
-        # 同时支持 ## [2.4.0] 和 ## [v2.4.0] 两种格式
-        pattern = r"## \[v?" + re.escape(version) + r"\](.*?)(?=## \[v?|\Z)"
+        # 兼容 ## [v3.0.24] 和 ## v3.0.24 (2026-04-01) 等格式
+        pattern = r"## \[?v?" + re.escape(version) + r"\]?.*?\n(.*?)(?=\n## \[?v?|\Z)"
         print(f"使用的正则表达式: {pattern}")
         match = re.search(pattern, content, re.DOTALL)
 
