@@ -38,6 +38,7 @@ hiddenimports = [
     'curl_cffi',
     # pandas 相关
     'pandas',
+    'pandas.api.extensions',
     'pandas.core.arrays.arrow',
     'pandas.core.arrays.arrow._arrow_utils',
     'pandas._libs',
