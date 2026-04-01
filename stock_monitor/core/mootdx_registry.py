@@ -8,6 +8,8 @@ import pandas as pd
 from stock_monitor.config.manager import get_config_dir
 from stock_monitor.utils.logger import app_logger
 
+from .symbol_resolver import SymbolResolver, SymbolType
+
 
 def safe_log_info(msg: str):
     """安全的日志 info 方法，防止日志系统关闭导致异常"""
@@ -123,16 +125,37 @@ class MootdxNameRegistry:
             full_df = pd.concat([sz_df, sh_df])
             safe_log_info(f"数据合并成功，总行数：{len(full_df)}")
 
-            # 更新缓存
-            for _, row in full_df.iterrows():
-                code = str(row["code"]).strip()
-                name = str(row["name"]).replace("\x00", "").strip()
-                self._name_cache["sh" + code] = name
-                self._name_cache["sz" + code] = name
-                self._name_cache[code] = name
+            temp_names = {}
+            for df, market in [(sz_df, 0), (sh_df, 1)]:
+                if df is not None:
+                    for _, row in df.iterrows():
+                        code = str(row["code"])
+                        name = str(row["name"])
+
+                        # [ELEGANT] 使用 SymbolResolver 统一识别逻辑
+                        config = SymbolResolver.resolve(code, market)
+                        full_symbol = f"{SymbolResolver.get_market_prefix(config.market)}{config.code}"
+
+                        # 特殊修正：如果是上证指数，确保名称正确
+                        if (
+                            config.type == SymbolType.INDEX
+                            and config.code in ("000001", "999999")
+                            and config.market == 1
+                        ):
+                            name = "上证指数"
+
+                        # 存储带前缀的完整键
+                        temp_names[full_symbol] = name
+
+            self._name_cache.update(temp_names)
+
+            # 最终兜底：确保上证指数 sh000001 不会被任何逻辑篡改
+            self._name_cache["sh000001"] = "上证指数"
 
             # 保存缓存前检查是否有数据
-            if full_df is not None and len(full_df) > 0:
+            if (sz_df is not None and not sz_df.empty) or (
+                sh_df is not None and not sh_df.empty
+            ):
                 self._save_name_cache()
                 safe_log_info(f"全量字典同步完毕，共计 {len(full_df)} 只标的写入缓存。")
             else:
@@ -148,9 +171,17 @@ class MootdxNameRegistry:
             sys.stdout = stdout_orig
             sys.stderr = stderr_orig
 
-    def get_name(self, code: str) -> str:
-        """从缓存安全获取名称"""
-        return self._name_cache.get(code, code)
+    def get_name(self, symbol: str) -> str:
+        """从缓存安全获取名称，支持通过 SymbolResolver 归一化键"""
+        # 1. 尝试归一化键 (如 sh000001 -> sh999999)
+        config = SymbolResolver.resolve(symbol)
+        prefix = SymbolResolver.get_market_prefix(config.market)
+        normalized_key = f"{prefix}{config.code}"
+
+        # 2. 依次尝试：归一化键 -> 原始键 -> 原始键本身
+        return self._name_cache.get(
+            normalized_key, self._name_cache.get(symbol, symbol)
+        )
 
     def resolve_missing(self, missing_codes: list[str]):
         """若存在缺失则批量挂起同步，并设置兜底"""

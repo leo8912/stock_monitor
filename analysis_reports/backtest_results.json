@@ -1,0 +1,126 @@
+[
+  {
+    "name": "万向钱潮",
+    "code": "000559",
+    "strategy_stats": {
+      "daily": {
+        "total_signals": 4,
+        "win_rate": 0.75,
+        "avg_profit": 0.0443
+      },
+      "60m": {
+        "total_signals": 5,
+        "win_rate": 0.6,
+        "avg_profit": 0.0146
+      },
+      "30m": {
+        "total_signals": 29,
+        "win_rate": 0.3448,
+        "avg_profit": 0.0007
+      },
+      "15m": {
+        "total_signals": 87,
+        "win_rate": 0.2759,
+        "avg_profit": 0.0032
+      }
+    },
+    "score_stats": {
+      "total_signals": 9,
+      "win_rate": 0.4444,
+      "avg_profit": 0.0262
+    }
+  },
+  {
+    "name": "领益智造",
+    "code": "002600",
+    "strategy_stats": {
+      "daily": {
+        "total_signals": 5,
+        "win_rate": 1.0,
+        "avg_profit": 0.05
+      },
+      "60m": {
+        "total_signals": 4,
+        "win_rate": 1.0,
+        "avg_profit": 0.05
+      },
+      "30m": {
+        "total_signals": 29,
+        "win_rate": 0.4828,
+        "avg_profit": 0.0038
+      },
+      "15m": {
+        "total_signals": 61,
+        "win_rate": 0.3279,
+        "avg_profit": 0.0004
+      }
+    },
+    "score_stats": {
+      "total_signals": 2,
+      "win_rate": 0.5,
+      "avg_profit": 0.0381
+    }
+  },
+  {
+    "name": "多氟多",
+    "code": "002407",
+    "strategy_stats": {
+      "daily": {
+        "total_signals": 13,
+        "win_rate": 0.5385,
+        "avg_profit": 0.0121
+      },
+      "60m": {
+        "total_signals": 13,
+        "win_rate": 0.6154,
+        "avg_profit": 0.0127
+      },
+      "30m": {
+        "total_signals": 34,
+        "win_rate": 0.6176,
+        "avg_profit": 0.018
+      },
+      "15m": {
+        "total_signals": 81,
+        "win_rate": 0.3457,
+        "avg_profit": 0.0038
+      }
+    },
+    "score_stats": {
+      "total_signals": 12,
+      "win_rate": 0.4167,
+      "avg_profit": 0.0217
+    }
+  },
+  {
+    "name": "士兰微",
+    "code": "600460",
+    "strategy_stats": {
+      "daily": {
+        "total_signals": 11,
+        "win_rate": 0.2727,
+        "avg_profit": -0.0144
+      },
+      "60m": {
+        "total_signals": 10,
+        "win_rate": 0.6,
+        "avg_profit": 0.01
+      },
+      "30m": {
+        "total_signals": 30,
+        "win_rate": 0.3667,
+        "avg_profit": -0.0039
+      },
+      "15m": {
+        "total_signals": 75,
+        "win_rate": 0.2533,
+        "avg_profit": -0.003
+      }
+    },
+    "score_stats": {
+      "total_signals": 8,
+      "win_rate": 0.25,
+      "avg_profit": 0.0031
+    }
+  }
+]

@@ -147,6 +147,7 @@ class ConfigManager:
             "window_pos": [],
             "settings_dialog_pos": [],
             "quant_enabled": False,
+            "quant_scan_interval": 60,
             "wecom_webhook": "",
             "push_mode": "webhook",
             "wecom_corpid": "",

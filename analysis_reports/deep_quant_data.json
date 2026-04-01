@@ -1,0 +1,176 @@
+[
+  {
+    "name": "万向钱潮",
+    "code": "000559",
+    "indicators": {
+      "trend": "🟢 空头",
+      "strength": "⚡ 强弱度:39"
+    },
+    "signals": [],
+    "score": -1,
+    "audit": {
+      "rating": "🟢",
+      "label": "[财务稳健]",
+      "score_offset": -1,
+      "reasons": [
+        "ROE极低(0.0%)"
+      ],
+      "details": {
+        "growth": false,
+        "roe": false,
+        "debt": false,
+        "period": 1990
+      },
+      "market_sentiment": {
+        "factor": 0.0,
+        "desc": "🟡 中性/存量博弈"
+      },
+      "money_flow": {
+        "buy": 133911658.0,
+        "sell": 152022867.0,
+        "net": 0.0,
+        "factor": 0
+      }
+    },
+    "money_flow": {
+      "buy": 133911658.0,
+      "sell": 152022867.0,
+      "net": 0.0
+    },
+    "rsrs": {
+      "zcore": -0.055,
+      "slope": 1.023
+    }
+  },
+  {
+    "name": "领益智造",
+    "code": "002600",
+    "indicators": {
+      "trend": "🟢 空头",
+      "resistance": "EMA5 (12.99)",
+      "strength": "⚡ 强弱度:36"
+    },
+    "signals": [],
+    "score": -3,
+    "audit": {
+      "rating": "🟢",
+      "label": "[财务稳健]",
+      "score_offset": 0,
+      "reasons": [],
+      "details": {
+        "growth": false,
+        "roe": "17.08%",
+        "debt": "42.46%",
+        "period": 2008
+      },
+      "market_sentiment": {
+        "factor": 0.0,
+        "desc": "🟡 中性/存量博弈"
+      },
+      "money_flow": {
+        "buy": 89719948.0,
+        "sell": 118713104.0,
+        "net": 0.0,
+        "factor": 0
+      }
+    },
+    "money_flow": {
+      "buy": 89719948.0,
+      "sell": 118713104.0,
+      "net": 0.0
+    },
+    "rsrs": {
+      "zcore": -0.011,
+      "slope": 1.029
+    }
+  },
+  {
+    "name": "多氟多",
+    "code": "002407",
+    "indicators": {
+      "trend": "🟢 空头",
+      "resistance": "EMA5 (27.79)",
+      "strength": "⚡ 强弱度:46"
+    },
+    "signals": [],
+    "score": -5,
+    "audit": {
+      "rating": "🟡",
+      "label": "[⚠️ 基本面一般/偏弱]",
+      "score_offset": -2,
+      "reasons": [
+        "ROE极低(0.0%)",
+        "负债率偏高(70.38%)"
+      ],
+      "details": {
+        "growth": false,
+        "roe": false,
+        "debt": "70.38%",
+        "period": 2005
+      },
+      "market_sentiment": {
+        "factor": 0.0,
+        "desc": "🟡 中性/存量博弈"
+      },
+      "money_flow": {
+        "buy": 229846089.0,
+        "sell": 325070813.0,
+        "net": 0.0,
+        "factor": 0
+      }
+    },
+    "money_flow": {
+      "buy": 229846089.0,
+      "sell": 325070813.0,
+      "net": 0.0
+    },
+    "rsrs": {
+      "zcore": -0.308,
+      "slope": 0.934
+    }
+  },
+  {
+    "name": "士兰微",
+    "code": "600460",
+    "indicators": {
+      "trend": "🟢 空头",
+      "resistance": "EMA5 (25.98)",
+      "strength": "⚡ 强弱度:36"
+    },
+    "signals": [],
+    "score": -4,
+    "audit": {
+      "rating": "🟢",
+      "label": "[财务稳健]",
+      "score_offset": -1,
+      "reasons": [
+        "ROE极低(0.0%)"
+      ],
+      "details": {
+        "growth": false,
+        "roe": false,
+        "debt": "21.07%",
+        "period": 2000
+      },
+      "market_sentiment": {
+        "factor": 0.0,
+        "desc": "🟡 中性/存量博弈"
+      },
+      "money_flow": {
+        "buy": 68257183.0,
+        "sell": 63296343.0,
+        "net": 0.0,
+        "factor": 0
+      }
+    },
+    "money_flow": {
+      "buy": 68257183.0,
+      "sell": 63296343.0,
+      "net": 0.0
+    },
+    "rsrs": {
+      "zcore": 0.096,
+      "slope": 0.986
+    }
+  }
+]

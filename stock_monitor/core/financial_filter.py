@@ -31,7 +31,10 @@ class FinancialFilter:
         """
         # 转换 symbol 格式，akshare 常用 6 位数字
         raw_symbol = symbol
-        if symbol.startswith(("sh", "sz")):
+        s_lower = symbol.lower()
+        if s_lower.startswith(("sh", "sz")):
+            raw_symbol = symbol[2:]
+        elif s_lower.startswith(("sh", "sz")):  # 冗余检查，以防大小写混合
             raw_symbol = symbol[2:]
 
         data = self._get_cached_data(raw_symbol)

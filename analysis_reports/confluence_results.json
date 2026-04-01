@@ -1,0 +1,42 @@
+{
+  "000559_confluence_daily": {
+    "total_signals": 0,
+    "win_rate": 0.0,
+    "avg_profit": 0.0
+  },
+  "000559_confluence_60m": {
+    "total_signals": 0,
+    "win_rate": 0.0,
+    "avg_profit": 0.0
+  },
+  "002600_confluence_daily": {
+    "total_signals": 1,
+    "win_rate": 0.0,
+    "avg_profit": 0.0105
+  },
+  "002600_confluence_60m": {
+    "total_signals": 1,
+    "win_rate": 1.0,
+    "avg_profit": 0.08
+  },
+  "002407_confluence_daily": {
+    "total_signals": 3,
+    "win_rate": 0.3333,
+    "avg_profit": 0.0227
+  },
+  "002407_confluence_60m": {
+    "total_signals": 3,
+    "win_rate": 0.3333,
+    "avg_profit": 0.0141
+  },
+  "600460_confluence_daily": {
+    "total_signals": 1,
+    "win_rate": 0.0,
+    "avg_profit": -0.0119
+  },
+  "600460_confluence_60m": {
+    "total_signals": 1,
+    "win_rate": 0.0,
+    "avg_profit": -0.05
+  }
+}

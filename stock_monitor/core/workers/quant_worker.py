@@ -69,9 +69,13 @@ class QuantWorker(QtCore.QThread):
 
                 # 只有在开盘期间执行量化扫描
                 if MarketManager.is_market_open():
+                    # 动态读取扫描间隔 (默认 60秒)
+                    current_interval = self.config.get(
+                        "quant_scan_interval", self.scan_interval
+                    )
                     if (
                         self.symbols
-                        and time.time() - self.last_scan_time >= self.scan_interval
+                        and time.time() - self.last_scan_time >= current_interval
                     ):
                         self.perform_scan()
                         self.last_scan_time = time.time()
@@ -111,14 +115,16 @@ class QuantWorker(QtCore.QThread):
                 break
             try:
                 stock_name = self.fetcher.name_registry.get_name(symbol)
-                market = 1 if symbol.startswith("sh") else 0
-                code = symbol[2:] if symbol.startswith(("sh", "sz")) else symbol
 
-                p_info = self.engine.get_latest_price_info(code, market)
-                daily_df = self.engine.fetch_bars(code, market, category=9, offset=100)
+                # 解析代码和市场，用于兼容低层 API (如回测)
+                code, market, _ = self.engine._parse_symbol(symbol)
+
+                # 获取最新价格和K线
+                p_info = self.engine.get_latest_price_info(symbol)
+                daily_df = self.engine.fetch_bars(symbol, category=9, offset=100)
 
                 # 1. 执行形态扫描
-                signals = self.engine.scan_all_timeframes(code, market)
+                signals = self.engine.scan_all_timeframes(symbol)
 
                 # 2. 策略检测 2: OBV 累积 (成交量异常)
                 obv_signals = self.engine.detect_obv_accumulation(symbol, daily_df)
@@ -131,21 +137,57 @@ class QuantWorker(QtCore.QThread):
                         }
                     )
 
-                # 3. 计算最终分数
-                # 如果当前没有任何特定形态，但分数很高 (Score >= 3)，则作为“高分强度”信号触发
+                # 3. 核心可靠性检查 (新增强化逻辑)
+                # 检查日线级别 MACD 底背离的历史可靠性
+                daily_stats = self.backtester.get_strategy_stats(
+                    code, market, category=9
+                )
+
+                # 新增：共振模型检查 (Confluence)
+                is_confluence = False
+                rsrs_z, _ = self.engine.calculate_rsrs(daily_df)
+                has_macd_div = any(s["name"] == "MACD底背离" for s in signals)
+                if has_macd_div and rsrs_z > 0.7:
+                    is_confluence = True
+
+                is_priority = False
+                wr_label = ""
+                if daily_stats and daily_stats.get("total_signals", 0) >= 3:
+                    if daily_stats["win_rate"] >= 0.8:
+                        is_priority = True
+                        wr_label = (
+                            f" [💎 历史胜率 {daily_stats['win_rate'] * 100:.0f}%]"
+                        )
+
+                # 4. 计算最终分数并判定触发阈值
                 score, audit = self.engine.calculate_intensity_score_with_symbol(
                     symbol, daily_df, signals
                 )
-                if not signals and score >= 3:
+
+                # 弹性阈值：高可靠品种只需 2 分，普通品种 3 分
+                threshold = 2 if is_priority else 3
+
+                # 共振信号强制触发
+                if is_confluence:
                     signals.append(
                         {
-                            "name": "多因子综合走强",
+                            "name": "⚡策略共振(底背离+RSRS)",
+                            "tf": "Daily",
+                            "time": current_time_str,
+                        }
+                    )
+                    score = max(score, 4)  # 强制高分
+
+                if not signals and score >= threshold:
+                    signals.append(
+                        {
+                            "name": "多因子综合走强" + wr_label,
                             "tf": "Daily",
                             "time": current_time_str,
                         }
                     )
 
-                # 4. 如果检测到量化信号（形态或高分），执行推送
+                # 5. 如果检测到量化信号，执行推送
                 if signals:
                     for sig in signals:
                         tf_cn = self.engine.TF_CHINESE_MAP.get(
@@ -196,6 +238,17 @@ class QuantWorker(QtCore.QThread):
                                 f"{fin_label} {fin_reasons if fin_reasons else ''}"
                             )
 
+                            # 高可靠品种标题增强
+                            display_name = (
+                                f"🔥 {stock_name}" if is_priority else stock_name
+                            )
+                            if is_confluence:
+                                display_name = f"💎【策略共振】{stock_name}"
+
+                            display_sig = " [精细关注]" if is_priority else ""
+                            if is_confluence:
+                                display_sig = " [超高可靠/重仓机会]"
+
                             # 组装展示内容
                             cycle_info = (
                                 f'<div class="gray">信号详情: {sig_name}</div>\n'
@@ -217,8 +270,11 @@ class QuantWorker(QtCore.QThread):
                             NotifierService.dispatch_alert(
                                 config=self.config,
                                 symbol=symbol,
-                                stock_name=stock_name,
-                                signals=[f"{sig_name}  [评分: {score:+}分]", fin_info],
+                                stock_name=display_name,
+                                signals=[
+                                    f"{sig_name}{display_sig} [评分: {score:+}分]",
+                                    fin_info,
+                                ],
                                 cycle_info=cycle_info,
                                 price_info=p_info,
                             )

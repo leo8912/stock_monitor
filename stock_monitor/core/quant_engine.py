@@ -5,11 +5,13 @@
 import time
 from collections import deque
 
+import numpy as np
 import pandas as pd
 
 from ..utils.logger import app_logger
 from .financial_filter import FinancialFilter
 from .market_manager import market_manager
+from .symbol_resolver import SymbolResolver, SymbolType
 
 
 class QuantEngine:
@@ -34,72 +36,130 @@ class QuantEngine:
         self._large_order_cache = {}  # 大单流向缓存
         self.fin_filter = FinancialFilter()  # 基本面异常过滤器
 
+    def _parse_symbol(
+        self, symbol: str, market: int = None
+    ) -> tuple[str, int, SymbolType]:
+        """
+        [ELEGANT] 委托 SymbolResolver 解析符号、市场与标的类型
+        """
+        config = SymbolResolver.resolve(symbol, market)
+        return config.code, config.market, config.type
+
+    def _validate_data(self, df: pd.DataFrame, stype: SymbolType) -> bool:
+        """
+        数据契约验证器：基于标的类型执行相应的一致性检查
+        """
+        if df is None or df.empty:
+            return False
+
+        # 1. 指数类型校验：价格点位不应小于 100 (典型个股价格)
+        if stype == SymbolType.INDEX:
+            last_price = df.iloc[-1]["close"]
+            if last_price < 100:
+                app_logger.warning(
+                    f"数据契约冲突: 捕获到价格 {last_price}，不满足 INDEX 类型的基准点位要求。"
+                )
+                return False
+
+        # 2. 通用性日期完整性检查 (可选扩展)
+        return True
+
     def fetch_bars(
-        self, symbol: str, market: int, category: int, offset: int = 250
+        self, symbol: str, market: int = None, category: int = 9, offset: int = 250
     ) -> pd.DataFrame:
+        """
+        [ELEGANT] 稳健的 K 线获取逻辑，通过 SymbolResolver 自动确定抓取策略
+        """
         import time
 
         now = time.time()
-        cache_key = (symbol, market, category)
 
-        # 1. 检查缓存
+        # 1. 解析初始参数与元数据
+        config = SymbolResolver.resolve(symbol, market)
+        cache_key = (
+            f"{SymbolResolver.get_market_prefix(config.market)}{config.code}",
+            category,
+        )
+
+        # 2. 检查缓存
         if cache_key in self._bars_cache:
             df, ts = self._bars_cache[cache_key]
             if now - ts < self._cache_ttl:
-                # app_logger.debug(f"K线缓存命中 [{symbol} cat={category}]")
-                return df.copy()  # 返回副本防止外部修改
+                return df.copy()
 
-        # 2. 真实抓取
-        try:
-            # 兼容大深度获取：处理超过 800 根的服务器限制
-            if offset <= 800:
-                df = self.client.bars(
+        # 3. 核心抓取循环 (候选路径自动回退)
+        # 候选集包含: [首选解析代码] + [解析器提供的备选代码]
+        candidate_paths = [(config.code, config.market)] + config.alternates
+
+        final_df = None
+        for code_p, market_p in candidate_paths:
+            try:
+                # 抓取数据 (传入类型标识以触发协议自适应)
+                df = self._do_fetch(
+                    code_p, market_p, category, offset, stype=config.type
+                )
+
+                # 执行数据契约校验
+                if self._validate_data(df, config.type):
+                    final_df = df
+                    break
+            except Exception as e:
+                app_logger.error(f"代码 {code_p} 数据抓取或解析异常: {e}")
+                continue
+
+        if final_df is not None and not final_df.empty:
+            # 数据后处理
+            final_df = final_df.reset_index(drop=True)
+            if "datetime" in final_df.columns:
+                final_df = final_df.drop_duplicates(subset=["datetime"])
+                final_df = final_df.sort_values("datetime", ascending=True).reset_index(
+                    drop=True
+                )
+
+            # 更新并限制缓存
+            self._bars_cache[cache_key] = (final_df, now)
+            if len(self._bars_cache) > 500:
+                self._bars_cache.pop(next(iter(self._bars_cache)))
+            return final_df
+
+        return pd.DataFrame()
+
+    def _do_fetch(
+        self,
+        symbol: str,
+        market: int,
+        category: int,
+        offset: int,
+        stype: SymbolType = SymbolType.STOCK,
+    ) -> pd.DataFrame:
+        """
+        执行底层数据抓取，支持协议自适应 (INDEX 专用接口)
+        """
+        # [ELEGANT] 针对指数类型，使用专用的 index 接口，避开 bars 接口的二进制解析 bug
+        api_method = (
+            self.client.index if stype == SymbolType.INDEX else self.client.bars
+        )
+
+        if offset <= 800:
+            return api_method(
+                symbol=symbol, market=market, category=category, start=0, offset=offset
+            )
+        else:
+            chunks = []
+            for start in range(0, offset, 800):
+                current_offset = min(800, offset - start)
+                chunk = api_method(
                     symbol=symbol,
                     market=market,
                     category=category,
-                    start=0,
-                    offset=offset,
+                    start=start,
+                    offset=current_offset,
                 )
-            else:
-                # 分段拉取逻辑 (Chunked Fetching)
-                chunks = []
-                for start in range(0, offset, 800):
-                    current_offset = min(800, offset - start)
-                    chunk = self.client.bars(
-                        symbol=symbol,
-                        market=market,
-                        category=category,
-                        start=start,
-                        offset=current_offset,
-                    )
-                    if chunk is not None and not chunk.empty:
-                        chunks.append(chunk)
-                    else:
-                        break  # 没有更多历史数据了
-                df = pd.concat(chunks) if chunks else pd.DataFrame()
-
-            if df is not None and not df.empty:
-                # 去重并排序，确保数据连续且单调递增
-                df = df.reset_index(drop=True)
-                if "datetime" in df.columns:
-                    # 分段合并后可能存在重叠或乱序，必须进行排序和去重
-                    df = df.drop_duplicates(subset=["datetime"])
-                    df = df.sort_values("datetime", ascending=True).reset_index(
-                        drop=True
-                    )
-
-                # 3. 更新缓存
-                self._bars_cache[cache_key] = (df, now)
-
-                # 4. 限制缓存大小 (防止内存泄漏)
-                if len(self._bars_cache) > 500:
-                    self._bars_cache.pop(next(iter(self._bars_cache)))
-
-                return df
-            return pd.DataFrame()
-        except Exception as e:
-            app_logger.error(f"K线拉取失败 [{symbol} cat={category}]: {e}")
-            return pd.DataFrame()
+                if chunk is not None and not chunk.empty:
+                    chunks.append(chunk)
+                else:
+                    break
+            return pd.concat(chunks) if chunks else pd.DataFrame()
 
     def check_macd_bullish_divergence(
         self, df: pd.DataFrame, window: int = 30, end_idx: int = None
@@ -140,6 +200,52 @@ class QuantEngine:
             return bw <= curr[cols[0]].iloc[-100:].min() * 1.05
         except Exception:
             return False
+
+    def calculate_rsrs(
+        self, df: pd.DataFrame, n: int = 18, m: int = 600
+    ) -> tuple[float, float]:
+        """
+        计算 RSRS (阻力支撑相对强度) 指标
+        返回: (zscore, slope)
+        """
+        try:
+            if len(df) < n + m:
+                return 0.0, 0.0
+
+            # 1. 计算斜率序列 (Slope)
+            # 为了性能，只计算最近 M+1 个斜率用于标准化
+            slopes = []
+            highs = df["high"].values
+            lows = df["low"].values
+
+            # 使用 rolling window 计算斜率
+            for i in range(len(df) - m, len(df)):
+                y = highs[i - n + 1 : i + 1]
+                x = lows[i - n + 1 : i + 1]
+                slope = np.polyfit(x, y, 1)[0]
+                slopes.append(slope)
+
+            # 2. 标准化 (Z-Score)
+            curr_slope = slopes[-1]
+            history_slopes = np.array(slopes)
+            mean_s = np.mean(history_slopes)
+            std_s = np.std(history_slopes)
+
+            zscore = (curr_slope - mean_s) / std_s if std_s != 0 else 0
+            return round(zscore, 3), round(curr_slope, 3)
+        except Exception as e:
+            app_logger.warning(f"RSRS 计算失败: {e}")
+            return 0.0, 0.0
+
+    def detect_obv_accumulation(self, symbol: str, df: pd.DataFrame) -> list:
+        """
+        [NEW] OBV 低位吸筹检测入口，保持与 QuantWorker 兼容
+        """
+        if self.check_accumulation(df):
+            # 获取最近一根 K 线的时间
+            last_time = df.iloc[-1]["datetime"] if not df.empty else ""
+            return [{"level": "日线", "time": last_time}]
+        return []
 
     def check_accumulation(self, df: pd.DataFrame, end_idx: int = None) -> bool:
         try:
@@ -327,6 +433,13 @@ class QuantEngine:
                 score += 1
             elif c < e5 < e20 < e60:
                 score -= 3  # 极弱势
+
+            # 3. RSRS 评分
+            z, s = self.calculate_rsrs(curr)
+            if z > 0.7:
+                score += 1
+            elif z < -0.7:
+                score -= 1
         except Exception:
             pass
 
@@ -399,7 +512,7 @@ class QuantEngine:
 
         return int(max(-5, min(5, final_score))), audit
 
-    def get_latest_price_info(self, symbol: str, market: int) -> dict:
+    def get_latest_price_info(self, symbol: str, market: int = None) -> dict:
         """获取最新价格和涨跌幅（从日线K线计算）"""
         try:
             df = self.fetch_bars(symbol, market, category=9, offset=3)
@@ -412,7 +525,7 @@ class QuantEngine:
         except Exception:
             return {}
 
-    def scan_all_timeframes(self, symbol: str, market: int) -> list[dict]:
+    def scan_all_timeframes(self, symbol: str, market: int = None) -> list[dict]:
         """全量扫描，按大周期→小周期排序返回"""
         results = []
         for tf, cat in self.FreqMap.items():
@@ -433,6 +546,27 @@ class QuantEngine:
                             "category": cat,
                             "name": "OBV碎步吸筹",
                             "desc": f"(主力蓄势){pos}",
+                        }
+                    )
+
+                # 3. RSRS 择时信号
+                z, _ = self.calculate_rsrs(df)
+                if z > 1.0:
+                    results.append(
+                        {
+                            "tf": tf,
+                            "category": cat,
+                            "name": "RSRS极强",
+                            "desc": f"阻力极小(Z:{z})",
+                        }
+                    )
+                elif z > 0.7:
+                    results.append(
+                        {
+                            "tf": tf,
+                            "category": cat,
+                            "name": "RSRS走强",
+                            "desc": f"突破压力(Z:{z})",
                         }
                     )
             except Exception as e:
