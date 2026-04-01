@@ -196,28 +196,27 @@ print(f"Total hidden imports: {len(hiddenimports)}")
 print(f"Total data files: {len(datas)}")
 print(f"=========================\n")
 
-# 设置自定义 hooks 目录 - 使用工作目录而非 __file__
+# 设置自定义 hooks 目录 - 优先使用项目根目录
 import sys
-if getattr(sys, 'frozen', False):
-    # 如果是打包后的环境
-    application_path = os.path.dirname(sys.executable)
-else:
-    # 如果是开发环境
-    application_path = os.getcwd()
 
-hooks_dir = os.path.join(application_path, 'stock_monitor', 'hooks')
-if os.path.exists(hooks_dir):
-    print(f"Using custom hooks from: {hooks_dir}")
-    hooks_path = [hooks_dir]
+# 尝试多个可能的路径
+possible_hooks_paths = [
+    # GitHub Actions 环境：工作目录是项目根目录
+    os.path.join(os.getcwd(), 'stock_monitor', 'hooks'),
+    # 开发环境
+    os.path.join(os.path.dirname(__file__), 'stock_monitor', 'hooks') if '__file__' in dir() else None,
+    # 打包后环境（备用）
+    os.path.join(sys._MEIPASS, 'stock_monitor', 'hooks') if getattr(sys, 'frozen', False) else None,
+]
+
+hooks_path = []
+for path in possible_hooks_paths:
+    if path and os.path.exists(path):
+        print(f"Using custom hooks from: {path}")
+        hooks_path = [path]
+        break
 else:
-    # 尝试相对路径
-    hooks_dir_alt = os.path.join(os.getcwd(), 'stock_monitor', 'hooks')
-    if os.path.exists(hooks_dir_alt):
-        print(f"Using custom hooks from: {hooks_dir_alt}")
-        hooks_path = [hooks_dir_alt]
-    else:
-        print("No custom hooks directory found")
-        hooks_path = []
+    print("No custom hooks directory found")
 
 block_cipher = None
 

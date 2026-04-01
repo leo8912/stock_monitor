@@ -7,6 +7,30 @@ from stock_monitor.config.manager import get_config_dir
 from stock_monitor.utils.logger import app_logger
 
 
+def safe_log_info(msg: str):
+    """安全的日志 info 方法，防止日志系统关闭导致异常"""
+    try:
+        app_logger.info(msg)
+    except Exception:
+        print(f"INFO: {msg}")
+
+
+def safe_log_warning(msg: str):
+    """安全的日志 warning 方法，防止日志系统关闭导致异常"""
+    try:
+        app_logger.warning(msg)
+    except Exception:
+        print(f"WARNING: {msg}")
+
+
+def safe_log_error(msg: str):
+    """安全的日志 error 方法，防止日志系统关闭导致异常"""
+    try:
+        app_logger.error(msg)
+    except Exception:
+        print(f"ERROR: {msg}")
+
+
 class MootdxNameRegistry:
     """负责单独管理 mootdx 标的名称的手工缓存和更新映射"""
 
@@ -49,22 +73,17 @@ class MootdxNameRegistry:
             with open(cache_file, "w", encoding="utf-8") as f:
                 json.dump(self._name_cache, f, ensure_ascii=False)
         except Exception as e:
-            # 使用 print 作为兜底
-            error_msg = f"保存缓存失败：{e}"
-            try:
-                app_logger.error(error_msg)
-            except Exception:
-                # 日志系统可能已关闭，使用标准输出
-                print(f"ERROR: {error_msg}")
+            # 使用安全的日志方法
+            safe_log_error(f"保存缓存失败：{e}")
 
     def sync_mootdx_names(self):
         """全量同步 mootdx 名称字典"""
         # 通过 _get_mootdx_client 获取 client，支持延迟初始化
         client = self._get_mootdx_client()
         if client is None:
-            app_logger.warning("mootdx client 未初始化，跳过名称同步")
+            safe_log_warning("mootdx client 未初始化，跳过名称同步")
             return
-        app_logger.info("本地缓存中存在未知名称，触发 mootdx 全量字典同步...")
+        safe_log_info("本地缓存中存在未知名称，触发 mootdx 全量字典同步...")
         try:
             # 调用 stocks 方法获取数据
             sz_df = client.stocks(market=0)
@@ -82,19 +101,13 @@ class MootdxNameRegistry:
             # 保存缓存前检查是否有数据
             if full_df is not None and len(full_df) > 0:
                 self._save_name_cache()
-                app_logger.info(
-                    f"全量字典同步完毕，共计 {len(full_df)} 只标的写入缓存。"
-                )
+                safe_log_info(f"全量字典同步完毕，共计 {len(full_df)} 只标的写入缓存。")
             else:
-                app_logger.warning("获取到的数据为空")
+                safe_log_warning("获取到的数据为空")
         except Exception as e:
             # 使用 print 作为兜底，防止日志系统已关闭
             error_msg = f"全量同步 mootdx 名称字典失败：{e}"
-            try:
-                app_logger.error(error_msg)
-            except Exception:
-                # 日志系统可能已关闭，使用标准输出
-                print(f"ERROR: {error_msg}")
+            safe_log_error(error_msg)
 
     def get_name(self, code: str) -> str:
         """从缓存安全获取名称"""

@@ -18,10 +18,10 @@ jobs:
     - name: 检出代码 # Checkout code
       uses: actions/checkout@v4
 
-    - name: 设置Python环境 # Set up Python
+    - name: 设置 Python 环境 # Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.11'
+        python-version: '3.9'  # 与本地开发环境保持一致
         cache: 'pip' # 启用 pip 缓存
 
     - name: 缓存 PyInstaller # Cache PyInstaller builds
@@ -86,8 +86,25 @@ jobs:
       run: |
         # 先清理之前的构建
         Remove-Item -Recurse -Force build,dist -ErrorAction SilentlyContinue
+        
+        # 显示当前目录结构
+        echo "=== 当前目录结构 ==="
+        Get-ChildItem -Recurse -Depth 2 | Select-Object FullName
+        
+        # 检查 hooks 目录
+        echo "=== 检查 hooks 目录 ==="
+        if (Test-Path "stock_monitor/hooks") {
+            echo "hooks 目录存在"
+            Get-ChildItem "stock_monitor/hooks/"
+        } else {
+            echo "ERROR: hooks 目录不存在!"
+            exit 1
+        }
+        
         # 带详细日志构建
+        echo "=== 开始构建 ==="
         pyinstaller -y --log-level=INFO stock_monitor.spec
+        
         echo "构建完成，检查产物:"
         Get-ChildItem dist/stock_monitor -Recurse | Select-Object FullName
 
