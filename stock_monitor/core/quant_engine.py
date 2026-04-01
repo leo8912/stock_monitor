@@ -2,6 +2,8 @@
 量化分析引擎模块
 """
 
+import os
+import sys
 import time
 
 import numpy as np
@@ -542,17 +544,39 @@ class QuantEngine:
 
                     pd.api.extensions.register_dataframe_accessor("ta")(Analysis)
                     app_logger.info("已通过代码手动激活 pandas-ta 访问器。")
+                return True
+            except (ImportError, ModuleNotFoundError) as e:
+                # ====== Frozen 环境补丁逻辑 (v3.0.24) ======
+                if getattr(sys, "frozen", False):
+                    base_path = sys._MEIPASS
+                    internal_base = os.path.join(base_path, "_internal")
+
+                    if internal_base not in sys.path:
+                        sys.path.insert(0, internal_base)
+
+                    try:
+                        import pandas_ta as _ta  # noqa: F401
+
+                        app_logger.info("通过 _internal 路径补丁成功激活 pandas_ta")
+                        return True
+                    except Exception:
+                        pass
+                app_logger.warning(f"无法激活 pandas-ta 访问器: {str(e)}")
+                return False
             except Exception as e:
                 import traceback
 
-                err_msg = f"无法激活 pandas-ta 访问器: {e}\n{traceback.format_exc()}"
+                err_msg = (
+                    f"激活 pandas-ta 时发生未知错误: {e}\n{traceback.format_exc()}"
+                )
                 app_logger.warning(err_msg)
+                return False
+        return True
 
     def scan_all_timeframes(self, symbol: str, market: int = None) -> list[dict]:
         """全量扫描，按大周期→小周期排序返回"""
         # 针对打包环境的自愈点
-        dummy_df = pd.DataFrame()
-        self._ensure_ta_active(dummy_df)
+        self._ensure_ta_active(pd.DataFrame())
 
         results = []
         for tf, cat in self.FreqMap.items():

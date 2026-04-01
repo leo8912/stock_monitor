@@ -1,5 +1,10 @@
 # 更新日志 (CHANGELOG)
 
+## v3.0.24 (2026-04-01)
+- **[BUILD/CI]** 强制对齐编译环境：在 GitHub Actions 中增加 `pandas-ta` 强制重装与导入验证，确保编译机环境 100% 正常。
+- **[BUILD/SPEC]** 注入 Entry Points 元数据：在 Spec 文件中使用 `copy_metadata('pandas-ta')`，确保 `pandas` 访问器在打包后仍能自动注册。
+- **[RUNTIME]** 增加极致路径自愈：在 `QuantEngine` 启动时增加手动路径探测逻辑。即便常规导入失败，程序也会尝试从 `_internal` 目录暴力加载指标库。
+
 ## v3.0.23 (2026-04-01)
 - **[BUILD]** 采用物理路径注入 (Physical Injection) 策略强行包含 `pandas-ta`，彻底解决 GitHub Actions 环境下的 `ModuleNotFoundError`。
 - **[FLOW]** 重构大单统计深度：取消 50,000 笔硬上限，回溯至当日开盘 (09:25)，确保工业富联等超大盘股的统计准确性。

@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-from PyInstaller.utils.hooks import collect_all, collect_submodules, collect_data_files
+from PyInstaller.utils.hooks import collect_all, collect_submodules, collect_data_files, copy_metadata
 import os
 
 datas = [
@@ -210,9 +210,10 @@ except Exception as e:
     print(f"Critical Warning: Could not locate akshare path directly: {str(e)}")
 
 try:
-    import pandas_ta
     ta_path = os.path.dirname(pandas_ta.__file__)
     datas.append((ta_path, 'pandas_ta'))
+    # 增加元数据收集，确保 pandas 的 Entry Points 能够发现这个插件
+    datas += copy_metadata('pandas-ta')
     if 'pandas_ta' not in hiddenimports:
         hiddenimports.append('pandas_ta')
     print(f"Force included pandas_ta from: {ta_path}")
