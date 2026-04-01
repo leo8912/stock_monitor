@@ -22,6 +22,9 @@ if zhconv_path:
 binaries = []
 
 # --- Force Include pandas_ta ---
+try:
+    import pandas_ta
+    import inspect
     pandas_ta_path = os.path.dirname(inspect.getfile(pandas_ta))
     print(f"DEBUG: Found pandas_ta at {pandas_ta_path}")
     # 将整个包目录拷贝为 pandas_ta 子目录
