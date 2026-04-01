@@ -53,7 +53,8 @@ class MootdxNameRegistry:
             error_msg = f"保存缓存失败：{e}"
             try:
                 app_logger.error(error_msg)
-            except (ValueError, AttributeError):
+            except Exception:
+                # 日志系统可能已关闭，使用标准输出
                 print(f"ERROR: {error_msg}")
 
     def sync_mootdx_names(self):
@@ -91,7 +92,7 @@ class MootdxNameRegistry:
             error_msg = f"全量同步 mootdx 名称字典失败：{e}"
             try:
                 app_logger.error(error_msg)
-            except (ValueError, AttributeError):
+            except Exception:
                 # 日志系统可能已关闭，使用标准输出
                 print(f"ERROR: {error_msg}")
 

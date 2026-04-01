@@ -1,5 +1,18 @@
 # 更新日志
 
+## [v3.0.10] - 2026-04-01
+
+### 🐛 修复 (Fixes)
+- **异常类型捕获错误修复**：
+  - 将 `app_logger.error()` 的异常捕获从 `(ValueError, AttributeError)` 改为 `Exception`
+  - `'NoneType' object has no attribute 'write'` 实际是 `TypeError`，不是 ValueError 或 AttributeError
+  - 确保所有日志系统异常都能被正确捕获并降级到 `print` 输出
+  
+### 🔧 优化 (Optimization)
+- **日志容错增强**：
+  - 统一使用 `except Exception` 捕获所有可能的日志异常
+  - 防止因异常类型不匹配导致的错误泄露
+
 ## [v3.0.9] - 2026-03-31
 
 ### 🐛 修复 (Fixes)
