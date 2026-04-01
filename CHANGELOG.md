@@ -1,5 +1,11 @@
 # 更新日志
 
+## [v3.0.19] - 2026-04-01
+
+### 🚨 紧急修复 (Critical Fixes)
+- **搜索路径强力注入 (Search Path Reinforcement)**：实现运行时自动探测 `_internal` 核心依赖目录并注入 `sys.path`。彻底解决打包环境下由于路径混淆导致的 `ModuleNotFoundError`。
+- **资源结构对齐**：优化 Spec 文件中 `pandas_ta` 的目录导出层级。
+
 ## [v3.0.18] - 2026-04-01
 
 ### ✨ 增强 (Features)
