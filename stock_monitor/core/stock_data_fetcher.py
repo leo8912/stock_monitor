@@ -45,12 +45,23 @@ class StockDataFetcher:
         if self._mootdx_client is None:
             try:
                 app_logger.info("初始化 mootdx 行情引擎...")
+                # 尝试创建 Quotes 实例
                 self._mootdx_client = Quotes.factory(market="std")
-                app_logger.info("mootdx 行情引擎初始化成功")
-                # 更新 name_registry 的 client
-                self.name_registry.mootdx_client = self._mootdx_client
+
+                # 验证是否成功创建
+                if self._mootdx_client is None:
+                    app_logger.error("Quotes.factory 返回 None")
+                    self._mootdx_client = None
+                else:
+                    app_logger.info("mootdx 行情引擎初始化成功")
+                    # 更新 name_registry 的 client
+                    self.name_registry.mootdx_client = self._mootdx_client
             except Exception as e:
+                import traceback
+
+                error_detail = traceback.format_exc()
                 app_logger.error(f"初始化 mootdx 行情引擎失败：{e}")
+                app_logger.error(f"详细错误堆栈:\n{error_detail}")
                 self._mootdx_client = None
         return self._mootdx_client
 

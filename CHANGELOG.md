@@ -1,5 +1,24 @@
 # 更新日志
 
+## [v3.0.13] - 2026-04-01
+
+### 🐛 修复 (Fixes)
+- **增强 mootdx client 初始化调试信息**：
+  - 在 `mootdx_client` property 中添加返回值验证，检测 `Quotes.factory()` 是否返回 None
+  - 添加完整的错误堆栈跟踪（使用 `traceback.format_exc()`）
+  - 记录详细的初始化步骤日志
+  
+### 🔧 优化 (Optimization)
+- **sync_mootdx_names 详细调试模式**：
+  - 当 client 为 None 时输出 parent 引用信息
+  - 记录每次 API 调用的参数和返回值
+  - 添加 DataFrame 行数统计，便于定位数据问题
+  - 异常处理中包含完整堆栈信息
+  
+### 📝 说明
+- 这些调试信息将帮助定位 GitHub Actions 打包环境中 mootdx 初始化失败的根本原因
+- 下一次构建将输出详细的错误堆栈，便于快速解决问题
+
 ## [v3.0.12] - 2026-04-01
 
 ### 🐛 修复 (Fixes)

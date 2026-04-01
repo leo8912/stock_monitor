@@ -80,15 +80,35 @@ class MootdxNameRegistry:
         """全量同步 mootdx 名称字典"""
         # 通过 _get_mootdx_client 获取 client，支持延迟初始化
         client = self._get_mootdx_client()
+
+        # 详细调试信息
         if client is None:
-            safe_log_warning("mootdx client 未初始化，跳过名称同步")
+            safe_log_error("mootdx client 为 None，无法同步名称")
+            safe_log_error(f"当前 parent: {self._parent}")
+            if self._parent is not None:
+                try:
+                    parent_client = self._parent.mootdx_client
+                    safe_log_error(f"parent.mootdx_client: {parent_client}")
+                except Exception as e:
+                    safe_log_error(f"访问 parent.mootdx_client 失败：{e}")
             return
+
         safe_log_info("本地缓存中存在未知名称，触发 mootdx 全量字典同步...")
         try:
             # 调用 stocks 方法获取数据
+            safe_log_info(f"调用 client.stocks(market=0)，client 类型：{type(client)}")
             sz_df = client.stocks(market=0)
+            safe_log_info(
+                f"sz_df 获取成功，行数：{len(sz_df) if sz_df is not None else 'None'}"
+            )
+
             sh_df = client.stocks(market=1)
+            safe_log_info(
+                f"sh_df 获取成功，行数：{len(sh_df) if sh_df is not None else 'None'}"
+            )
+
             full_df = pd.concat([sz_df, sh_df])
+            safe_log_info(f"数据合并成功，总行数：{len(full_df)}")
 
             # 更新缓存
             for _, row in full_df.iterrows():
@@ -105,8 +125,10 @@ class MootdxNameRegistry:
             else:
                 safe_log_warning("获取到的数据为空")
         except Exception as e:
-            # 使用 print 作为兜底，防止日志系统已关闭
-            error_msg = f"全量同步 mootdx 名称字典失败：{e}"
+            import traceback
+
+            error_detail = traceback.format_exc()
+            error_msg = f"全量同步 mootdx 名称字典失败：{e}\n详细堆栈:\n{error_detail}"
             safe_log_error(error_msg)
 
     def get_name(self, code: str) -> str:
