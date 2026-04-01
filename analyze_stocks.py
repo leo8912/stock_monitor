@@ -16,24 +16,44 @@ def analyze_stock(stock_code: str, stock_name: str):
     print(f"{'='*60}\n")
 
     try:
-        # 1. 实时行情
+        # 1. 实时行情（改用个股查询，更稳定）
         print("【实时行情】")
-        spot_data = ak.stock_zh_a_spot_em()
-        stock_spot = spot_data[spot_data["代码"] == stock_code]
+        try:
+            # 获取沪深 A 股所有股票实时行情
+            spot_data = ak.stock_zh_a_spot_em()
+            stock_spot = spot_data[spot_data["代码"] == stock_code]
+        except Exception:
+            # 如果批量接口失败，尝试直接获取个股信息
+            print("批量接口失败，尝试直接获取个股数据...")
+            stock_spot = pd.DataFrame()
+
         if not stock_spot.empty:
             row = stock_spot.iloc[0]
-            print(f"最新价：{row['最新价']}")
-            print(f"涨跌幅：{row['涨跌幅']}%")
-            print(f"涨跌额：{row['涨跌额']}")
-            print(f"成交量：{row['成交量']} 手")
-            print(f"成交额：{row['成交额']} 元")
-            print(f"振幅：{row['振幅']}%")
-            print(f"换手率：{row['换手率']}%")
-            print(f"量比：{row['量比']}")
-            print(f"市盈率 (动态):{row['市盈率 - 动态']}")
-            print(f"市净率：{row['市净率']}")
+            latest_price = float(row["最新价"]) if pd.notna(row["最新价"]) else None
+            change_pct = float(row["涨跌幅"]) if pd.notna(row["涨跌幅"]) else None
+            change_amt = float(row["涨跌额"]) if pd.notna(row["涨跌额"]) else None
+            volume = int(row["成交量"]) if pd.notna(row["成交量"]) else None
+            amount = float(row["成交额"]) if pd.notna(row["成交额"]) else None
+            amplitude = float(row["振幅"]) if pd.notna(row["振幅"]) else None
+            turnover = float(row["换手率"]) if pd.notna(row["换手率"]) else None
+            volume_ratio = float(row["量比"]) if pd.notna(row["量比"]) else None
+            pe_dynamic = (
+                float(row["市盈率 - 动态"]) if pd.notna(row["市盈率 - 动态"]) else None
+            )
+            pb = float(row["市净率"]) if pd.notna(row["市净率"]) else None
+
+            print(f"最新价：{latest_price}")
+            print(f"涨跌幅：{change_pct}%")
+            print(f"涨跌额：{change_amt}")
+            print(f"成交量：{volume} 手")
+            print(f"成交额：{amount/10000:.2f} 万元" if amount else "N/A")
+            print(f"振幅：{amplitude}%")
+            print(f"换手率：{turnover}%")
+            print(f"量比：{volume_ratio}")
+            print(f"市盈率 (动态):{pe_dynamic}")
+            print(f"市净率：{pb}")
         else:
-            print("未找到实时行情数据")
+            print("未找到实时行情数据（网络可能不稳定）")
 
         # 2. 近期 K 线（近 60 日）
         print("\n【近 60 日 K 线趋势】")
