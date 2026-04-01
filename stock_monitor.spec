@@ -71,6 +71,12 @@ hiddenimports = [
     'pandas_ta.trend',
     'pandas_ta.volatility',
     'pandas_ta.momentum',
+    # scipy (pandas-ta 的核心隐式依赖)
+    'scipy',
+    'scipy.signal',
+    'scipy.stats',
+    'scipy.special',
+    'scipy.optimize',
 ]
 
 # akshare 专用隐藏导入列表

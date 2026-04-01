@@ -1,5 +1,12 @@
 # 更新日志
 
+## [v3.0.21] - 2026-04-01
+
+### 🚨 紧急修复 (Critical Fixes)
+- **[CRITICAL]** 补全 `scipy` 及其子模块（signal, stats, special, optimize）的隐式隐藏导入。这是 `pandas-ta` 计算核心指标（如 MACD, Bollinger Bands）的必备依赖。
+- **[ENGINE]** 还原 `QuantEngine.scan_all_timeframes` 循环入口处的自愈检测。
+- **[DEBUG]** 增强 `_ensure_ta_active` 的探测颗粒度并集成 Traceback 日志，增强打包环境下的故障排查能力。
+
 ## [v3.0.20] - 2026-04-01
 
 ### 🚨 紧急修复 (Critical Fixes)

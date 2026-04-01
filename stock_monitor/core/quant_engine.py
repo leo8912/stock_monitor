@@ -533,7 +533,7 @@ class QuantEngine:
             return {}
 
     def _ensure_ta_active(self, df: pd.DataFrame):
-        """确保 pandas-ta 访问器已激活"""
+        """确保 pandas-ta 访问器已激活 (针对打包环境的自愈逻辑)"""
         if not hasattr(df, "ta"):
             try:
                 import pandas_ta  # noqa: F401
@@ -544,10 +544,17 @@ class QuantEngine:
                     pd.api.extensions.register_dataframe_accessor("ta")(Analysis)
                     app_logger.info("已通过代码手动激活 pandas-ta 访问器。")
             except Exception as e:
-                app_logger.warning(f"无法激活 pandas-ta 访问器: {e}")
+                import traceback
+
+                err_msg = f"无法激活 pandas-ta 访问器: {e}\n{traceback.format_exc()}"
+                app_logger.warning(err_msg)
 
     def scan_all_timeframes(self, symbol: str, market: int = None) -> list[dict]:
         """全量扫描，按大周期→小周期排序返回"""
+        # 针对打包环境的自愈点
+        dummy_df = pd.DataFrame()
+        self._ensure_ta_active(dummy_df)
+
         results = []
         for tf, cat in self.FreqMap.items():
             try:
