@@ -10,8 +10,12 @@ import numpy as np
 import pandas as pd
 
 try:
-    import pandas_ta  # noqa: F401
+    import pandas_ta_classic as ta
 except ImportError:
+    try:
+        import pandas_ta as ta
+    except ImportError:
+        ta = None
     from ..utils.logger import app_logger
 
     app_logger.warning("pandas_ta 模块缺失，量化扫单指标可能受限。")
@@ -535,42 +539,56 @@ class QuantEngine:
 
     def _ensure_ta_active(self, df: pd.DataFrame):
         """确保 pandas-ta 访问器已激活 (针对打包环境的自愈逻辑)"""
-        if not hasattr(df, "ta"):
+        # 如果已经激活，直接返回
+        if hasattr(pd.DataFrame, "ta"):
+            return True
+
+        try:
+            # 1. 尝试常规导入 (兼容 classic 和标准版)
             try:
-                import pandas_ta  # noqa: F401
+                import pandas_ta_classic as _ta  # noqa: F401
+            except ImportError:
+                try:
+                    import pandas_ta as _ta  # noqa: F401
+                except ImportError:
+                    pass
 
-                if not hasattr(df, "ta"):
-                    from pandas_ta.core import Analysis
+            if hasattr(pd.DataFrame, "ta"):
+                return True
 
-                    pd.api.extensions.register_dataframe_accessor("ta")(Analysis)
-                    app_logger.info("已通过代码手动激活 pandas-ta 访问器。")
+            # 2. 运行时强制补丁 (Runtime Patch) - 针对 Frozen 环境
+            if getattr(sys, "frozen", False):
+                base_path = sys._MEIPASS
+                internal_base = os.path.join(base_path, "_internal")
+                if internal_base not in sys.path:
+                    sys.path.insert(0, internal_base)
+
+            # 尝试再次导入并手动注册
+            try:
+                try:
+                    import pandas_ta_classic as _pta  # noqa: F401
+                except ImportError:
+                    import pandas_ta as _pta  # noqa: F401
+
+                if not hasattr(pd.DataFrame, "ta"):
+                    # 强行调用其内部类进行注册
+                    from pandas_ta.core import AnalysisIndicators
+
+                    pd.api.extensions.register_dataframe_accessor("ta")(
+                        AnalysisIndicators
+                    )
+                self.logger.info("已通过代码手动激活 pandas-ta 访问器。")
                 return True
             except (ImportError, ModuleNotFoundError) as e:
-                # ====== Frozen 环境补丁逻辑 (v3.0.24) ======
-                if getattr(sys, "frozen", False):
-                    base_path = sys._MEIPASS
-                    internal_base = os.path.join(base_path, "_internal")
-
-                    if internal_base not in sys.path:
-                        sys.path.insert(0, internal_base)
-
-                    try:
-                        import pandas_ta as _ta  # noqa: F401
-
-                        app_logger.info("通过 _internal 路径补丁成功激活 pandas_ta")
-                        return True
-                    except Exception:
-                        pass
-                app_logger.warning(f"无法激活 pandas-ta 访问器: {str(e)}")
+                self.logger.warning(f"无法激活 pandas-ta 访问器: {str(e)}")
                 return False
-            except Exception as e:
-                import traceback
+        except Exception as e:
+            import traceback
 
-                err_msg = (
-                    f"激活 pandas-ta 时发生未知错误: {e}\n{traceback.format_exc()}"
-                )
-                app_logger.warning(err_msg)
-                return False
+            self.logger.warning(
+                f"激活 pandas-ta 时发生未知错误: {e}\n{traceback.format_exc()}"
+            )
+            return False
         return True
 
     def scan_all_timeframes(self, symbol: str, market: int = None) -> list[dict]:

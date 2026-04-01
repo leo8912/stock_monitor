@@ -210,13 +210,26 @@ except Exception as e:
     print(f"Critical Warning: Could not locate akshare path directly: {str(e)}")
 
 try:
-    ta_path = os.path.dirname(pandas_ta.__file__)
-    datas.append((ta_path, 'pandas_ta'))
+    # 动态探测 pandas-ta 或 pandas-ta-classic
+    try:
+        import pandas_ta_classic as pta
+        ta_lib_name = 'pandas-ta-classic'
+    except ImportError:
+        import pandas_ta as pta
+        ta_lib_name = 'pandas-ta'
+
+    ta_path = os.path.dirname(pta.__file__)
+    # 物理路径注入 (目录名即为模块名)
+    ta_mod_name = os.path.basename(ta_path)
+    datas.append((ta_path, ta_mod_name))
+
     # 增加元数据收集，确保 pandas 的 Entry Points 能够发现这个插件
-    datas += copy_metadata('pandas-ta')
-    if 'pandas_ta' not in hiddenimports:
-        hiddenimports.append('pandas_ta')
-    print(f"Force included pandas_ta from: {ta_path}")
+    from PyInstaller.utils.hooks import copy_metadata
+    datas += copy_metadata(ta_lib_name)
+
+    if ta_mod_name not in hiddenimports:
+        hiddenimports.append(ta_mod_name)
+    print(f"Force included {ta_lib_name} from: {ta_path}")
 except Exception as e:
     print(f"Critical Warning: Could not locate pandas_ta path directly: {str(e)}")
 
