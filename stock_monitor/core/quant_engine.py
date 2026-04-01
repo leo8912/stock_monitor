@@ -2,8 +2,6 @@
 量化分析引擎模块
 """
 
-import os
-import sys
 import time
 from collections import deque
 
@@ -535,21 +533,9 @@ class QuantEngine:
             return {}
 
     def _ensure_ta_active(self, df: pd.DataFrame):
-        """确保 pandas-ta 访问器已激活 (针对打包环境的路径注入自愈逻辑)"""
+        """确保 pandas-ta 访问器已激活"""
         if not hasattr(df, "ta"):
             try:
-                # 针对打包环境的路径补全
-                if getattr(sys, "frozen", False):
-                    # 获取当前进程所在目录 (OneDir 模式下一般是 _internal 或 exe 同级)
-                    base_dir = os.path.dirname(sys.executable)
-                    internal_dir = os.path.join(base_dir, "_internal")
-
-                    # 尝试将这些可能的路径加入 sys.path
-                    for p in [internal_dir, base_dir]:
-                        if p not in sys.path and os.path.isdir(p):
-                            sys.path.insert(0, p)
-                            app_logger.info(f"已手动注入搜索路径: {p}")
-
                 import pandas_ta  # noqa: F401
 
                 if not hasattr(df, "ta"):
@@ -558,14 +544,10 @@ class QuantEngine:
                     pd.api.extensions.register_dataframe_accessor("ta")(Analysis)
                     app_logger.info("已通过代码手动激活 pandas-ta 访问器。")
             except Exception as e:
-                app_logger.warning(f"由于路径或依赖原因无法激活 pandas-ta 访问器: {e}")
+                app_logger.warning(f"无法激活 pandas-ta 访问器: {e}")
 
     def scan_all_timeframes(self, symbol: str, market: int = None) -> list[dict]:
         """全量扫描，按大周期→小周期排序返回"""
-        # 针对打包环境的自愈点
-        dummy_df = pd.DataFrame()
-        self._ensure_ta_active(dummy_df)
-
         results = []
         for tf, cat in self.FreqMap.items():
             try:

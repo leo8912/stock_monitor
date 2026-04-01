@@ -1,5 +1,12 @@
 # 更新日志
 
+## [v3.0.20] - 2026-04-01
+
+### 🚨 紧急修复 (Critical Fixes)
+- **[CRITICAL]** 引入 PyInstaller Hook 机制，彻底解决 `pandas-ta` 在二进制环境下的模块缺失问题。
+- **[ENGINE]** 在 `stock_monitor.spec` 中显式硬编码隐藏导入列表，确保技术指标全量打包。
+- **[CLEAN]** 移除 `QuantEngine` 中不稳定的运行时 `sys.path` 注入代码，恢复标准 Python 包加载流程。
+
 ## [v3.0.19] - 2026-04-01
 
 ### 🚨 紧急修复 (Critical Fixes)
