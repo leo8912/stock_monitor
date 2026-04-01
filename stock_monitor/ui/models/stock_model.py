@@ -3,6 +3,7 @@
 提供基于QAbstractTableModel的高效数据模型，用于QTableView显示
 """
 
+import time
 from typing import Any
 
 from PyQt6 import QtCore, QtGui
@@ -93,6 +94,20 @@ class StockTableModel(QtCore.QAbstractTableModel):
                 )
 
             elif logical_col == self.COL_LARGE_ORDER:
+                # [NEW] 集合竞价时段特殊展示 (09:15 - 09:35)
+                now_hm = time.strftime("%H:%M")
+                if "09:15" <= now_hm <= "09:35" and row_data.auction_intensity > 0:
+                    # 格式化竞价金额
+                    vol = row_data.auction_vol
+                    if vol >= 100000000:
+                        vol_str = f"{vol / 100000000.0:.2f}亿"
+                    elif vol >= 10000:
+                        vol_str = f"{vol / 10000.0:.0f}万"
+                    else:
+                        vol_str = f"{int(vol)}"
+
+                    return f"强:{row_data.auction_intensity:.1f}x ({vol_str}) "
+
                 return (
                     f"{row_data.large_order_info} " if row_data.large_order_info else ""
                 )
@@ -109,6 +124,17 @@ class StockTableModel(QtCore.QAbstractTableModel):
                     return QtGui.QColor("#888")
 
             if logical_col == self.COL_LARGE_ORDER:
+                # [NEW] 集合竞价时段颜色处理
+                now_hm = time.strftime("%H:%M")
+                if "09:15" <= now_hm <= "09:35" and row_data.auction_intensity > 0:
+                    # 抢筹信号：强度 > 10 用紫色，> 5 用深红
+                    if row_data.auction_intensity >= 10.0:
+                        return QtGui.QColor("#A020F0")  # 紫色 (Purple)
+                    elif row_data.auction_intensity >= 5.0:
+                        return QtGui.QColor("#FF0000")  # 纯红
+                    else:
+                        return QtGui.QColor("#CD5C5C")  # 印度红 (淡红)
+
                 # 按照资金级别渐变色彩，统一复用系统的涨跌状态色卡
                 s = str(row_data.large_order_info).strip()
                 if not s or s == "--" or "NaN" in s:

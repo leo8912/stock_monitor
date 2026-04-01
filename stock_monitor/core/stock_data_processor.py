@@ -94,6 +94,12 @@ class StockDataProcessor:
             # 最终展示字符串：例如 "+3.82亿" 或 "-2745万"
             large_order_info = f"{sign}{val_str}"
 
+        # 6. 处理集合竞价 [NEW]
+        auc_data = raw_data.get("auction_data", {})
+        auction_price = auc_data.get("price", 0.0)
+        auction_vol = auc_data.get("volume", 0.0)
+        auction_intensity = auc_data.get("intensity", 0.0)
+
         # 返回数据类实例
         return StockRowData(
             code=code,
@@ -105,6 +111,9 @@ class StockDataProcessor:
             seal_type=seal_type,
             large_order_info=large_order_info,
             recent_net_out=recent_net_out,
+            auction_price=auction_price,
+            auction_vol=auction_vol,
+            auction_intensity=auction_intensity,
         )
 
     @staticmethod

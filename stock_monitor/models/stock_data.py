@@ -17,6 +17,10 @@ class StockRowData:
     seal_type: str
     large_order_info: str = ""
     recent_net_out: float = 0.0
+    # 集合竞价相关字段 [NEW]
+    auction_price: float = 0.0
+    auction_vol: float = 0.0
+    auction_intensity: float = 0.0
 
     @property
     def hash_key(self) -> tuple:

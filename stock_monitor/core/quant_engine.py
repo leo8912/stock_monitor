@@ -25,6 +25,11 @@ from .financial_filter import FinancialFilter
 from .market_manager import market_manager
 from .symbol_resolver import SymbolResolver, SymbolType
 
+try:
+    import akshare as ak
+except ImportError:
+    ak = None
+
 
 class QuantEngine:
     """量化策略雷达"""
@@ -45,6 +50,8 @@ class QuantEngine:
         self.client = mootdx_client
         self._bars_cache = {}  # 缓存格式: {(symbol, cat): (df, timestamp)}
         self._cache_ttl = 60  # 缓存生存时间 (秒)
+        self._avg_vol_cache = {}  # 缓存 5 日均量，避免频繁请求历史接口
+        self._auction_cache = {}  # 缓存今日竞价结果 (price, vol, intensity)
         self._large_order_cache = {}  # 大单流向缓存
         self.fin_filter = FinancialFilter()  # 基本面异常过滤器
 
@@ -731,8 +738,11 @@ class QuantEngine:
                         break
 
                 if not dfs:
-                    app_logger.debug(f"{code} 首次大单获取无结果，尝试使用历史缓存")
-                    return (cache.get("buy_vol", 0.0), cache.get("sell_vol", 0.0), 0.0)
+                    app_logger.debug(f"{code} 首次大单获取从 TDX 无结果，尝试补偿")
+                    # 即使 TDX 没结果，也要尝试盘后补全逻辑
+                    self._fetch_ak_fallback_money_flow(pure_code, market, cache)
+                    buy, sell = cache.get("buy_vol", 0.0), cache.get("sell_vol", 0.0)
+                    return (buy, sell, buy - sell)
 
                 full_df = pd.concat(dfs[::-1], ignore_index=True)
 
@@ -757,6 +767,9 @@ class QuantEngine:
                 app_logger.debug(
                     f"{code} 首次大单总条数{len(full_df)}，买{cache['buy_vol']:.0f}卖{cache['sell_vol']:.0f}"
                 )
+
+                # [DONE] 统一通过私有方法处理补偿判定
+                self._fetch_ak_fallback_money_flow(pure_code, market, cache, full_df)
 
             else:
                 # ====== 增量拉取：只请求最新 batch，倒序匹配 ======
@@ -815,4 +828,152 @@ class QuantEngine:
         except Exception as e:
             app_logger.warning(f"获取 {code} 全量大单数据失败: {e}")
             cached = self._large_order_cache.get(code, {})
-            return (cached.get("buy_vol", 0.0), cached.get("sell_vol", 0.0), 0.0)
+            buy, sell = cached.get("buy_vol", 0.0), cached.get("sell_vol", 0.0)
+            return (buy, sell, buy - sell)
+
+    def _fetch_ak_fallback_money_flow(
+        self, pure_code, market, cache, full_df: pd.DataFrame = None
+    ):
+        """
+        [ELEGANT] 资金流向补全逻辑：针对 TDX 接口局限性，在收盘后或开启时补全当日主力资金数据
+        """
+        earliest_time = (
+            full_df.iloc[0]["time"]
+            if (full_df is not None and len(full_df) > 0)
+            else "23:59"
+        )
+        from datetime import datetime
+
+        curr_hour = datetime.now().hour
+        # 如果当前已过 15:00 (或 09:00 前开机)，且拉取到的最早记录晚于 09:35 (说明回溯失败)
+        if (curr_hour >= 15 or curr_hour < 9) and earliest_time > "09:35":
+            if not ak:
+                app_logger.warning("akshare 未安装，无法执行盘后补偿。")
+                return
+
+            code_with_market = f"{'sh' if market == 1 else 'sz'}{pure_code}"
+            try:
+                app_logger.info(
+                    f"{code_with_market} 触发盘后资金补偿 (TDX仅回溯至 {earliest_time})"
+                )
+                flow_df = ak.stock_individual_fund_flow(
+                    stock=pure_code, market="sh" if market == 1 else "sz"
+                )
+                if flow_df is not None and not flow_df.empty:
+                    last_row = flow_df.iloc[-1]
+                    net_main = float(last_row["主力净流入-净额"])
+                    # 对重分配：仅为了保证 net = buy - sell
+                    if net_main > 0:
+                        cache["buy_vol"] = net_main
+                        cache["sell_vol"] = 0.0
+                    else:
+                        cache["buy_vol"] = 0.0
+                        cache["sell_vol"] = abs(net_main)
+                    app_logger.info(
+                        f"{code_with_market} 补偿成功：主力净流入 {net_main:.0f}"
+                    )
+            except Exception as e:
+                app_logger.warning(
+                    f"akshare 资金流向补偿失败 [{code_with_market}]: {e}"
+                )
+
+    def get_five_day_avg_minute_volume(self, code: str) -> float:
+        """获取前 5 日平均每分钟成交额 (不含今日)"""
+        today = time.strftime("%Y-%m-%d")
+        if code in self._avg_vol_cache and self._avg_vol_cache[code]["date"] == today:
+            return self._avg_vol_cache[code]["value"]
+
+        try:
+            market = 1 if code.startswith("sh") else 0
+            pure_code = code[2:]
+            # 类别 4 为日线，获取 6 根以防万一
+            df = self.client.bars(symbol=pure_code, market=market, category=4, count=6)
+            if df is not None and len(df) >= 2:
+                last_dt = str(df.iloc[-1].name)
+                # 兼容不同格式的 datetime index
+                if today in last_dt:
+                    hist_df = df.iloc[:-1].tail(5)
+                else:
+                    hist_df = df.tail(5)
+
+                if not hist_df.empty:
+                    # A股每日交易 240 分钟
+                    avg_daily_amount = hist_df["amount"].mean()
+                    avg_minute_amount = avg_daily_amount / 240.0
+                    self._avg_vol_cache[code] = {
+                        "date": today,
+                        "value": avg_minute_amount,
+                    }
+                    return avg_minute_amount
+        except Exception as e:
+            app_logger.warning(f"获取 {code} 5日均量失败: {e}")
+
+        return 1000000.0  # 保底 100 万，防止指标虚高
+
+    def fetch_call_auction_data(self, code: str) -> dict:
+        """
+        获取集合竞价分析数据
+        返回: {price, volume, intensity, pct}
+        """
+        if self.client is None:
+            return {}
+
+        now_hm = time.strftime("%H:%M")
+        # 仅在开盘前或开盘初期的特定时段有效 (09:15-09:35)
+        # 或者在盘后为了回溯展示
+        if not ("09:15" <= now_hm <= "15:10"):  # 稍微放宽一点用于测试
+            return self._auction_cache.get(code, {})
+
+        # 核心逻辑：如果在 09:15-09:25，获取实时行情；如果已过 09:25，获取 09:25 的成交数据
+        try:
+            market = 1 if code.startswith("sh") else 0
+            pure_code = code[2:]
+
+            # 1. 获取当前行情（或者最后一次行情预估）
+            q_df = self.client.quotes(symbol=[pure_code])
+            if q_df is None or q_df.empty:
+                return {}
+
+            current_price = float(q_df.iloc[0]["price"])
+            last_close = float(q_df.iloc[0]["last_close"])
+            pct = (current_price / last_close - 1) * 100 if last_close > 0 else 0.0
+
+            auction_vol = 0.0
+            intensity = 0.0
+
+            if "09:15" <= now_hm < "09:25":
+                # 实时的虚拟竞价 (Virtual Auction)
+                # 使用买一量 * 价格作为金额
+                auction_vol = float(q_df.iloc[0]["bid_vol1"] * current_price * 100)
+            else:
+                # 已过 09:25 或盘后，抓取 09:25:00 这一笔真实成交
+                # start=0, count=50 足够覆盖早盘第一笔
+                df = self.client.transaction(
+                    symbol=pure_code, market=market, start=0, count=100
+                )
+                if df is not None and not df.empty:
+                    # 简化逻辑：找 time <= "09:25:00" 的最后一条
+                    auction_rows = df[df["time"] <= "09:25"]
+                    if not auction_rows.empty:
+                        trade = auction_rows.iloc[-1]
+                        auction_vol = float(trade["price"] * trade["vol"] * 100)
+                        # 更新一下价格和涨幅（如果是盘后回溯，这反映的是竞价那一刻的情况）
+                        # 但 UI 上我们通常希望显示最新价，竞价仅作为辅助指标
+
+            # 2. 计算强度
+            if auction_vol > 0:
+                avg_min_vol = self.get_five_day_avg_minute_volume(code)
+                intensity = auction_vol / avg_min_vol
+
+            res = {
+                "price": current_price,
+                "volume": auction_vol,
+                "intensity": intensity,
+                "pct": pct,
+            }
+            self._auction_cache[code] = res
+            return res
+
+        except Exception as e:
+            app_logger.warning(f"获取 {code} 竞价数据失败: {e}")
+            return self._auction_cache.get(code, {})
