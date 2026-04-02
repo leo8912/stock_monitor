@@ -229,7 +229,20 @@ class QuantEngine:
         返回: (zscore, slope)
         """
         try:
-            if len(df) < n + m:
+            data_len = len(df)
+
+            # 渐进式降级策略
+            if data_len < n + m:
+                min_required = n + max(60, m // 4)
+
+                if data_len < min_required:
+                    app_logger.debug(f"RSRS 数据不足：{data_len} < {min_required}")
+                    return 0.0, 0.0
+
+                adjusted_m = min(m, data_len - n)
+                app_logger.info(f"RSRS 降级模式：m={m}->{adjusted_m}")
+                return self.calculate_rsrs(df, n=n, m=adjusted_m)
+
                 return 0.0, 0.0
 
             # 1. 计算斜率序列 (Slope)
@@ -671,6 +684,53 @@ class QuantEngine:
                 return i + m
         return -1
 
+    def _get_adaptive_order_threshold(self, symbol: str) -> int:
+        """根据股票市值自适应获取大单阈值
+
+        Args:
+            symbol (str): 股票代码（带市场前缀）
+
+        Returns:
+            int: 大单金额阈值（元）
+
+        阈值分档：
+        - 小盘股 (<100 亿): 20 万元
+        - 中盘股 (100-1000 亿): 50 万元
+        - 大盘股 (>1000 亿): 100 万元
+        """
+        try:
+            import akshare as ak
+
+            _ = symbol[2:] if symbol.startswith(("sh", "sz")) else symbol
+            df = ak.stock_individual_info(symbol=symbol)
+            if df is not None and not df.empty:
+                for _, row in df.iterrows():
+                    if "总市值" in str(row.get("item", "")):
+                        market_cap_str = str(row.get("value", "0")).replace(",", "")
+                        try:
+                            market_cap = float(market_cap_str)
+                            from .quant_engine_constants import (
+                                BIG_ORDER_THRESHOLD_LARGE_CAP,
+                                BIG_ORDER_THRESHOLD_MID_CAP,
+                                BIG_ORDER_THRESHOLD_SMALL_CAP,
+                                MARKET_CAP_MID_LIMIT,
+                                MARKET_CAP_SMALL_LIMIT,
+                            )
+
+                            if market_cap < MARKET_CAP_SMALL_LIMIT:
+                                return BIG_ORDER_THRESHOLD_SMALL_CAP
+                            elif market_cap < MARKET_CAP_MID_LIMIT:
+                                return BIG_ORDER_THRESHOLD_MID_CAP
+                            else:
+                                return BIG_ORDER_THRESHOLD_LARGE_CAP
+                        except (ValueError, TypeError):
+                            pass
+        except Exception:
+            pass
+        from .quant_engine_constants import BIG_ORDER_THRESHOLD_AMOUNT
+
+        return BIG_ORDER_THRESHOLD_AMOUNT
+
     def fetch_large_orders_flow(self, code: str) -> tuple[float, float, float]:
         """
         获取单只股票从当日开盘起的所有主动大单买入/卖出量 (单位：手)
@@ -750,7 +810,8 @@ class QuantEngine:
                 # 统计所有大单 (从 09:25 集合竞价成交开始统计)
                 full_df = full_df[full_df["time"] >= "09:25"]
                 full_df["amount"] = full_df["price"] * full_df["vol"] * 100
-                big_orders = full_df[full_df["amount"] >= 500000]
+                threshold = self._get_adaptive_order_threshold(code)
+                big_orders = full_df[full_df["amount"] >= threshold]
                 if not big_orders.empty:
                     cache["buy_vol"] = float(
                         big_orders[big_orders["buyorsell"] == 0]["amount"].sum()
@@ -809,7 +870,8 @@ class QuantEngine:
                     new_added_df["amount"] = (
                         new_added_df["price"] * new_added_df["vol"] * 100
                     )
-                    big_orders = new_added_df[new_added_df["amount"] >= 500000]
+                    threshold = self._get_adaptive_order_threshold(code)
+                    big_orders = new_added_df[new_added_df["amount"] >= threshold]
                     if not big_orders.empty:
                         cache["buy_vol"] += float(
                             big_orders[big_orders["buyorsell"] == 0]["amount"].sum()
