@@ -5,7 +5,7 @@
 该模块包含StockSearchWidget类，用于搜索和添加自选股。
 """
 
-from PyQt6 import QtCore, QtWidgets
+from PyQt6 import QtCore, QtGui, QtWidgets
 from PyQt6.QtCore import pyqtSignal
 
 from stock_monitor.data.stock.stock_data_source import StockDataSource
@@ -224,3 +224,24 @@ class StockSearchWidget(QtWidgets.QWidget):
             return f"{emoji} {name} ({code})"
         else:
             return f"{emoji} {code}"
+
+    def closeEvent(self, event: QtGui.QCloseEvent):
+        """
+        窗口关闭事件处理 - 清理定时器、断开信号连接
+
+        Args:
+            event: 关闭事件对象
+        """
+        try:
+            # 1. 停止并清理定时器
+            if hasattr(self, "_search_throttle_timer") and self._search_throttle_timer:
+                self._search_throttle_timer.stop()
+                self._search_throttle_timer.deleteLater()
+
+            # 2. 断开数据源相关连接（如果有）
+            if hasattr(self, "stock_data_source"):
+                # 清空股票数据引用，帮助 GC
+                self.stock_data = []
+                self.filtered_stocks = []
+        finally:
+            super().closeEvent(event)
