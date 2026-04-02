@@ -31,6 +31,16 @@ class ConfigHelper:
         """
         return self.config_manager.get(key, default)
 
+    def set(self, key: str, value: Any) -> None:
+        """
+        设置配置值
+
+        Args:
+            key: 配置键
+            value: 配置值
+        """
+        self.config_manager.set(key, value)
+
     def get_bool(self, key: str, default: bool = False) -> bool:
         """
         安全地获取布尔值配置
@@ -208,6 +218,7 @@ class ConfigKeys:
     FONT_FAMILY = "font_family"
     FONT_SIZE = "font_size"
     WINDOW_TRANSPARENCY = "window_transparency"
+    TRANSPARENCY = "transparency"
 
     # 消息推送
     WECOM_WEBHOOK = "wecom_webhook"

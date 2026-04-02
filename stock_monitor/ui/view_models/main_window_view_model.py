@@ -7,6 +7,7 @@ from stock_monitor.core.stock_manager import StockManager
 from stock_monitor.core.workers import MarketStatsWorker, QuantWorker, RefreshWorker
 from stock_monitor.data.stock.stock_db import StockDatabase
 from stock_monitor.data.stock.stocks import load_stock_data
+from stock_monitor.utils.config_helper import ConfigHelper, ConfigKeys
 from stock_monitor.utils.logger import app_logger
 from stock_monitor.utils.stock_utils import StockCodeProcessor
 
@@ -20,7 +21,7 @@ class MainWindowViewModel(QObject):
     # Signals
     stock_data_loaded = pyqtSignal(list)
     stock_data_updated = pyqtSignal(list, bool)
-    market_stats_updated = pyqtSignal(int, int, int, int)
+    market_stats_updated = pyqtSignal(int, int, int, float)
     refresh_error_occurred = pyqtSignal()
     error_occurred = pyqtSignal(str)
 
@@ -28,7 +29,8 @@ class MainWindowViewModel(QObject):
         super().__init__()
         self._container = container
         self._stock_db = self._container.get(StockDatabase)
-        self._config_manager = self._container.get(ConfigManager)
+        config_manager = self._container.get(ConfigManager)
+        self._config_helper = ConfigHelper(config_manager)
         self._stock_manager = self._container.get(StockManager)
         self._fetcher = self._container.get(StockDataFetcher)
 
@@ -36,7 +38,7 @@ class MainWindowViewModel(QObject):
         self._refresh_worker = RefreshWorker()
         self._market_stats_worker = MarketStatsWorker()
 
-        wecom_webhook = self._config_manager.get("wecom_webhook", "")
+        wecom_webhook = self._config_helper.get_str(ConfigKeys.WECOM_WEBHOOK, "")
         self._quant_worker = QuantWorker(self._fetcher, wecom_webhook)
 
         # 注册到容器中，方便 SettingsViewModel 获取
@@ -88,7 +90,7 @@ class MainWindowViewModel(QObject):
     def load_user_stocks(self) -> list[str]:
         """Load user selected stocks"""
         try:
-            stocks = self._config_manager.get("user_stocks", [])
+            stocks = self._config_helper.get_list(ConfigKeys.USER_STOCKS, [])
 
             # Early return if empty
             if not stocks:
@@ -131,8 +133,8 @@ class MainWindowViewModel(QObject):
         self._market_stats_worker.start_worker()
 
         # Start quant worker if enabled
-        quant_enabled = self._config_manager.get("quant_enabled", False)
-        webhook = self._config_manager.get("wecom_webhook", "")
+        quant_enabled = self._config_helper.get_bool(ConfigKeys.QUANT_ENABLED, False)
+        webhook = self._config_helper.get_str(ConfigKeys.WECOM_WEBHOOK, "")
         self._quant_worker.wecom_webhook = webhook
         self._quant_worker.set_symbols(user_stocks)
 
@@ -180,8 +182,8 @@ class MainWindowViewModel(QObject):
         if refresh_interval is not None:
             self._refresh_worker.update_interval(refresh_interval)
 
-        quant_enabled = self._config_manager.get("quant_enabled", False)
-        webhook = self._config_manager.get("wecom_webhook", "")
+        quant_enabled = self._config_helper.get_bool(ConfigKeys.QUANT_ENABLED, False)
+        webhook = self._config_helper.get_str(ConfigKeys.WECOM_WEBHOOK, "")
         self._quant_worker.wecom_webhook = webhook
 
         if quant_enabled:

@@ -19,6 +19,7 @@ from stock_monitor.ui.mixins.draggable_window import DraggableWindowMixin
 from stock_monitor.ui.view_models.main_window_view_model import MainWindowViewModel
 from stock_monitor.ui.widgets.context_menu import AppContextMenu
 from stock_monitor.ui.widgets.market_status import MarketStatusBar
+from stock_monitor.utils.config_helper import ConfigHelper, ConfigKeys
 from stock_monitor.utils.helpers import resource_path
 from stock_monitor.utils.log_cleaner import schedule_log_cleanup
 from stock_monitor.utils.logger import app_logger
@@ -160,7 +161,8 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
 
         # 初始化透明度缓存，避免 paintEvent 高频读取配置
         config_manager = self._container.get(ConfigManager)
-        self._transparency = config_manager.get("transparency", 80)
+        self._config_helper = ConfigHelper(config_manager)
+        self._transparency = self._config_helper.get_int(ConfigKeys.TRANSPARENCY, 80)
 
         # 从配置中读取字体大小和字体族并更新表格
         self.update_font_size()
@@ -186,8 +188,9 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
 
         # 初始化数据
         self.settings_dialog = None
-        config_manager = self._container.get(ConfigManager)
-        self.refresh_interval = config_manager.get("refresh_interval", 5)
+        self.refresh_interval = self._config_helper.get_int(
+            ConfigKeys.REFRESH_INTERVAL, 5
+        )
         self.current_user_stocks = self.viewModel.load_user_stocks()
 
         # Workers 初始化移动到了 ViewModel，这里不需要初始化 RefreshWorker
@@ -388,13 +391,11 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
     def save_position(self):
         """保存窗口位置到配置文件"""
         pos = self.pos()
-        config_manager = self._container.get(ConfigManager)
-        config_manager.set("window_pos", [pos.x(), pos.y()])
+        self._config_helper.set("window_pos", [pos.x(), pos.y()])
 
     def load_position(self):
         """从配置文件加载窗口位置"""
-        config_manager = self._container.get(ConfigManager)
-        pos = config_manager.get("window_pos")
+        pos = self._config_helper.get("window_pos")
         if pos and isinstance(pos, list) and len(pos) == 2:
             self.move(pos[0], pos[1])
         else:
@@ -466,8 +467,7 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
             self.update_table_signal.emit(resorted_data)
 
         # 更新主题透明度缓存
-        config_manager = self._container.get(ConfigManager)
-        new_transparency = config_manager.get("transparency", 80)
+        new_transparency = self._config_helper.get_int(ConfigKeys.TRANSPARENCY, 80)
         if new_transparency != getattr(self, "_transparency", None):
             self._transparency = new_transparency
             self.update()  # 触发重绘
@@ -482,9 +482,10 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         """更新主窗口字体大小"""
         try:
             # 从配置中读取字体大小和字体族
-            config_manager = self._container.get(ConfigManager)
-            font_size = config_manager.get("font_size", 13)
-            font_family = config_manager.get("font_family", "微软雅黑")
+            font_size = self._config_helper.get_int(ConfigKeys.FONT_SIZE, 13)
+            font_family = self._config_helper.get_str(
+                ConfigKeys.FONT_FAMILY, "微软雅黑"
+            )
 
             try:
                 font_size = int(font_size)
