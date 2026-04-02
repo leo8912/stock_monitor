@@ -3,34 +3,20 @@ from typing import Any
 from PyQt6 import QtCore
 
 from stock_monitor.core.market_manager import MarketManager, market_manager
+from stock_monitor.core.workers.base import BaseWorker
 from stock_monitor.utils.logger import app_logger
 
 
-class MarketStatsWorker(QtCore.QThread):
+class MarketStatsWorker(BaseWorker):
     """全市场统计工作线程"""
 
-    # 信号：上涨数, 下跌数, 平盘数, 总数
+    # 信号：上涨数，下跌数，平盘数，总数
     stats_updated = QtCore.pyqtSignal(int, int, int, int)
 
     def __init__(self):
-        super().__init__()
-        self._is_running = False
-        self.interval = 60  # 默认60秒刷新一次
+        super().__init__("市场统计 Worker")
         self._last_data_time = None  # 记录上次数据时间戳
         self._market_closed_fetched = False  # 闭市数据已获取标志
-
-    def start_worker(self):
-        """启动工作线程"""
-        if not self.isRunning():
-            self._is_running = True
-            self.start()
-            app_logger.info("市场统计后台线程已启动")
-
-    def stop_worker(self):
-        """停止工作线程"""
-        self._is_running = False
-        self.wait(2000)
-        app_logger.info("市场统计后台线程已停止")
 
     def run(self):
         """线程执行入口"""
@@ -42,13 +28,13 @@ class MarketStatsWorker(QtCore.QThread):
                 # 检查市场是否开市，闭市期间延长刷新间隔
                 market_open = MarketManager.is_market_open()
                 app_logger.info(
-                    f"[市场统计] 市场状态检查: {'开市' if market_open else '闭市'}"
+                    f"[市场统计] 市场状态检查：{'开市' if market_open else '闭市'}"
                 )
 
                 # 临时注释：即使闭市也获取数据，用于调试
                 # if not market_open:
-                #      # 闭市期间每5分钟检查一次，或者直接sleep
-                #      # 为了响应停止信号，使用循环sleep
+                #      # 闭市期间每 5 分钟检查一次，或者直接 sleep
+                #      # 为了响应停止信号，使用循环 sleep
                 #      for _ in range(60):
                 #          if not self._is_running: return
                 #          self.sleep(5)
@@ -65,7 +51,7 @@ class MarketStatsWorker(QtCore.QThread):
                     )
                     stats = self._calculate_stats(market_data)
                     app_logger.info(
-                        f"[市场统计] 统计结果: 上涨={stats['up_count']}, 下跌={stats['down_count']}, 平盘={stats['flat_count']}, 总计={stats['total_count']}"
+                        f"[市场统计] 统计结果：上涨={stats['up_count']}, 下跌={stats['down_count']}, 平盘={stats['flat_count']}, 总计={stats['total_count']}"
                     )
                     self.stats_updated.emit(
                         stats["up_count"],
@@ -82,7 +68,7 @@ class MarketStatsWorker(QtCore.QThread):
                     )
                     app_logger.info("[市场统计] 已同步情绪数据到管理器")
                 else:
-                    app_logger.warning("[市场统计] 获取全市场数据失败，返回None")
+                    app_logger.warning("[市场统计] 获取全市场数据失败，返回 None")
 
                 # 休眠
                 for _ in range(self.interval):
@@ -91,7 +77,7 @@ class MarketStatsWorker(QtCore.QThread):
                     self.sleep(1)
 
             except Exception as e:
-                app_logger.error(f"市场统计线程异常: {e}")
+                app_logger.error(f"市场统计线程异常：{e}")
                 self.sleep(10)
 
     def _calculate_stats(self, data: dict[str, Any]) -> dict[str, int]:
@@ -107,7 +93,7 @@ class MarketStatsWorker(QtCore.QThread):
 
             name = info.get("name", "")
             # 跳过指数
-            if "指数" in name or "Ａ股" in name:
+            if "指数" in name or "A 股" in name:
                 continue
 
             try:

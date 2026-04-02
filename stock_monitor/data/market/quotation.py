@@ -5,7 +5,6 @@
 该模块包含获取行情数据、处理行情数据等功能。
 """
 
-import datetime
 from typing import Any, Optional
 
 import easyquotation
@@ -17,28 +16,17 @@ def get_quotation_engine(market_type: str = "sina") -> Optional[Any]:
     """获取行情引擎实例"""
     try:
         engine: Any = easyquotation.use(market_type)
-        app_logger.debug(f"行情引擎初始化成功: {market_type}")
+        app_logger.debug(f"行情引擎初始化成功：{market_type}")
         return engine
     except Exception as e:
-        error_msg = f"初始化行情引擎失败: {e}"
+        error_msg = f"初始化行情引擎失败：{e}"
         app_logger.error(error_msg)
         return None
 
 
-def is_market_open() -> bool:
-    """检查A股是否开市"""
-    now = datetime.datetime.now()
-    if now.weekday() >= 5:  # 周末
-        return False
-    t = now.time()
-    return (datetime.time(9, 30) <= t <= datetime.time(11, 30)) or (
-        datetime.time(13, 0) <= t <= datetime.time(15, 0)
-    )
-
-
 def get_name_by_code(code: str) -> str:
     """股票代码获取股票名称"""
-    # 从SQLite数据库获取股票名称
+    # 从 SQLite 数据库获取股票名称
     try:
         from stock_monitor.core.container import container
         from stock_monitor.data.stock.stock_db import StockDatabase
@@ -55,13 +43,13 @@ def get_name_by_code(code: str) -> str:
                     name = name.split("-")[0].strip()
             return name
     except Exception as e:
-        app_logger.warning(f"从SQLite数据库获取股票 {code} 名称失败: {e}")
+        app_logger.warning(f"从 SQLite 数据库获取股票 {code} 名称失败：{e}")
     return ""
 
 
 def get_stock_info_by_code(code: str) -> Optional[dict[str, str]]:
     """根据股票代码获取股票完整信息"""
-    # 从SQLite数据库获取股票信息
+    # 从 SQLite 数据库获取股票信息
     try:
         from stock_monitor.core.container import container
         from stock_monitor.data.stock.stock_db import StockDatabase
@@ -75,5 +63,5 @@ def get_stock_info_by_code(code: str) -> Optional[dict[str, str]]:
                 stock_info["name"] = stock_info["name"].split("-")[0].strip()
             return stock_info
     except Exception as e:
-        app_logger.warning(f"从SQLite数据库获取股票 {code} 信息失败: {e}")
+        app_logger.warning(f"从 SQLite 数据库获取股票 {code} 信息失败：{e}")
     return None

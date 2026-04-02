@@ -23,7 +23,7 @@
 | 语言 | Python 3.9+ |
 | GUI 框架 | PyQt6 |
 | 架构模式 | MVVM + 依赖注入 (DI Container) |
-| 行情数据 | easyquotation (新浪/腾讯源) |
+| 行情数据 | mootdx (腾讯/新浪备份源) |
 | 数据存储 | SQLite |
 | 构建打包 | PyInstaller + GitHub Actions CI/CD |
 | 代码质量 | Ruff + Pre-commit |
@@ -34,7 +34,6 @@
 stock_monitor/
 ├── main.py                     # 主程序入口
 ├── version.py                  # 版本号管理
-├── adapter/                    # 适配器层
 ├── config/                     # 配置管理
 │   └── manager.py              # ConfigManager - 配置读写
 ├── core/                       # 核心业务逻辑
@@ -50,6 +49,7 @@ stock_monitor/
 │   ├── updater.py              # 自动更新逻辑
 │   ├── app_update/             # 更新子模块
 │   └── workers/                # 后台 Worker 线程
+│       ├── base.py             # BaseWorker - 工作线程基类
 │       ├── refresh_worker.py   # 行情刷新 Worker
 │       └── market_stats_worker.py # 市场统计 Worker
 ├── data/                       # 数据层
