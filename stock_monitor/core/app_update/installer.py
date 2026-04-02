@@ -122,8 +122,14 @@ exit /b 1
             try:
                 with open(bat_path, "w", encoding="gbk") as f:
                     f.write(bat_content)
+            except OSError as e:
+                app_logger.error(f"写入 BAT 文件 IO 错误：{e}")
+                return False
+            except PermissionError as e:
+                app_logger.error(f"写入 BAT 文件权限不足：{e}")
+                return False
             except Exception as e:
-                app_logger.error(f"写入BAT失败: {e}")
+                app_logger.error(f"写入 BAT 文件未知错误：{e}", exc_info=True)
                 return False
 
             # 4. 生成 VBS 脚本用于隐藏运行 BAT
@@ -134,8 +140,14 @@ exit /b 1
             try:
                 with open(vbs_path, "w", encoding="gbk") as f:
                     f.write(vbs_content)
+            except OSError as e:
+                app_logger.error(f"写入 VBS 文件 IO 错误：{e}")
+                return False
+            except PermissionError as e:
+                app_logger.error(f"写入 VBS 文件权限不足：{e}")
+                return False
             except Exception as e:
-                app_logger.error(f"写入VBS失败: {e}")
+                app_logger.error(f"写入 VBS 文件未知错误：{e}", exc_info=True)
                 return False
 
             app_logger.info("启动静默更新脚本，主程序即将退出")
@@ -143,13 +155,22 @@ exit /b 1
             # 5. 使用 VBS 静默运行 BAT
             try:
                 os.startfile(str(vbs_path))
+            except OSError as e:
+                app_logger.error(f"VBS 启动失败 (IO 错误): {e}, 尝试回退到可见模式...")
+                try:
+                    os.startfile(str(bat_path))
+                except OSError as e2:
+                    app_logger.error(f"BAT 启动也失败 (IO 错误): {e2}")
+                    return False
+                except Exception as e2:
+                    app_logger.error(f"BAT 启动也失败 (未知错误): {e2}", exc_info=True)
+                    return False
             except Exception as e:
-                app_logger.error(f"VBS启动失败: {e}, 尝试回退到可见模式...")
-                # 回退到可见模式
+                app_logger.error(f"VBS 启动失败 (未知错误): {e}, 尝试回退到可见模式...")
                 try:
                     os.startfile(str(bat_path))
                 except Exception as e2:
-                    app_logger.error(f"BAT启动也失败: {e2}")
+                    app_logger.error(f"BAT 启动也失败：{e2}", exc_info=True)
                     return False
 
             # 强制退出

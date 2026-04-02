@@ -3,6 +3,12 @@ import tempfile
 from typing import Any, Optional
 
 import requests
+from requests.exceptions import (
+    ConnectionError,
+    HTTPError,
+    RequestException,
+    Timeout,
+)
 
 from stock_monitor.utils.logger import app_logger
 
@@ -115,8 +121,25 @@ class UpdateDownloader:
             app_logger.info(f"更新包下载完成: {download_path}")
             return download_path
 
+        except HTTPError as e:
+            app_logger.error(f"下载 HTTP 错误 [{e.response.status_code}]: {e}")
+            if error_callback:
+                error_callback(f"下载失败：HTTP {e.response.status_code}")
+            return None
+        except (Timeout, ConnectionError):
+            app_logger.error("下载网络连接错误或超时")
+            if error_callback:
+                error_callback("下载失败：网络连接错误或超时，请检查网络后重试")
+            return None
+        except RequestException as e:
+            app_logger.error(f"下载网络异常：{e}")
+            if error_callback:
+                error_callback(f"下载失败：网络异常 - {e}")
+            return None
         except Exception as e:
-            app_logger.error(f"下载更新时发生错误: {e}")
+            app_logger.error(f"下载更新时发生未知错误：{e}", exc_info=True)
+            if error_callback:
+                error_callback(f"下载失败：{e}")
             return None
 
     def _download_with_resume(
@@ -309,9 +332,12 @@ class UpdateDownloader:
                         )
                         if hash_resp.status_code == 200:
                             expected_hash = hash_resp.text.strip()
+                except (Timeout, ConnectionError):
+                    app_logger.warning("下载哈希校验文件超时或连接失败")
+                except RequestException as e:
+                    app_logger.warning(f"下载哈希校验文件网络异常：{e}")
                 except Exception as e:
-                    app_logger.warning(f"下载哈希校验文件失败: {e}")
-
+                    app_logger.warning(f"下载哈希校验文件失败：{e}")
             # 2. 从 release body 中解析哈希
             if not expected_hash and latest_release_info.get("body"):
                 import re
@@ -360,8 +386,9 @@ class UpdateDownloader:
                         os.remove(download_path)
                         return False
 
+        except OSError as e:
+            app_logger.error(f"哈希校验文件 IO 错误：{e}")
         except Exception as e:
-            app_logger.error(f"哈希校验过程异常: {e}")
+            app_logger.error(f"哈希校验过程异常：{e}", exc_info=True)
             # 校验逻辑异常不阻止更新，但记录日志
-
         return True
