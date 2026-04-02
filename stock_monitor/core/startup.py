@@ -5,6 +5,7 @@
 
 import os
 import sys
+from pathlib import Path
 
 from stock_monitor.utils.logger import app_logger
 
@@ -104,8 +105,23 @@ def setup_auto_start():
                 # PyInstaller打包环境
                 app_path = sys.executable
             else:
-                # 开发环境
-                app_path = os.path.abspath(sys.argv[0])
+                # 开发环境：使用__file__解析而非直接信任 sys.argv[0]
+                try:
+                    # 优先使用__file__的绝对路径构建应用路径
+                    app_path = str(
+                        Path(__file__).resolve().parent.parent / "__main__.py"
+                    )
+                except (NameError, ValueError):
+                    # __file__不可用，回退到 sys.argv[0]但进行路径验证
+                    app_root = Path(__file__).resolve().parent.parent
+                    argv_path = Path(sys.argv[0]).resolve()
+                    try:
+                        # 确保 sys.argv[0]在应用目录内，防止路径遍历攻击
+                        argv_path.relative_to(app_root)
+                        app_path = str(argv_path)
+                    except ValueError:
+                        app_logger.error(f"检测到不安全的路径：{sys.argv[0]}，拒绝使用")
+                        return
 
             # 创建快捷方式
             _create_shortcut(app_path, shortcut_path)
