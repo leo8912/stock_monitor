@@ -45,6 +45,7 @@ class QuantEngine:
 
     # 大盘基准缓存，避免重复拉取
     _market_benchmark_cache = {}
+    _rsrs_cache = {}  # RSRS 计算缓存：{(symbol, timeframe): (zscore, slope, timestamp)}
 
     def __init__(self, mootdx_client):
         self.client = mootdx_client
