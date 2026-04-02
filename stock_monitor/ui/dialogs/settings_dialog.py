@@ -244,14 +244,12 @@ class NewSettingsDialog(QDialog):
         self._setup_system_settings_ui(main_layout)
 
         # 初始化功能管理器（在UI组件创建之后）
-        # self.stock_search_handler = StockSearchHandler(...) # Removed
         self.watch_list_manager = WatchListManager(
             self.watch_list,
             self.remove_button,
             self.move_up_button,
             self.move_down_button,
         )
-        # self.config_manager_handler = ConfigManagerHandler(self.config_manager) # Removed
 
         # 添加字体预览防抖定时器
         from PyQt6.QtCore import QTimer
