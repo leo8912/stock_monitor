@@ -637,3 +637,67 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
     def load_user_stocks(self):
         """加载用户自选股列表"""
         return self.viewModel.load_user_stocks()
+
+    def closeEvent(self, event: QtGui.QCloseEvent):
+        """
+        窗口关闭事件处理
+        清理 Qt 对象、断开信号连接、保存状态
+        """
+        try:
+            app_logger.info("主窗口关闭，开始清理资源...")
+
+            # 1. 停止所有计时器
+            if hasattr(self, "_loading_timer") and self._loading_timer:
+                self._loading_timer.stop()
+                self._loading_timer.deleteLater()
+
+            # 2. 断开 ViewModel 信号连接
+            if hasattr(self, "viewModel"):
+                self.viewModel.market_stats_updated.disconnect()
+                self.viewModel.stock_data_updated.disconnect()
+                self.viewModel.refresh_error_occurred.disconnect()
+
+            # 3. 清理自定义信号
+            self.update_table_signal.disconnect()
+            self.refresh_data_signal.disconnect()
+            self.refresh_error_signal.disconnect()
+
+            # 4. 保存会话缓存和位置
+            try:
+                self.viewModel.save_session(
+                    [self.x(), self.y()], self.viewModel.get_latest_stock_data()
+                )
+            except Exception as e:
+                app_logger.warning(f"保存会话缓存失败：{e}")
+                self.save_position()
+
+            # 5. 隐藏系统托盘
+            if hasattr(self, "tray_icon") and self.tray_icon:
+                self.tray_icon.hide()
+                self.tray_icon.deleteLater()
+
+            # 6. 停止 Workers
+            if hasattr(self, "viewModel"):
+                self.viewModel.stop_workers()
+
+            app_logger.info("主窗口资源清理完成")
+
+        except Exception as e:
+            app_logger.error(f"closeEvent 清理失败：{e}")
+
+        finally:
+            # 调用父类实现
+            super().closeEvent(event)
+
+    def hideEvent(self, event: QtGui.QHideEvent):
+        """
+        窗口隐藏事件处理
+        保存当前状态以便快速恢复
+        """
+        try:
+            # 保存窗口位置（用于下次启动时快速恢复）
+            self.save_position()
+        except Exception as e:
+            app_logger.warning(f"hideEvent 保存位置失败：{e}")
+
+        super().hideEvent(event)

@@ -9,6 +9,18 @@ from typing import Optional
 import requests
 
 from ..utils.logger import app_logger
+from ..utils.network_helper import (
+    APIResponseError,
+    HTTPStatusError,
+    NetworkRequestError,
+    SafeRequest,
+    TimeoutConfig,
+)
+
+# ====== 网络请求常量 ======
+DEFAULT_TIMEOUT_SECONDS = 10  # 默认超时时间 (秒)
+WEBHOOK_TIMEOUT_SECONDS = 5  # Webhook 超时时间 (秒)
+TOKEN_EXPIRY_BUFFER_SECONDS = 60  # Token 提前过期缓冲 (秒)
 
 
 class NotifierService:
@@ -91,15 +103,22 @@ class NotifierService:
     @staticmethod
     def send_wecom_webhook_text(webhook_url: str, content: str) -> bool:
         """向企业微信机器人的 Webhook 发送纯文本消息"""
-        if not webhook_url or not webhook_url.startswith("http"):
+        if not webhook_url or not webhook_url.startswith("https://"):
+            app_logger.warning(f"无效的 Webhook URL: {webhook_url}")
             return False
 
         headers = {"Content-Type": "application/json"}
         payload = {"msgtype": "text", "text": {"content": content}}
 
         try:
-            resp = requests.post(webhook_url, headers=headers, json=payload, timeout=5)
+            resp = SafeRequest.post(
+                webhook_url, json=payload, headers=headers, timeout=TimeoutConfig.SHORT
+            )
             return resp.json().get("errcode") == 0
+
+        except (HTTPStatusError, APIResponseError, NetworkRequestError) as e:
+            app_logger.error(f"Webhook 消息推送失败：{e}")
+            return False
         except Exception:
             return False
 

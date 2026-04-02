@@ -5,6 +5,7 @@
 import os
 import time
 
+from PyQt6 import QtGui
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
@@ -1465,11 +1466,75 @@ class NewSettingsDialog(QDialog):
 
             app_logger.error(f"恢复默认设置失败: {e}")
 
-    def closeEvent(self, a0):  # type: ignore
-        """处理窗口关闭事件"""
-        self.hide()
-        if a0:
-            a0.ignore()  # 阻止窗口真正关闭
+    def closeEvent(self, event: QtGui.QCloseEvent):
+        """设置对话框关闭事件 - 清理资源、断开信号连接"""
+        try:
+            # 1. 停止定时器
+            if hasattr(self, "_font_preview_timer") and self._font_preview_timer:
+                self._font_preview_timer.stop()
+                self._font_preview_timer.deleteLater()
+
+            # 2. 断开 ViewModel 信号
+            if hasattr(self, "viewModel"):
+                try:
+                    self.viewModel.search_results_updated.disconnect()
+                    self.viewModel.save_completed.disconnect()
+                    self.viewModel.error_occurred.disconnect()
+                except Exception:
+                    pass  # 忽略信号未连接的错误
+
+            # 3. 断开 UI 组件信号
+            try:
+                self.search_input.textChanged.disconnect()
+                self.search_input.returnPressed.disconnect()
+                self.search_results.itemDoubleClicked.disconnect()
+                self.search_results.itemSelectionChanged.disconnect()
+                self.remove_button.clicked.disconnect()
+                self.move_up_button.clicked.disconnect()
+                self.move_down_button.clicked.disconnect()
+                self.watch_list.itemSelectionChanged.disconnect()
+                self.add_button.clicked.disconnect()
+                self.ok_button.clicked.disconnect()
+                self.cancel_button.clicked.disconnect()
+                self.check_update_button.clicked.disconnect()
+                self.test_push_button.clicked.disconnect()
+                self.test_app_button.clicked.disconnect()
+                self.btn_manual_report.clicked.disconnect()
+                self.push_mode_combo.currentIndexChanged.disconnect()
+                self.font_size_slider.valueChanged.disconnect()
+                self.font_family_combo.currentTextChanged.disconnect()
+                self.transparency_slider.valueChanged.disconnect()
+            except Exception:
+                pass  # 忽略信号未连接的错误
+
+            from stock_monitor.utils.logger import app_logger
+
+            app_logger.info("设置对话框资源清理完成")
+        except Exception as e:
+            from stock_monitor.utils.logger import app_logger
+
+            app_logger.error(f"设置对话框 closeEvent 清理失败：{e}")
+        finally:
+            # 隐藏窗口而不是真正关闭
+            self.hide()
+            if event:
+                event.ignore()  # 阻止窗口真正关闭
+
+    def hideEvent(self, event: QtGui.QHideEvent):
+        """设置对话框隐藏事件 - 清理预览状态"""
+        try:
+            # 清除主窗口的预览透明度
+            if self.main_window:
+                if hasattr(self.main_window, "_preview_transparency"):
+                    delattr(self.main_window, "_preview_transparency")
+                if hasattr(self.main_window, "menu") and self.main_window.menu:
+                    self.main_window.menu.restore_default_style()
+        except Exception as e:
+            from stock_monitor.utils.logger import app_logger
+
+            app_logger.error(f"设置对话框 hideEvent 处理失败：{e}")
+        finally:
+            super().hideEvent(event)
 
     def on_activated(self, reason):
         """
