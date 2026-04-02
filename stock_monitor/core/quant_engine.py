@@ -16,9 +16,9 @@ except ImportError:
         import pandas_ta as ta
     except ImportError:
         ta = None
-    from ..utils.logger import app_logger
+        from ..utils.logger import app_logger
 
-    app_logger.warning("pandas_ta 模块缺失，量化扫单指标可能受限。")
+        app_logger.warning("pandas_ta 模块缺失，量化扫单指标可能受限。")
 
 from ..utils.logger import app_logger
 from .financial_filter import FinancialFilter
@@ -930,7 +930,8 @@ class QuantEngine:
             pure_code = code[2:]
 
             # 1. 获取当前行情（或者最后一次行情预估）
-            q_df = self.client.quotes(symbol=[pure_code])
+            # [STABLE] 使用完整 code (带前缀) 避免歧义
+            q_df = self.client.quotes(symbol=[code])
             if q_df is None or q_df.empty:
                 return {}
 
@@ -943,27 +944,26 @@ class QuantEngine:
 
             if "09:15" <= now_hm < "09:25":
                 # 实时的虚拟竞价 (Virtual Auction)
-                # 使用买一量 * 价格作为金额
+                # 使用买一量 * 价格作为金额 (Sina/TDX 竞价期间 bid_vol1 为匹配量)
                 auction_vol = float(q_df.iloc[0]["bid_vol1"] * current_price * 100)
             else:
                 # 已过 09:25 或盘后，抓取 09:25:00 这一笔真实成交
-                # start=0, count=50 足够覆盖早盘第一笔
                 df = self.client.transaction(
                     symbol=pure_code, market=market, start=0, count=100
                 )
                 if df is not None and not df.empty:
-                    # 简化逻辑：找 time <= "09:25:00" 的最后一条
                     auction_rows = df[df["time"] <= "09:25"]
                     if not auction_rows.empty:
                         trade = auction_rows.iloc[-1]
                         auction_vol = float(trade["price"] * trade["vol"] * 100)
-                        # 更新一下价格和涨幅（如果是盘后回溯，这反映的是竞价那一刻的情况）
-                        # 但 UI 上我们通常希望显示最新价，竞价仅作为辅助指标
 
             # 2. 计算强度
             if auction_vol > 0:
                 avg_min_vol = self.get_five_day_avg_minute_volume(code)
                 intensity = auction_vol / avg_min_vol
+                app_logger.debug(
+                    f"[竞价分析] {code} 强度:{intensity:.1f}x, 金额:{auction_vol/10000:.0f}万"
+                )
 
             res = {
                 "price": current_price,

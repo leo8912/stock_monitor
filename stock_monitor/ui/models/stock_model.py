@@ -94,9 +94,9 @@ class StockTableModel(QtCore.QAbstractTableModel):
                 )
 
             elif logical_col == self.COL_LARGE_ORDER:
-                # [NEW] 集合竞价时段特殊展示 (09:15 - 09:35)
+                # [NEW] 集合竞价时段特殊展示 (09:15 - 09:30)
                 now_hm = time.strftime("%H:%M")
-                if "09:15" <= now_hm <= "09:35" and row_data.auction_intensity > 0:
+                if "09:15" <= now_hm < "09:30" and row_data.auction_intensity > 0:
                     # 格式化竞价金额
                     vol = row_data.auction_vol
                     if vol >= 100000000:
@@ -126,7 +126,7 @@ class StockTableModel(QtCore.QAbstractTableModel):
             if logical_col == self.COL_LARGE_ORDER:
                 # [NEW] 集合竞价时段颜色处理
                 now_hm = time.strftime("%H:%M")
-                if "09:15" <= now_hm <= "09:35" and row_data.auction_intensity > 0:
+                if "09:15" <= now_hm < "09:30" and row_data.auction_intensity > 0:
                     # 抢筹信号：强度 > 10 用紫色，> 5 用深红
                     if row_data.auction_intensity >= 10.0:
                         return QtGui.QColor("#A020F0")  # 紫色 (Purple)

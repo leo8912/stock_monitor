@@ -114,6 +114,10 @@ class MarketStatsWorker(QtCore.QThread):
                 close = float(info.get("close", 0))
                 now = float(info.get("now", 0))
 
+                # [STABLE] 如果当前价为 0（如集合竞价尚未产生成交），跳过统计，避免误判为下跌
+                if now <= 0:
+                    continue
+
                 if close == 0:
                     flat += 1
                 elif now > close:
