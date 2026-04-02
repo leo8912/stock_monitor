@@ -134,8 +134,14 @@ class FinancialFilter:
         try:
             with open(cache_path, encoding="utf-8") as f:
                 return json.load(f)
-        except Exception as e:
-            app_logger.error(f"读取财务缓存失败 {symbol}: {e}")
+        except FileNotFoundError:
+            app_logger.debug(f"财务缓存文件不存在 {symbol}")
+            return None
+        except json.JSONDecodeError as e:
+            app_logger.error(f"财务缓存 JSON 解析失败 {symbol}: {e}")
+            return None
+        except OSError as e:
+            app_logger.error(f"读取财务缓存 IO 错误 {symbol}: {e}")
             return None
 
     def _fetch_and_cache(self, symbol: str) -> Optional[list[dict[str, Any]]]:
@@ -156,6 +162,12 @@ class FinancialFilter:
                 json.dump(data, f, ensure_ascii=False, indent=2)
 
             return data
-        except Exception as e:
-            app_logger.error(f"抓取财务数据失败 {symbol}: {e}")
+        except (ImportError, ModuleNotFoundError) as e:
+            app_logger.error(f"akshare 导入失败 {symbol}: {e}")
+            return None
+        except (ValueError, KeyError) as e:
+            app_logger.error(f"财务数据解析失败 {symbol}: {e}")
+            return None
+        except OSError as e:
+            app_logger.error(f"财务缓存写入失败 {symbol}: {e}")
             return None
