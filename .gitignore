@@ -28,6 +28,14 @@ config.json
 .DS_Store
 Thumbs.db
 
+# 忽略测试生成的数据库文件
+test_*.db
+*.db-journal
+
+# 忽略运行时数据目录
+.stock_monitor/
+cache/
+
 # 忽略 IDE 相关文件
 .vscode/
 .idea/
