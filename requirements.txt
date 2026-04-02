@@ -1,12 +1,12 @@
 PyQt6>=6.0.0
-easyquotation==0.7.7
-pypinyin==0.55.0
-pywin32==311
-packaging==25.0
-requests==2.32.5
+easyquotation>=0.7.7
+pypinyin>=0.44.0
+pywin32>=304
+packaging>=21.3
+requests>=2.28.1
 pandas>=2.0.0
-zhconv==1.4.3
-openpyxl==3.1.5
+zhconv>=1.4.1
+openpyxl>=3.0.7
 # pandas-ta-classic 为 Python 3.9+ 提供更好的兼容性支持
 pandas-ta-classic>=0.3.14
 mootdx>=0.1.7
@@ -15,3 +15,6 @@ akshare>=1.15.58
 lxml>=4.9.0
 beautifulsoup4>=4.11.0
 html5lib>=1.1
+# 安全相关直接依赖
+urllib3>=2.0.6
+certifi>=2024.0.0
