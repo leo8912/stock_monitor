@@ -11,8 +11,14 @@ class TestMootdxIntegration(unittest.TestCase):
         # Create a mock for mootdx_client
         self.mock_client = MagicMock()
 
+        # Mock the transaction method to return empty by default
+        self.mock_client.transaction.return_value = pd.DataFrame()
+
         # Create QuantEngine with mocked client
         self.quant_engine = QuantEngine(self.mock_client)
+
+        # Clear any existing cache to ensure clean state
+        self.quant_engine._large_order_cache.clear()
 
     def test_fetch_large_orders_flow(self):
         """
@@ -32,6 +38,9 @@ class TestMootdxIntegration(unittest.TestCase):
         df = pd.DataFrame(data)
         self.mock_client.transaction.return_value = df
 
+        # Clear cache before test
+        self.quant_engine._large_order_cache.clear()
+
         buy_vol, sell_vol, net = self.quant_engine.fetch_large_orders_flow("sh600519")
         self.assertEqual(buy_vol, 600.0)  # 100 + 500
         self.assertEqual(sell_vol, 200.0)  # 200
@@ -39,7 +48,12 @@ class TestMootdxIntegration(unittest.TestCase):
 
     def test_fetch_large_orders_flow_empty(self):
         """测试空数据时返回 (0.0, 0.0) 元组"""
+        # Ensure empty DataFrame is returned
         self.mock_client.transaction.return_value = pd.DataFrame()
+
+        # Clear cache before test
+        self.quant_engine._large_order_cache.clear()
+
         buy_vol, sell_vol, net = self.quant_engine.fetch_large_orders_flow("sz000001")
         self.assertEqual(buy_vol, 0.0)
         self.assertEqual(sell_vol, 0.0)
@@ -54,6 +68,9 @@ class TestMootdxIntegration(unittest.TestCase):
         }
         df = pd.DataFrame(data)
         self.mock_client.transaction.return_value = df
+
+        # Clear cache before test
+        self.quant_engine._large_order_cache.clear()
 
         buy_vol, sell_vol, net = self.quant_engine.fetch_large_orders_flow("sh600000")
         self.assertEqual(buy_vol, 0.0)
