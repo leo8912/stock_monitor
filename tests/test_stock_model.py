@@ -53,12 +53,12 @@ class TestStockTableModel(unittest.TestCase):
         self.model.update_data(self.test_data)
         self.assertEqual(self.model.rowCount(), 4)
         self.assertEqual(
-            self.model.columnCount(), 4
-        )  # Should include seal column due to 4th item
+            self.model.columnCount(), 5
+        )  # 名称，价格，涨跌幅，封单 (如果有), 大单列
 
         self.model.update_data(self.test_data[:3])
         self.assertEqual(self.model.rowCount(), 3)
-        self.assertEqual(self.model.columnCount(), 3)  # No seal column
+        self.assertEqual(self.model.columnCount(), 4)  # 不显示封单列时
 
     def test_data_display(self):
         self.model.update_data(self.test_data)
