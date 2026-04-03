@@ -27,8 +27,8 @@ class TestMarketStatsWorker:
 
         assert stats["up_count"] == 1
         assert stats["down_count"] == 1
-        assert stats["flat_count"] == 2
-        assert stats["total_count"] == 4
+        assert stats["flat_count"] == 1
+        assert stats["total_count"] == 3  # PT 金田 now=0 被跳过，无效数据也被跳过
 
     @patch("stock_monitor.core.stock_manager.stock_manager")
     def test_worker_run_flow(self, mock_stock_manager):

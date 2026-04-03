@@ -22,10 +22,10 @@ class TestPriceFallback(unittest.TestCase):
         result = self.processor.process_raw_data(code, data)
 
         self.assertIsNotNone(result)
-        # Expected tuple: (name, price, change_pct, color, ...)
-        name, price, change, color, _, _ = result
-        self.assertEqual(price, "10.00")
-        self.assertEqual(change, "+0.00%")
+        # Expected StockRowData object
+        self.assertEqual(result.name, "Test Stock")
+        self.assertEqual(result.price, "10.00")
+        self.assertEqual(result.change_str, "+0.00%")
 
     def test_processor_fallback_zero(self):
         """Test StockDataProcessor falls back to close when now is 0"""
@@ -41,9 +41,9 @@ class TestPriceFallback(unittest.TestCase):
         result = self.processor.process_raw_data(code, data)
 
         self.assertIsNotNone(result)
-        name, price, change, color, _, _ = result
-        self.assertEqual(price, "10.00")
-        self.assertEqual(change, "+0.00%")
+        self.assertEqual(result.name, "Test Stock")
+        self.assertEqual(result.price, "10.00")
+        self.assertEqual(result.change_str, "+0.00%")
 
     def test_processor_normal(self):
         """Test StockDataProcessor uses now when valid"""
@@ -58,9 +58,9 @@ class TestPriceFallback(unittest.TestCase):
 
         result = self.processor.process_raw_data(code, data)
         self.assertIsNotNone(result)
-        name, price, change, color, _, _ = result
-        self.assertEqual(price, "11.00")
-        self.assertEqual(change, "+10.00%")
+        self.assertEqual(result.name, "Test Stock")
+        self.assertEqual(result.price, "11.00")
+        self.assertEqual(result.change_str, "+10.00%")
 
 
 if __name__ == "__main__":

@@ -2,18 +2,47 @@ import unittest
 
 from PyQt6 import QtCore
 
+from stock_monitor.models.stock_data import StockRowData
 from stock_monitor.ui.models.stock_model import StockTableModel
 
 
 class TestStockTableModel(unittest.TestCase):
     def setUp(self):
         self.model = StockTableModel()
-        # Mock data: name, price, change, color, seal_vol, seal_type
+        # Mock data: StockRowData objects
         self.test_data = [
-            ("平安银行", "10.50", "1.23", "#ff0000", "", ""),
-            ("贵州茅台", "1800.00", "-2.5%", "#00ff00", "", ""),
-            ("hk00700:腾讯控股", "350.00", "0.50", "#ff0000", "", ""),
-            ("ST某某", "5.00", "5.00%", "#ff0000", "1000", "up"),
+            StockRowData(
+                name="平安银行",
+                price="10.50",
+                change_str="1.23",
+                color_hex="#ff0000",
+                seal_vol="",
+                seal_type="",
+            ),
+            StockRowData(
+                name="贵州茅台",
+                price="1800.00",
+                change_str="-2.5%",
+                color_hex="#00ff00",
+                seal_vol="",
+                seal_type="",
+            ),
+            StockRowData(
+                name="hk00700:腾讯控股",
+                price="350.00",
+                change_str="0.50",
+                color_hex="#ff0000",
+                seal_vol="",
+                seal_type="",
+            ),
+            StockRowData(
+                name="ST 某某",
+                price="5.00",
+                change_str="5.00%",
+                color_hex="#ff0000",
+                seal_vol="1000",
+                seal_type="up",
+            ),
         ]
 
     def test_row_column_count(self):
