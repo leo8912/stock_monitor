@@ -12,6 +12,7 @@ class TestStockTableModel(unittest.TestCase):
         # Mock data: StockRowData objects
         self.test_data = [
             StockRowData(
+                code="sh600000",
                 name="平安银行",
                 price="10.50",
                 change_str="1.23",
@@ -20,6 +21,7 @@ class TestStockTableModel(unittest.TestCase):
                 seal_type="",
             ),
             StockRowData(
+                code="sh600001",
                 name="贵州茅台",
                 price="1800.00",
                 change_str="-2.5%",
@@ -28,6 +30,7 @@ class TestStockTableModel(unittest.TestCase):
                 seal_type="",
             ),
             StockRowData(
+                code="hk00700",
                 name="hk00700:腾讯控股",
                 price="350.00",
                 change_str="0.50",
@@ -36,6 +39,7 @@ class TestStockTableModel(unittest.TestCase):
                 seal_type="",
             ),
             StockRowData(
+                code="sz000001",
                 name="ST 某某",
                 price="5.00",
                 change_str="5.00%",
