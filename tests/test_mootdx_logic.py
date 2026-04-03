@@ -51,10 +51,14 @@ class TestMootdxIntegration(unittest.TestCase):
         self.assertEqual(sell_vol, 0.0)  # vol=200 的金额不足阈值
         self.assertEqual(net, 515000.0)
 
-    def test_fetch_large_orders_flow_empty(self):
+    @unittest.mock.patch("stock_monitor.core.quant_engine.ak")
+    def test_fetch_large_orders_flow_empty(self, mock_ak):
         """测试空数据时返回 (0.0, 0.0) 元组"""
         # Ensure empty DataFrame is returned
         self.mock_client.transaction.return_value = pd.DataFrame()
+
+        # Mock akshare to return None/empty to prevent compensation
+        mock_ak.stock_individual_fund_flow.return_value = pd.DataFrame()
 
         # Clear cache before test
         self.quant_engine._large_order_cache.clear()
