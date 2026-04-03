@@ -31,6 +31,7 @@ class TestMootdxIntegration(unittest.TestCase):
         sell_vol = 200
         """
         data = {
+            "time": ["09:30", "09:31", "09:32", "09:33", "09:34"],  # 添加时间列
             "vol": [50, 100, 200, 80, 500],
             "buyorsell": [0, 0, 1, 0, 0],  # 0:主动买，1:主动卖
             "price": [10.0, 10.1, 10.2, 10.1, 10.3],
@@ -62,6 +63,7 @@ class TestMootdxIntegration(unittest.TestCase):
     def test_fetch_large_orders_flow_filter(self):
         """测试 < 100 手的小单被过滤"""
         data = {
+            "time": ["09:30", "09:31", "09:32"],  # 添加时间列
             "vol": [10, 50, 99],
             "buyorsell": [0, 1, 0],
             "price": [10.0, 10.1, 10.2],
