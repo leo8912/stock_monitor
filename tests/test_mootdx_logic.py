@@ -59,6 +59,9 @@ class TestMootdxIntegration(unittest.TestCase):
         # Clear cache before test
         self.quant_engine._large_order_cache.clear()
 
+        # Also need to reset the cache for this specific stock
+        self.quant_engine._large_order_cache.pop("sz000001", None)
+
         buy_vol, sell_vol, net = self.quant_engine.fetch_large_orders_flow("sz000001")
         self.assertEqual(buy_vol, 0.0)
         self.assertEqual(sell_vol, 0.0)
