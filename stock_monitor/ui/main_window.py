@@ -68,6 +68,13 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         self._loading_timer.setSingleShot(True)
         self._loading_timer.timeout.connect(self._on_loading_timeout)
 
+        # UI 更新节流计时器（合并连续的重绘请求）
+        self._update_timer = QtCore.QTimer(self)
+        self._update_timer.setSingleShot(True)
+        self._update_timer.setInterval(50)  # 50ms 节流窗口
+        self._update_timer.timeout.connect(self._do_update)
+        self._pending_update = False
+
         # 启动 Workers (在 UI 设置完成后)
         # 这里的 start_workers 会在 setup_refresh_worker 中被调用，或者我们可以在这里调用
         # 但考虑到 setup_refresh_worker 可能会用到 config，我们稍后在 setup_refresh_worker 中统一启动
@@ -470,13 +477,31 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         new_transparency = self._config_helper.get_int(ConfigKeys.TRANSPARENCY, 80)
         if new_transparency != getattr(self, "_transparency", None):
             self._transparency = new_transparency
-            self.update()  # 触发重绘
+            self.request_update()  # 节流重绘请求
 
         # 立即同步刷新显示（跳过占位，因为上面已经完成了更有意义的本地重排渲染）
         self.refresh_now(stocks, skip_placeholders=True)
 
         # 更新主窗口字体大小
         self.update_font_size()
+
+    def request_update(self):
+        """请求 UI 更新（节流模式，合并 50ms 内的多次请求）"""
+        # [SAFETY] 检查属性是否已初始化，避免初始化顺序问题
+        if not hasattr(self, "_pending_update"):
+            return
+
+        if not self._pending_update:
+            self._pending_update = True
+            self._update_timer.start()
+
+    def _do_update(self):
+        """执行实际的 UI 更新（由节流计时器触发）"""
+        # [SAFETY] 检查属性是否已初始化
+        if hasattr(self, "_pending_update"):
+            self._pending_update = False
+        self.update()
+        app_logger.debug("UI 更新已节流合并")
 
     def update_font_size(self):
         """更新主窗口字体大小"""
@@ -613,7 +638,7 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         self.setMinimumSize(target_width, min(target_height, 200))
         self.resize(target_width, target_height)
 
-        self.layout().update()
+        self.request_update()  # 节流布局更新
         self.updateGeometry()
 
     def load_theme_config(self):

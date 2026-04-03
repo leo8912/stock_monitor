@@ -127,6 +127,27 @@ def handle_exception(
     try:
         return operation_func()
     except Exception as e:
-        error_msg = f"{operation_name}时发生错误: {e}"
+        error_msg = f"{operation_name}时发生错误：{e}"
         logger.error(error_msg)
         return default_return
+
+
+def _safe_bool_conversion(value, default=False):
+    """安全地将值转换为布尔值（从 settings_dialog.py 迁移）"""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.lower() == "true"
+    return default
+
+
+def _safe_int_conversion(value, default=0):
+    """安全地将值转换为整数（从 settings_dialog.py 迁移）"""
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            pass
+    return default

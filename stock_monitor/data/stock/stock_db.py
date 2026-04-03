@@ -6,6 +6,7 @@
 import os
 import sqlite3
 import threading
+from contextlib import contextmanager
 from typing import Any, Optional
 
 from stock_monitor.config.manager import get_config_dir
@@ -16,6 +17,130 @@ from .stock_data_source import StockDataSource
 
 # 数据库文件路径
 DB_FILE = "stocks.db"
+
+
+class ConnectionPool:
+    """SQLite 连接池（单例模式）"""
+
+    _instance = None
+    _lock = threading.Lock()
+
+    def __new__(cls):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
+        return cls._instance
+
+    def __init__(self):
+        if self._initialized:
+            return
+
+        self._local = threading.local()
+        self._pool = {}
+        self._pool_size = 5
+        self._lock = threading.Lock()
+        self._stats = {"created": 0, "reused": 0, "closed": 0}
+        self._initialized = True
+        app_logger.info("数据库连接池初始化完成")
+
+    def get_connection(self, db_path: str) -> sqlite3.Connection:
+        """获取连接（优先复用线程本地连接）"""
+        if hasattr(self._local, "conn") and self._local.conn_path == db_path:
+            if self._is_connection_valid(self._local.conn):
+                self._stats["reused"] += 1
+                return self._local.conn
+
+        with self._lock:
+            if db_path in self._pool and self._pool[db_path]:
+                conn = self._pool[db_path].pop(0)
+                if self._is_connection_valid(conn):
+                    self._stats["reused"] += 1
+                    self._local.conn = conn
+                    self._local.conn_path = db_path
+                    return conn
+                else:
+                    self._stats["closed"] += 1
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
+
+            conn = self._create_connection(db_path)
+            self._stats["created"] += 1
+            self._local.conn = conn
+            self._local.conn_path = db_path
+            return conn
+
+    def return_connection(self, db_path: str, conn: sqlite3.Connection) -> None:
+        """归还连接到池中"""
+        if not self._is_connection_valid(conn):
+            try:
+                conn.close()
+                self._stats["closed"] += 1
+            except Exception:
+                pass
+            return
+
+        with self._lock:
+            if db_path not in self._pool:
+                self._pool[db_path] = []
+
+            if len(self._pool[db_path]) < self._pool_size:
+                self._pool[db_path].append(conn)
+            else:
+                conn.close()
+                self._stats["closed"] += 1
+
+    def _create_connection(self, db_path: str) -> sqlite3.Connection:
+        """创建新连接并应用优化配置"""
+        conn = sqlite3.connect(db_path, timeout=20, check_same_thread=False)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA cache_size=-64000")
+        conn.execute("PRAGMA temp_store=MEMORY")
+        conn.execute("PRAGMA mmap_size=268435456")
+        return conn
+
+    def _is_connection_valid(self, conn: sqlite3.Connection) -> bool:
+        """检查连接是否有效"""
+        try:
+            conn.execute("SELECT 1")
+            return True
+        except Exception:
+            return False
+
+    def close_all(self) -> None:
+        """关闭所有连接"""
+        with self._lock:
+            for conns in self._pool.values():
+                for conn in conns:
+                    try:
+                        conn.close()
+                        self._stats["closed"] += 1
+                    except Exception:
+                        pass
+            self._pool.clear()
+
+    def get_stats(self) -> dict:
+        """获取连接池统计"""
+        return {
+            **self._stats,
+            "active_pools": len(self._pool),
+            "total_cached": sum(len(c) for c in self._pool.values()),
+        }
+
+
+_db_pool = None
+
+
+def get_db_pool() -> ConnectionPool:
+    """获取全局连接池单例"""
+    global _db_pool
+    if _db_pool is None:
+        _db_pool = ConnectionPool()
+    return _db_pool
 
 
 class StockDatabase(StockDataSource):
@@ -47,14 +172,15 @@ class StockDatabase(StockDataSource):
                 app_logger.info("检测到空数据库，正在初始化...")
                 self._populate_base_data()
 
-    def _get_connection(self) -> sqlite3.Connection:
-        """获取数据库连接并应用优化配置"""
-        conn = sqlite3.connect(self.db_path, timeout=20)
-        # WAL 模式极大提升并发读写性能
-        conn.execute("PRAGMA journal_mode=WAL")
-        # 配合 WAL，降低 fsync 频率
-        conn.execute("PRAGMA synchronous=NORMAL")
-        return conn
+    @contextmanager
+    def _get_connection(self):
+        """获取数据库连接（上下文管理器，自动归还到连接池）"""
+        pool = get_db_pool()
+        conn = pool.get_connection(self.db_path)
+        try:
+            yield conn
+        finally:
+            pool.return_connection(self.db_path, conn)
 
     def _initialize_database(self):
         """初始化数据库表结构"""

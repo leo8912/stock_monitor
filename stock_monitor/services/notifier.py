@@ -213,3 +213,48 @@ class NotifierService:
             return resp.json().get("errcode") == 0
         except Exception:
             return False
+
+    @classmethod
+    def dispatch_custom_message(
+        cls,
+        config: dict,
+        title: str,
+        content: str,
+        webhook_override: Optional[str] = None,
+    ) -> bool:
+        """
+        发送自定义消息（用于定时复盘报告）
+
+        Args:
+            config: 配置字典
+            title: 消息标题
+            content: 消息内容（HTML 格式）
+            webhook_override: 可选的 Webhook URL 覆盖
+
+        Returns:
+            bool: 是否发送成功
+        """
+        try:
+            # 1. 企业应用通道
+            if config.get("push_mode") == "app" or config.get("wecom_corpsecret"):
+                cls.send_wecom_app_message(config, title, content)
+                return True
+
+            # 2. Webhook Markdown 通道
+            webhook_url = webhook_override or config.get("wecom_webhook", "")
+            if not webhook_url:
+                app_logger.warning("未配置 Webhook URL，无法发送消息")
+                return False
+
+            # 将 HTML 转换为简单的文本格式
+            import re
+
+            text_content = re.sub(r"<[^>]+>", "", content)  # 移除 HTML 标签
+            text_content = text_content.replace("&nbsp;", " ").strip()
+
+            return cls.send_wecom_webhook_text(
+                webhook_url, f"{title}\n\n{text_content}"
+            )
+        except Exception as e:
+            app_logger.error(f"发送自定义消息失败：{e}")
+            return False

@@ -29,8 +29,10 @@ class MainWindowViewModel(QObject):
         super().__init__()
         self._container = container
         self._stock_db = self._container.get(StockDatabase)
-        config_manager = self._container.get(ConfigManager)
-        self._config_helper = ConfigHelper(config_manager)
+        self._config_manager = self._container.get(
+            ConfigManager
+        )  # [FIX] 保存为实例变量
+        self._config_helper = ConfigHelper(self._config_manager)
         self._stock_manager = self._container.get(StockManager)
         self._fetcher = self._container.get(StockDataFetcher)
 

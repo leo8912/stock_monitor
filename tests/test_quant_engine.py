@@ -21,8 +21,17 @@ class TestQuantEngine(unittest.TestCase):
 
     def test_initialization(self):
         """测试初始化"""
-        self.assertEqual(self.engine._cache_ttl, 60)
-        self.assertEqual(len(self.engine._bars_cache), 0)
+        # 验证 LRU 缓存已初始化
+        self.assertIsNotNone(self.engine._bars_lru_cache)
+        self.assertEqual(self.engine._bars_lru_cache.max_size, 128)
+        self.assertEqual(self.engine._bars_lru_cache.default_ttl, 60)
+
+        # 验证其他缓存已初始化
+        self.assertIsInstance(self.engine._avg_vol_cache, dict)
+        self.assertIsInstance(self.engine._auction_cache, dict)
+        self.assertIsInstance(self.engine._large_order_cache, dict)
+
+        # 验证财务过滤器已初始化
         self.assertIsNotNone(self.engine.fin_filter)
 
     def test_parse_symbol(self):
@@ -204,14 +213,12 @@ class TestQuantEngineCacheMechanism(unittest.TestCase):
         test_df = pd.DataFrame({"close": [10.0, 10.5, 11.0]})
         cache_key = ("sh000001", 9)
 
-        # 手动存入缓存
-        import time
-
-        self.engine._bars_cache[cache_key] = (test_df, time.time())
+        # 手动存入 LRU 缓存
+        self.engine._bars_lru_cache.set(cache_key, test_df)
 
         # 验证缓存存在
-        self.assertIn(cache_key, self.engine._bars_cache)
-        cached_df, timestamp = self.engine._bars_cache[cache_key]
+        cached_df = self.engine._bars_lru_cache.get(cache_key)
+        self.assertIsNotNone(cached_df)
         pd.testing.assert_frame_equal(test_df, cached_df)
 
     def test_auction_cache_structure(self):

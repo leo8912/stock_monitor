@@ -31,6 +31,72 @@ except ImportError:
     ak = None
 
 
+class LRUCacheWithTTL:
+    """LRU + TTL 混合缓存，基于 dict 和 list 实现"""
+
+    def __init__(self, max_size=128, default_ttl=60):
+        self.cache = {}
+        self.order = []
+        self.max_size = max_size
+        self.default_ttl = default_ttl
+        self.hits = 0
+        self.misses = 0
+
+    def get(self, key, ttl_override=None):
+        if key not in self.cache:
+            self.misses += 1
+            return None
+        entry = self.cache[key]
+        value, timestamp, count = entry
+        ttl = ttl_override or self.default_ttl
+        if time.time() - timestamp > ttl:
+            self._remove(key)
+            self.misses += 1
+            return None
+        entry[2] = count + 1
+        if key in self.order:
+            self.order.remove(key)
+        self.order.append(key)
+        self.hits += 1
+        return value
+
+    def set(self, key, value, ttl_override=None):
+        if key in self.cache:
+            self._remove(key)
+        while len(self.cache) >= self.max_size and self.order:
+            self._remove(self.order[0])
+        self.cache[key] = [value, time.time(), 0]
+        self.order.append(key)
+
+    def _remove(self, key):
+        if key in self.cache:
+            del self.cache[key]
+        if key in self.order:
+            self.order.remove(key)
+
+    def get_stats(self):
+        total = self.hits + self.misses
+        rate = (self.hits / total * 100) if total else 0
+        return {
+            "size": len(self.cache),
+            "hits": self.hits,
+            "misses": self.misses,
+            "hit_rate": f"{rate:.1f}%",
+            "max_size": self.max_size,
+            "avg_ttl": self.default_ttl,
+        }
+
+
+_bars_cache_instance = None
+
+
+def get_bars_cache(max_size=128, ttl=60):
+    global _bars_cache_instance
+    if _bars_cache_instance is None:
+        _bars_cache_instance = LRUCacheWithTTL(max_size, ttl)
+    return _bars_cache_instance
+
+
 class QuantEngine:
     """量化策略雷达"""
 
@@ -49,12 +115,27 @@ class QuantEngine:
 
     def __init__(self, mootdx_client):
         self.client = mootdx_client
-        self._bars_cache = {}  # 缓存格式: {(symbol, cat): (df, timestamp)}
-        self._cache_ttl = 60  # 缓存生存时间 (秒)
-        self._avg_vol_cache = {}  # 缓存 5 日均量，避免频繁请求历史接口
-        self._auction_cache = {}  # 缓存今日竞价结果 (price, vol, intensity)
-        self._large_order_cache = {}  # 大单流向缓存
-        self.fin_filter = FinancialFilter()  # 基本面异常过滤器
+        self._bars_lru_cache = get_bars_cache(max_size=128, ttl=60)
+        self._avg_vol_cache = {}
+        self._auction_cache = {}
+        self._large_order_cache = {}
+        self.fin_filter = FinancialFilter()
+
+    def get_cache_stats(self) -> dict:
+        """获取缓存统计信息（增强版）"""
+        stats = {"bars_cache": self._bars_lru_cache.get_stats()}
+        # 添加其他缓存统计
+        stats["large_order_cache"] = {
+            "size": len(self._large_order_cache),
+            "keys": list(self._large_order_cache.keys())[:5],  # 仅显示前 5 个
+        }
+        stats["auction_cache"] = {
+            "size": len(self._auction_cache),
+        }
+        stats["avg_vol_cache"] = {
+            "size": len(self._avg_vol_cache),
+        }
+        return stats
 
     def _parse_symbol(
         self, symbol: str, market: int = None
@@ -90,10 +171,6 @@ class QuantEngine:
         """
         [ELEGANT] 稳健的 K 线获取逻辑，通过 SymbolResolver 自动确定抓取策略
         """
-        import time
-
-        now = time.time()
-
         # 1. 解析初始参数与元数据
         config = SymbolResolver.resolve(symbol, market)
         cache_key = (
@@ -101,11 +178,10 @@ class QuantEngine:
             category,
         )
 
-        # 2. 检查缓存
-        if cache_key in self._bars_cache:
-            df, ts = self._bars_cache[cache_key]
-            if now - ts < self._cache_ttl:
-                return df.copy()
+        # 2. 检查 LRU 缓存（自动处理 TTL 和淘汰）
+        cached_df = self._bars_lru_cache.get(cache_key)
+        if cached_df is not None:
+            return cached_df
 
         # 3. 核心抓取循环 (候选路径自动回退)
         # 候选集包含: [首选解析代码] + [解析器提供的备选代码]
@@ -124,25 +200,101 @@ class QuantEngine:
                     final_df = df
                     break
             except Exception as e:
-                app_logger.error(f"代码 {code_p} 数据抓取或解析异常: {e}")
+                # [IMPROVED] 区分不同类型的错误
+                error_msg = str(e)
+                if "datetime" in error_msg or "time data" in error_msg:
+                    # 日期解析错误 - 记录警告但不阻止后续尝试
+                    app_logger.warning(f"代码 {code_p} 日期数据异常：{error_msg}")
+                else:
+                    # 其他错误 - 记录错误
+                    app_logger.error(f"代码 {code_p} 数据抓取或解析异常：{e}")
                 continue
 
         if final_df is not None and not final_df.empty:
             # 数据后处理
             final_df = final_df.reset_index(drop=True)
+
+            # [CRITICAL FIX] 立即清洗 datetime 数据，防止后续处理异常
             if "datetime" in final_df.columns:
+                final_df = self._clean_datetime_column(final_df)
+
+            if not final_df.empty:
                 final_df = final_df.drop_duplicates(subset=["datetime"])
                 final_df = final_df.sort_values("datetime", ascending=True).reset_index(
                     drop=True
                 )
 
-            # 更新并限制缓存
-            self._bars_cache[cache_key] = (final_df, now)
-            if len(self._bars_cache) > 500:
-                self._bars_cache.pop(next(iter(self._bars_cache)))
+            # 使用 LRU 缓存（自动淘汰最久未使用的项）
+            self._bars_lru_cache.set(cache_key, final_df)
             return final_df
 
         return pd.DataFrame()
+
+    def _clean_datetime_column(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        清洗 datetime 列，过滤无效日期数据
+
+        Args:
+            df: 包含 datetime 列的 DataFrame
+
+        Returns:
+            清洗后的 DataFrame
+        """
+        try:
+            # 先转换为字符串检查格式
+            df = df.copy()
+            df["datetime"] = df["datetime"].astype(str)
+
+            # 验证日期有效性
+            def is_valid_date(date_str):
+                """验证日期字符串是否有效"""
+                import re
+
+                match = re.match(
+                    r"^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$", str(date_str)
+                )
+                if not match:
+                    return False
+                year, month, day, hour, minute = map(int, match.groups())
+                # 验证年份范围 (1990-2030)
+                if not (1990 <= year <= 2030):
+                    return False
+                # 验证月份 (1-12)
+                if not (1 <= month <= 12):
+                    return False
+                # 验证日期 (1-31)
+                if not (1 <= day <= 31):
+                    return False
+                # 验证小时 (0-23)
+                if not (0 <= hour <= 23):
+                    return False
+                # 验证分钟 (0-59)
+                if not (0 <= minute <= 59):
+                    return False
+                return True
+
+            # 应用验证过滤
+            mask = df["datetime"].apply(is_valid_date)
+            filtered_count = (~mask).sum()
+            if filtered_count > 0:
+                app_logger.debug(f"过滤掉 {filtered_count} 条无效日期数据")
+
+            df = df[mask].copy()
+
+            # 现在安全地转换为 datetime
+            if not df.empty:
+                df["datetime"] = pd.to_datetime(
+                    df["datetime"],
+                    format="%Y-%m-%d %H:%M",
+                    errors="coerce",  # 无法解析的变为 NaT
+                )
+                # 删除 NaT 行
+                df = df.dropna(subset=["datetime"])
+
+        except Exception as e:
+            app_logger.warning(f"datetime 列清洗异常：{e}，将保留原始数据")
+
+        return df
 
     def _do_fetch(
         self,
@@ -298,7 +450,8 @@ class QuantEngine:
     def get_bbands_position_desc(self, df: pd.DataFrame) -> str:
         """价格相对于布林带的位置，用 emoji 简洁标注"""
         try:
-            tmp = df.copy()
+            # 使用浅拷贝减少内存分配（只读场景无需深拷贝）
+            tmp = df.copy(deep=False)
             tmp.ta.bbands(length=20, std=2, append=True)
             bbl = [c for c in tmp.columns if c.startswith("BBL_")]
             bbu = [c for c in tmp.columns if c.startswith("BBU_")]

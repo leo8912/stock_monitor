@@ -239,8 +239,9 @@ class RefreshWorker(QtCore.QThread):
                 if self._consecutive_failures >= self._max_consecutive_failures:
                     self.refresh_error.emit()
                     self._consecutive_failures = 0
-
-                self.sleep(5)
+                    self._exponential_backoff_sleep(self._consecutive_failures)
+                else:
+                    self._smart_sleep(5)
 
     def _smart_sleep(self, duration, check_interval=False):
         """
@@ -281,6 +282,14 @@ class RefreshWorker(QtCore.QThread):
                 current_interval = new_interval
 
             self._lock.unlock()
+
+    def _exponential_backoff_sleep(
+        self, attempt: int, base_delay: float = 1.0, max_delay: float = 60.0
+    ):
+        """指数退避休眠（网络异常场景使用）"""
+        delay = min(base_delay * (2**attempt), max_delay)
+        app_logger.debug(f"网络异常，指数退避：{delay:.1f}s (attempt={attempt})")
+        return self._smart_sleep(delay)
 
     def _get_pre_market_sleep_time(self):
         """
@@ -331,10 +340,8 @@ class RefreshWorker(QtCore.QThread):
         app_logger.info(
             f"等待 {initial_delay} 秒后开始获取收盘数据，确保数据源已更新最终收盘价..."
         )
-        for _ in range(initial_delay * 2):
-            if not self._is_running:
-                return
-            self.msleep(500)
+        # [OPTIMIZED] 使用智能休眠替代 msleep，支持快速响应停止信号
+        self._smart_sleep(initial_delay)
 
         # 多次获取，逐步逼近最终收盘价
         for attempt in range(total_attempts):
@@ -371,11 +378,8 @@ class RefreshWorker(QtCore.QThread):
 
             # 非最后一次获取时，等待后继续
             if attempt < total_attempts - 1:
-                for _ in range(retry_interval * 2):
-                    if not self._is_running:
-                        self._closing_data_fetched = True
-                        return
-                    self.msleep(500)
+                # [OPTIMIZED] 使用智能休眠替代 msleep 循环，每 50ms 检查一次停止标志
+                self._smart_sleep(retry_interval)
 
         self._closing_data_fetched = True
         app_logger.info("收盘数据获取流程结束")

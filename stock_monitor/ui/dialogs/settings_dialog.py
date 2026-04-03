@@ -6,7 +6,7 @@ import os
 import time
 
 from PyQt6 import QtGui
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QAbstractItemView,
@@ -18,39 +18,22 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListView,  # [ADDED] 用于列表视图模式
     QListWidget,
     QListWidgetItem,
     QMessageBox,
     QPushButton,
     QSlider,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from stock_monitor.ui.view_models.settings_view_model import SettingsViewModel
-from stock_monitor.utils.helpers import resource_path
+from stock_monitor.utils.helpers import (
+    resource_path,
+)
 from stock_monitor.version import __version__
-
-
-def _safe_bool_conversion(value, default=False):
-    """安全地将值转换为布尔值"""
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        return value.lower() == "true"
-    return default
-
-
-def _safe_int_conversion(value, default=0):
-    """安全地将值转换为整数"""
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str):
-        try:
-            return int(value)
-        except ValueError:
-            pass
-    return default
 
 
 class DraggableListWidget(QListWidget):
@@ -89,6 +72,22 @@ class DraggableListWidget(QListWidget):
             self.clearSelection()
 
         super().mousePressEvent(e)
+
+
+class UpdateCheckThread(QThread):
+    """更新检查线程（从 check_for_updates 方法提取）"""
+
+    finished_check = pyqtSignal(object)
+    error_occurred = pyqtSignal(str)
+
+    def run(self):
+        try:
+            from stock_monitor.core.updater import app_updater
+
+            result = app_updater.check_for_updates()
+            self.finished_check.emit(result)
+        except Exception as e:
+            self.error_occurred.emit(str(e))
 
 
 # StockSearchHandler and ConfigManagerHandler logic moved to ViewModel
@@ -184,28 +183,26 @@ class NewSettingsDialog(QDialog):
     manual_report_requested = pyqtSignal()
 
     def __init__(self, main_window=None):
-        # 不传递父窗口给QDialog,避免继承主窗口的置顶属性
+        # 不传递父窗口给 QDialog，避免继承主窗口的置顶属性
         super().__init__(None)
         self.main_window = main_window
 
         # Initialize ViewModel
         self.viewModel = SettingsViewModel()
 
+        # [P1 FIX] 添加速率限制，防止 Webhook 测试被滥用
+        self._last_webhook_test_time = 0
+        self._webhook_test_cooldown = 60  # 60 秒冷却时间
+
         # 设置窗口标题和图标
-        self.setWindowTitle("A股行情监控设置")
+        self.setWindowTitle("A 股行情监控设置")
         icon_path = resource_path("icon.ico")
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
             # 同时设置任务栏图标
-            import ctypes
+            self._setup_windows_taskbar_icon()
 
-            myappid = "stock.monitor.settings"  # 设置应用ID
-            try:
-                ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-            except Exception:
-                pass
-
-        # 设置窗口标志:移除帮助按钮,确保不置顶
+        # 设置窗口标志：移除帮助按钮，确保不置顶
         flags = Qt.WindowType.Window  # 使用普通窗口标志
         flags |= Qt.WindowType.WindowCloseButtonHint  # 添加关闭按钮
         flags |= Qt.WindowType.WindowMinimizeButtonHint  # 添加最小化按钮
@@ -217,17 +214,8 @@ class NewSettingsDialog(QDialog):
         # 设置窗口样式以匹配暗色主题
         self.setObjectName("NewSettingsDialog")
 
-        # 在Windows上设置标题栏颜色
-        try:
-            # 尝试设置Windows 10/11标题栏颜色
-            ctypes.windll.dwmapi.DwmSetWindowAttribute(
-                int(self.winId()),
-                35,  # DWMWA_CAPTION_COLOR
-                ctypes.byref(ctypes.c_int(0x1E1E1E)),
-                ctypes.sizeof(ctypes.c_int),
-            )
-        except Exception:
-            pass
+        # 在 Windows 上设置标题栏颜色
+        self._setup_windows_caption_color()
 
         # 为设置对话框设置固定字体，避免继承主窗口的动态字体
         # 使用独立的样式表覆盖继承的样式，此时已经由全局掌控
@@ -238,13 +226,13 @@ class NewSettingsDialog(QDialog):
         main_layout.setSpacing(15)
         self.setLayout(main_layout)
 
-        # 构建UI界面
-        self._setup_watchlist_ui(main_layout)
-        self._setup_display_settings_ui(main_layout)
-        self._setup_quant_settings_ui(main_layout)
-        self._setup_system_settings_ui(main_layout)
+        # === [UI OPTIMIZATION] 创建标签页结构 ===
+        self._setup_tabs(main_layout)
 
-        # 初始化功能管理器（在UI组件创建之后）
+        # === 底部：系统设置和按钮 ===
+        self._setup_bottom_bar(main_layout)
+
+        # 初始化功能管理器（在 UI 组件创建之后）
         self.watch_list_manager = WatchListManager(
             self.watch_list,
             self.remove_button,
@@ -273,6 +261,40 @@ class NewSettingsDialog(QDialog):
             item = self.watch_list.item(i)
             if item:
                 self.original_watch_list.append(item.text())
+
+    def _setup_windows_taskbar_icon(self):
+        """设置 Windows 任务栏图标（仅 Windows 平台）"""
+        import sys
+
+        if sys.platform != "win32":
+            return
+
+        try:
+            import ctypes
+
+            myappid = "stock.monitor.settings"
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+        except Exception:
+            pass
+
+    def _setup_windows_caption_color(self):
+        """设置 Windows 10/11 标题栏颜色（仅 Windows 平台）"""
+        import sys
+
+        if sys.platform != "win32":
+            return
+
+        try:
+            import ctypes
+
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                int(self.winId()),
+                35,  # DWMWA_CAPTION_COLOR
+                ctypes.byref(ctypes.c_int(0x1E1E1E)),
+                ctypes.sizeof(ctypes.c_int),
+            )
+        except Exception:
+            pass
 
     def _connect_signals(self):
         """连接所有信号槽"""
@@ -311,7 +333,9 @@ class NewSettingsDialog(QDialog):
 
         # 连接按钮信号
         self.add_button.clicked.connect(self.add_stock_from_search)
-        self.ok_button.clicked.connect(self._save_config_via_vm)
+        self.ok_button.clicked.connect(
+            self._on_ok_clicked
+        )  # [FIXED] 直接连接到处理函数
         self.cancel_button.clicked.connect(self.reject)
         self.check_update_button.clicked.connect(self.check_for_updates)
         self.test_push_button.clicked.connect(self._on_test_push_clicked)
@@ -325,120 +349,224 @@ class NewSettingsDialog(QDialog):
         self.font_family_combo.currentTextChanged.connect(self.on_font_setting_changed)
         self.transparency_slider.valueChanged.connect(self.on_transparency_changed)
 
-    def _setup_watchlist_ui(self, main_layout):
-        """设置自选股管理UI"""
-        # 自选股管理组
-        watchlist_group = QGroupBox("自选股管理")
-        watchlist_layout = QHBoxLayout()
-        watchlist_layout.setContentsMargins(10, 10, 10, 10)
-        watchlist_layout.setSpacing(15)
-        watchlist_group.setLayout(watchlist_layout)
+    def _setup_tabs(self, main_layout):
+        """创建标签页结构 [UI OPTIMIZATION]"""
+        self.tabs = QTabWidget()
+        self.tabs.setObjectName("SettingsTabs")
 
-        # 左侧区域 - 搜索股票
-        left_layout = QVBoxLayout()
-        left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.setSpacing(8)
+        # 创建各个标签页容器
+        self.tab_watchlist = QWidget()
+        self.tab_display = QWidget()
+        self.tab_quant = QWidget()
 
-        # 搜索框
-        search_label = QLabel("搜索股票")
-        search_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # 构建各标签页内容
+        self._setup_watchlist_ui(self.tab_watchlist)
+        self._setup_display_settings_ui(self.tab_display)
+        self._setup_quant_settings_ui(self.tab_quant)
+
+        # 添加到标签页
+        self.tabs.addTab(self.tab_watchlist, "📋 自选股管理")
+        self.tabs.addTab(self.tab_display, "🎨 显示设置")
+        self.tabs.addTab(self.tab_quant, "📊 量化预警")
+
+        main_layout.addWidget(self.tabs)
+
+    def _setup_bottom_bar(self, main_layout):
+        """设置底部工具栏（系统设置 + 按钮）[UI OPTIMIZATION]"""
+        # 系统设置行（移出分组框）
+        system_layout = QHBoxLayout()
+        system_layout.setContentsMargins(0, 0, 0, 0)  # 移除边距
+        system_layout.setSpacing(6)  # 调整为 6px 间距
+        system_layout.setAlignment(
+            Qt.AlignmentFlag.AlignVCenter
+        )  # 垂直居中对齐，确保与按钮视觉齐平
+
+        # 开机启动
+        self.auto_start_checkbox = QCheckBox()
+        self.auto_start_checkbox.setToolTip("开机自动启动")
+        # 添加鼠标悬停反馈
+        # 注意：大部分样式已在全局样式表中定义，这里只需要补充悬停效果
+
+        # 刷新频率
+        self.refresh_combo = QComboBox()
+        self.refresh_combo.addItems(["1 秒", "2 秒", "5 秒", "10 秒", "30 秒"])
+        self.refresh_combo.setMinimumWidth(80)
+        # 样式已在全局样式表中定义
+
+        # 检查更新
+        update_layout = QHBoxLayout()
+        update_layout.setSpacing(4)
+        self.version_label = QLabel(f"v{__version__}")
+        self.check_update_button = QPushButton("检查更新")
+        self.check_update_button.setObjectName("checkUpdateButton")
+        update_layout.addWidget(self.version_label)
+        update_layout.addWidget(self.check_update_button)
+
+        # 添加开机启动标签和复选框
+        self.auto_start_label = QLabel("开机启动:")
+        system_layout.addWidget(self.auto_start_label)
+        system_layout.addWidget(self.auto_start_checkbox)
+        system_layout.addSpacing(6)  # 调整为 6px 间距
+        system_layout.addWidget(QLabel("刷新频率:"))
+        system_layout.addWidget(self.refresh_combo)
+        system_layout.addSpacing(6)  # 调整为 6px 间距
+
+        # 添加版本号标签
+        version_label_text = QLabel("版本号:")
+        system_layout.addWidget(version_label_text)
+        # 从配置文件读取版本号
+        self.version_label.setText(f"v{__version__}")
+        system_layout.addLayout(update_layout)
+        system_layout.addStretch()
+
+        # 底部按钮
+        button_layout = QHBoxLayout()
+        button_layout.setContentsMargins(0, 0, 0, 0)  # 移除边距
+        button_layout.setSpacing(10)
+        button_layout.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )  # 右对齐并垂直居中
+
+        # 确定和取消按钮
+        self.ok_button = QPushButton("确定")
+        self.cancel_button = QPushButton("取消")
+        self.cancel_button.setObjectName("cancelButton")
+
+        button_layout.addWidget(self.ok_button)
+        button_layout.addWidget(self.cancel_button)
+
+        # 创建底部布局，包含系统设置和按钮
+        bottom_layout = QHBoxLayout()
+        bottom_layout.setContentsMargins(0, 0, 0, 0)
+        bottom_layout.addLayout(system_layout, 1)
+        bottom_layout.addLayout(button_layout)
+
+        main_layout.addLayout(bottom_layout)
+
+    def _setup_watchlist_ui(self, parent_widget):
+        """设置自选股管理 UI [UI OPTIMIZATION - 左右布局，展示更多股票]"""
+        main_layout = QVBoxLayout()
+        main_layout.setContentsMargins(15, 15, 15, 15)
+        main_layout.setSpacing(12)
+        parent_widget.setLayout(main_layout)
+
+        # === 使用左右分栏布局，增加列表横向展示空间 ===
+        watchlist_row_layout = QHBoxLayout()
+        watchlist_row_layout.setSpacing(20)  # 增加分组间距
+
+        # === 左侧：搜索区域 (占 50%) ===
+        search_group = QGroupBox("🔍 搜索股票")
+        search_layout = QVBoxLayout()
+        search_layout.setContentsMargins(10, 10, 10, 10)
+        search_layout.setSpacing(8)
+
+        # 搜索输入框（增加高度）
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("输入股票代码或名称...")
+        self.search_input.setPlaceholderText("输入股票代码或名称，按回车快速添加...")
+        self.search_input.setFixedHeight(40)  # [OPTIMIZATION] 增加高度
         self.search_input.setObjectName("SettingsSearchInput")
 
-        left_layout.addWidget(search_label)
-        left_layout.addWidget(self.search_input)
-
-        # 搜索结果列表
+        # 搜索结果列表（限制最大高度）
         self.search_results = QListWidget()
+        self.search_results.setMaximumHeight(200)  # [OPTIMIZATION] 适当增加最大高度
         self.search_results.setObjectName("SettingsSearchResults")
-        left_layout.addWidget(self.search_results)
 
         # 添加按钮
-        self.add_button = QPushButton("添加")
+        self.add_button = QPushButton("➕ 添加到自选股")
         self.add_button.setObjectName("PrimaryButton")
+        self.add_button.setFixedHeight(36)  # [OPTIMIZATION] 统一按钮高度
         self.add_button.setEnabled(False)
 
-        # 创建按钮布局
-        button_layout = QHBoxLayout()
-        button_layout.addStretch()
-        button_layout.addWidget(self.add_button)
-        left_layout.addLayout(button_layout)
+        search_layout.addWidget(self.search_input)
+        search_layout.addWidget(self.search_results)
+        search_layout.addWidget(self.add_button, alignment=Qt.AlignmentFlag.AlignCenter)
+        search_group.setLayout(search_layout)
 
-        watchlist_layout.addLayout(left_layout, 1)
+        # === 右侧：自选股列表 (占 50%，展示更多股票) ===
+        list_group = QGroupBox("📋 自选股列表 (可拖拽排序)")
+        list_layout = QVBoxLayout()
+        list_layout.setContentsMargins(10, 10, 10, 10)
+        list_layout.setSpacing(8)
 
-        # 右侧区域 - 自选股列表
-        right_layout = QVBoxLayout()
-        right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.setSpacing(8)
-
-        # 自选股列表标签
-        watchlist_label = QLabel("自选股列表")
-        watchlist_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        right_layout.addWidget(watchlist_label)
-
-        # 自选股列表
         self.watch_list = DraggableListWidget()
         self.watch_list.setObjectName("SettingsWatchList")
-
-        # 启用拖拽排序
+        # [FIX] 设置列表项居中对齐 - 保持垂直列表形式
+        self.watch_list.setFlow(QListView.Flow.TopToBottom)  # 从上到下排列（垂直列表）
+        self.watch_list.setWrapping(False)  # 不自动换行
+        self.watch_list.setViewMode(QListView.ViewMode.ListMode)  # 列表模式，一行一个
+        self.watch_list.setMovement(
+            QListView.Movement.Static
+        )  # 静态模式（拖拽由 DragDropMode 控制）
+        self.watch_list.setStyleSheet(
+            "QListWidget::item { text-align: center; }"
+        )  # 文本居中对齐
+        # ... 拖拽配置保持不变 ...
         self.watch_list.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
         self.watch_list.setDefaultDropAction(Qt.DropAction.MoveAction)
         self.watch_list.setDragEnabled(True)
         self.watch_list.setAcceptDrops(True)
         self.watch_list.setDropIndicatorShown(True)
 
-        right_layout.addWidget(self.watch_list)
+        list_layout.addWidget(self.watch_list)
+        list_group.setLayout(list_layout)
 
-        # 操作按钮布局
-        action_layout = QHBoxLayout()
-        action_layout.setSpacing(6)
+        # === 底部：操作按钮 ===
+        button_group = QGroupBox("🛠️ 操作")
+        button_layout = QHBoxLayout()
+        button_layout.setContentsMargins(10, 10, 10, 10)
+        button_layout.setSpacing(12)
 
         # 删除按钮
-        self.remove_button = QPushButton("删除")
+        self.remove_button = QPushButton("🗑 删除")
         self.remove_button.setObjectName("removeButton")
+        self.remove_button.setFixedHeight(36)  # [OPTIMIZATION] 统一按钮高度
         self.remove_button.setEnabled(False)
 
         # 上移按钮
-        self.move_up_button = QPushButton("上移")
+        self.move_up_button = QPushButton("↑ 上移")
         self.move_up_button.setObjectName("move_up_button")
+        self.move_up_button.setFixedHeight(36)  # [OPTIMIZATION] 统一按钮高度
         self.move_up_button.setEnabled(False)
 
         # 下移按钮
-        self.move_down_button = QPushButton("下移")
+        self.move_down_button = QPushButton("↓ 下移")
         self.move_down_button.setObjectName("move_down_button")
+        self.move_down_button.setFixedHeight(36)  # [OPTIMIZATION] 统一按钮高度
         self.move_down_button.setEnabled(False)
 
-        action_layout.addWidget(self.remove_button)
-        action_layout.addStretch()
-        action_layout.addWidget(self.move_up_button)
-        action_layout.addWidget(self.move_down_button)
+        button_layout.addWidget(self.remove_button)
+        button_layout.addWidget(self.move_up_button)
+        button_layout.addWidget(self.move_down_button)
+        button_group.setLayout(button_layout)
 
-        right_layout.addLayout(action_layout)
-        watchlist_layout.addLayout(right_layout, 1)
-        main_layout.addWidget(watchlist_group)
+        # 添加到主布局 - 左右对称 50%:50%
+        watchlist_row_layout.addWidget(search_group, stretch=1)  # 左侧 50%
+        watchlist_row_layout.addWidget(list_group, stretch=1)  # 右侧 50%
 
-    def _setup_display_settings_ui(self, main_layout):
-        """设置显示设置UI"""
-        # 显示设置组
-        display_group = QGroupBox("显示设置")
+        main_layout.addLayout(watchlist_row_layout)
+        main_layout.addWidget(button_group)
+
+    def _setup_display_settings_ui(self, parent_widget):
+        """设置显示设置 UI [UI OPTIMIZATION - 标签页适配]"""
+        # [UI OPTIMIZATION] 添加图标，优化间距
+        display_group = QGroupBox("🎨 显示设置")
         display_layout = QVBoxLayout()
-        display_layout.setContentsMargins(10, 10, 10, 10)
-        display_layout.setSpacing(10)
+        display_layout.setContentsMargins(15, 15, 15, 15)
+        display_layout.setSpacing(12)
         display_group.setLayout(display_layout)
 
-        # 显示设置行
+        # === 显示设置行 ===
         display_row_layout = QHBoxLayout()
         display_row_layout.setContentsMargins(0, 0, 0, 0)
-        display_row_layout.setSpacing(10)
+        display_row_layout.setSpacing(15)  # [OPTIMIZATION] 增加间距
 
         # 字体大小设置
         font_layout = QHBoxLayout()
-        font_layout.setSpacing(4)
+        font_layout.setSpacing(8)  # [OPTIMIZATION] 增加元素间距
         self.font_size_slider = QSlider(Qt.Orientation.Horizontal)
         self.font_size_slider.setRange(10, 40)
-        self.font_size_slider.setValue(13)  # 默认13px
-        self.font_size_slider.setMinimumWidth(100)
+        self.font_size_slider.setValue(13)  # 默认 13px
+        self.font_size_slider.setMinimumWidth(120)  # [OPTIMIZATION] 统一滑块长度
         self.font_size_slider.setObjectName("FontSizeSlider")
 
         self.font_size_value_label = QLabel("13px")
@@ -452,22 +580,22 @@ class NewSettingsDialog(QDialog):
 
         # 字体设置
         font_family_layout = QHBoxLayout()
-        font_family_layout.setSpacing(4)
+        font_family_layout.setSpacing(8)  # [OPTIMIZATION] 增加元素间距
         self.font_family_combo = QComboBox()
         self.font_family_combo.addItems(["微软雅黑", "宋体", "黑体", "楷体", "仿宋"])
-        self.font_family_combo.setMinimumWidth(100)
-        font_family_layout.addWidget(QLabel("字体:"))
+        self.font_family_combo.setMinimumWidth(120)
+        font_family_layout.addWidget(QLabel("字    体:"))
         font_family_layout.addWidget(self.font_family_combo)
 
         # 透明度设置
         transparency_layout = QHBoxLayout()
-        transparency_layout.setSpacing(4)
+        transparency_layout.setSpacing(8)  # [OPTIMIZATION] 增加元素间距
         self.transparency_slider = QSlider(Qt.Orientation.Horizontal)
         self.transparency_slider.setRange(0, 100)
         self.transparency_slider.setValue(80)
-        self.transparency_slider.setMinimumWidth(100)
+        self.transparency_slider.setMinimumWidth(120)  # [OPTIMIZATION] 统一滑块长度
 
-        # 极简滑块样式，部分基础样式移至main.qss，这里不再内联
+        # 极简滑块样式
         self.transparency_slider.setObjectName("TransparencySlider")
 
         self.transparency_value_label = QLabel("80%")
@@ -479,15 +607,15 @@ class NewSettingsDialog(QDialog):
         transparency_layout.addWidget(self.transparency_value_label)
 
         display_row_layout.addLayout(font_layout)
-        display_row_layout.addSpacing(10)
+        display_row_layout.addSpacing(20)  # [OPTIMIZATION] 增加分组间距
         display_row_layout.addLayout(font_family_layout)
-        display_row_layout.addSpacing(10)
+        display_row_layout.addSpacing(20)  # [OPTIMIZATION] 增加分组间距
         display_row_layout.addLayout(transparency_layout)
-        display_row_layout.addSpacing(15)
+        display_row_layout.addSpacing(20)  # [OPTIMIZATION] 增加分组间距
 
         # 添加恢复默认值按钮
-        self.reset_display_button = QPushButton("恢复默认")
-        self.reset_display_button.setMinimumWidth(70)
+        self.reset_display_button = QPushButton("↺ 恢复默认")
+        self.reset_display_button.setMinimumWidth(100)  # [OPTIMIZATION] 增加按钮宽度
         self.reset_display_button.setObjectName("reset_display_button")
         self.reset_display_button.clicked.connect(self.reset_display_settings)
         display_row_layout.addWidget(self.reset_display_button)
@@ -495,22 +623,27 @@ class NewSettingsDialog(QDialog):
         display_row_layout.addStretch()
 
         display_layout.addLayout(display_row_layout)
-        main_layout.addWidget(display_group)
 
-    def _setup_quant_settings_ui(self, main_layout):
-        """设置量化分析与预警UI"""
-        quant_group = QGroupBox("量化分析预警 (附带微信机器人强推)")
+        # [FIXED] 添加到父 widget 的 layout
+        container_layout = QVBoxLayout()
+        container_layout.addWidget(display_group)
+        parent_widget.setLayout(container_layout)
+
+    def _setup_quant_settings_ui(self, parent_widget):
+        """设置量化分析与预警 UI [UI OPTIMIZATION - 标签页适配]"""
+        # [UI OPTIMIZATION] 简化标题，移除冗余文字
+        quant_group = QGroupBox("📊 量化分析预警")
         quant_layout = QVBoxLayout()
-        quant_layout.setContentsMargins(10, 10, 10, 10)
-        quant_layout.setSpacing(10)
+        quant_layout.setContentsMargins(15, 15, 15, 15)
+        quant_layout.setSpacing(12)
         quant_group.setLayout(quant_layout)
 
         # 启动开关
-        self.quant_enabled_checkbox = QCheckBox(
-            "开启 [自动多级别共振扫描：MACD底背离 / BBands收口变盘 / 主力碎步吸筹等]"
-        )
+        # [UI OPTIMIZATION] 精简复选框标签，移除技术细节
+        self.quant_enabled_checkbox = QCheckBox("开启智能扫描")
         self.quant_enabled_checkbox.setToolTip(
-            "开启后将在后台静默拉取 15m/30m/60m/日线 等数据并执行底层复杂算力运算。"
+            "开启后将在后台静默拉取 15m/30m/60m/日线 等数据并执行底层复杂算力运算。\n"
+            "包括：MACD 底背离 / BBands 收口变盘 / 主力碎步吸筹等信号检测"
         )
         quant_layout.addWidget(self.quant_enabled_checkbox)
 
@@ -529,16 +662,19 @@ class NewSettingsDialog(QDialog):
         self.webhook_container = QWidget()
         webhook_sub_layout = QVBoxLayout(self.webhook_container)
         webhook_sub_layout.setContentsMargins(0, 5, 0, 5)
+        webhook_sub_layout.setSpacing(8)
 
         h_layout = QHBoxLayout()
-        h_layout.addWidget(QLabel("Webhook 地址:"))
+        label = QLabel("Webhook 地址:")
+        label.setFixedWidth(80)  # [UI OPTIMIZATION] 统一标签宽度
+        h_layout.addWidget(label)
         self.wecom_webhook_input = QLineEdit()
         self.wecom_webhook_input.setPlaceholderText(
             "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..."
         )
         h_layout.addWidget(self.wecom_webhook_input)
 
-        self.test_push_button = QPushButton("测试机器人")
+        self.test_push_button = QPushButton("🧪 测试推送")
         self.test_push_button.setObjectName("PrimaryButton")
         self.test_push_button.setFixedWidth(100)
         h_layout.addWidget(self.test_push_button)
@@ -549,28 +685,42 @@ class NewSettingsDialog(QDialog):
         self.app_container = QWidget()
         app_sub_layout = QVBoxLayout(self.app_container)
         app_sub_layout.setContentsMargins(0, 5, 0, 5)
+        app_sub_layout.setSpacing(8)
 
         # CorpID
         corp_layout = QHBoxLayout()
-        corp_layout.addWidget(QLabel("企业 ID (CorpID):"))
+        label = QLabel("企业 ID:")
+        label.setFixedWidth(80)  # [UI OPTIMIZATION] 统一标签宽度，简化文字
+        label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        corp_layout.addWidget(label)
         self.wecom_corpid_input = QLineEdit()
+        self.wecom_corpid_input.setPlaceholderText("请输入企业 ID")
         corp_layout.addWidget(self.wecom_corpid_input)
 
         # Secret
         secret_layout = QHBoxLayout()
-        secret_layout.addWidget(QLabel("应用 Secret:"))
+        label = QLabel("应用密钥:")
+        label.setFixedWidth(80)  # [UI OPTIMIZATION] 统一标签宽度
+        label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        secret_layout.addWidget(label)
         self.wecom_corpsecret_input = QLineEdit()
+        self.wecom_corpsecret_input.setPlaceholderText("请输入应用密钥")
+        self.wecom_corpsecret_input.setEchoMode(QLineEdit.EchoMode.Password)
         secret_layout.addWidget(self.wecom_corpsecret_input)
 
         # AgentID
         agent_layout = QHBoxLayout()
-        agent_layout.addWidget(QLabel("应用 AgentID:"))
+        label = QLabel("应用 ID:")
+        label.setFixedWidth(80)  # [UI OPTIMIZATION] 统一标签宽度
+        label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        agent_layout.addWidget(label)
         self.wecom_agentid_input = QLineEdit()
+        self.wecom_agentid_input.setPlaceholderText("请输入应用 ID")
         agent_layout.addWidget(self.wecom_agentid_input)
 
-        self.test_app_button = QPushButton("测试应用推送")
+        self.test_app_button = QPushButton("🧪 测试应用")
         self.test_app_button.setObjectName("PrimaryButton")
-        self.test_app_button.setFixedWidth(120)
+        self.test_app_button.setFixedWidth(100)
         agent_layout.addWidget(self.test_app_button)
 
         app_sub_layout.addLayout(corp_layout)
@@ -587,7 +737,10 @@ class NewSettingsDialog(QDialog):
         )
         quant_layout.addWidget(self.btn_manual_report, 0, Qt.AlignmentFlag.AlignCenter)
 
-        main_layout.addWidget(quant_group)
+        # [FIXED] 添加到父 widget 的 layout
+        container_layout = QVBoxLayout()
+        container_layout.addWidget(quant_group)
+        parent_widget.setLayout(container_layout)
 
     def _setup_system_settings_ui(self, main_layout):
         """设置系统设置UI"""
@@ -664,26 +817,11 @@ class NewSettingsDialog(QDialog):
     def check_for_updates(self):
         """检查更新"""
         try:
-            from PyQt6.QtCore import QThread, pyqtSignal
-
-            from stock_monitor.core.updater import app_updater
-
             self.check_update_button.setEnabled(False)
             self.check_update_button.setText("检查中...")
 
-            # 内部类检查线程
-            class UpdateCheckThread(QThread):
-                finished_check = pyqtSignal(object)
-                error_occurred = pyqtSignal(str)
-
-                def run(self):
-                    try:
-                        result = app_updater.check_for_updates()
-                        self.finished_check.emit(result)
-                    except Exception as e:
-                        self.error_occurred.emit(str(e))
-
-            self._update_thread = UpdateCheckThread(self)
+            # [P2 FIX] 使用提取的线程类，避免内联定义
+            self._update_thread = UpdateCheckThread()
             self._update_thread.finished_check.connect(self._on_update_check_result)
             self._update_thread.error_occurred.connect(
                 lambda e: self._on_update_check_result(None, error_msg=e)
@@ -694,7 +832,7 @@ class NewSettingsDialog(QDialog):
         except Exception as e:
             from stock_monitor.utils.logger import app_logger
 
-            app_logger.error(f"启动自动更新检查失败: {e}")
+            app_logger.error(f"启动自动更新检查失败：{e}")
             self._on_update_check_result(None, error_msg=str(e))
 
     def _on_update_check_result(self, result, error_msg=None):
@@ -820,6 +958,18 @@ class NewSettingsDialog(QDialog):
 
     def _on_test_push_clicked(self):
         """测试 Webhook 推送"""
+        import time
+
+        # [P1 FIX] 检查冷却时间
+        current_time = time.time()
+        if current_time - self._last_webhook_test_time < self._webhook_test_cooldown:
+            remaining = int(
+                self._webhook_test_cooldown
+                - (current_time - self._last_webhook_test_time)
+            )
+            QMessageBox.warning(self, "请求过于频繁", f"请在 {remaining} 秒后再试")
+            return
+
         webhook = self.wecom_webhook_input.text().strip()
         if not webhook:
             QMessageBox.warning(self, "提示", "请先输入 Webhook 地址")
@@ -830,7 +980,9 @@ class NewSettingsDialog(QDialog):
         success = NotifierService.send_wecom_webhook_text(
             webhook, "这是一条来自股票监控系统的 Webhook 测试消息 🚀"
         )
+
         if success:
+            self._last_webhook_test_time = current_time
             QMessageBox.information(self, "成功", "测试消息已发出，请检查企业微信通知")
         else:
             QMessageBox.critical(self, "失败", "发送失败，请检查 Webhook 地址是否正确")
@@ -972,7 +1124,13 @@ class NewSettingsDialog(QDialog):
             stocks = self.get_stocks_from_list(self.watch_list)
 
             # Map refresh text to int
-            map_text_to_val = {"1秒": 1, "2秒": 2, "5秒": 5, "10秒": 10, "30秒": 30}
+            map_text_to_val = {
+                "1 秒": 1,
+                "2 秒": 2,
+                "5 秒": 5,
+                "10 秒": 10,
+                "30 秒": 30,
+            }
             ri_text = self.refresh_combo.currentText()
             ri = map_text_to_val.get(ri_text, 5)
 
@@ -993,11 +1151,26 @@ class NewSettingsDialog(QDialog):
             settings["wecom_corpsecret"] = self.wecom_corpsecret_input.text().strip()
             settings["wecom_agentid"] = self.wecom_agentid_input.text().strip()
 
+            from stock_monitor.utils.logger import app_logger
+
+            # [P1 FIX] 保存前先验证配置有效性
+            if not self.viewModel.validate_settings(settings):
+                return False  # 验证失败，阻止保存
+
             self.viewModel.save_settings(settings)
+            return True
         except Exception as e:
             from stock_monitor.utils.logger import app_logger
 
             app_logger.error(f"Failed to save config via VM: {e}")
+            return False
+
+    def _on_ok_clicked(self):
+        """点击确定按钮的处理函数"""
+        # 1. 保存配置
+        if self._save_config_via_vm():
+            # 2. 保存成功，执行接受操作
+            self.accept()
 
     def get_stocks_from_list(self, watch_list):
         """
@@ -1084,38 +1257,53 @@ class NewSettingsDialog(QDialog):
 
     def add_stock_from_search(self, item=None):
         """将股票添加到自选股列表"""
-        # 兼容两种调用方式：
-        # 1. 来自双击搜索结果 (item 是 QListWidgetItem)
-        # 2. 来自添加按钮点击 (item 是 bool 或 None)
+        # [P2 FIX] 重构为多个小方法，降低复杂度
+        item = self._resolve_item(item)
+        if item is None:
+            return
+
+        code, name = self._parse_item_text(item)
+        if not code:
+            return
+
+        clean_code = self._format_and_validate_code(code)
+        if not clean_code:
+            return
+
+        if self._is_duplicate(clean_code):
+            self._show_duplicate_warning(name)
+            return
+
+        self._add_to_watchlist(clean_code, name)
+
+    def _resolve_item(self, item):
+        """解析 item 参数，确保是有效的 QListWidgetItem"""
         if item is None or isinstance(item, bool):
-            # 从当前选中的项获取
             selected_items = self.search_results.selectedItems()
             if not selected_items:
-                return
-            item = selected_items[0]
+                return None
+            return selected_items[0]
+        return item
 
-        # 解析 item 文本以提取股票代码和名称
+    def _parse_item_text(self, item):
+        """从 item 文本中解析股票代码和名称"""
         try:
             item_text = item.text()
         except AttributeError:
-            # 如果 item 没有 text() 方法，直接返回
             from stock_monitor.utils.logger import app_logger
 
             app_logger.warning(f"无效的 item 类型：{type(item)}")
-            return
+            return None, None
+
         import re
 
         match = re.search(r"\(([^)]+)\)", item_text)
         if match:
-            # 标准格式 "名称 (code)"
             code = match.group(1)
-            # 提取名称部分
             name = item_text.replace(f" ({code})", "").strip()
-            # 如果名称部分包含代码，再清理一次
             if name.endswith(code):
                 name = name[: -len(code)].strip()
         else:
-            # 非标准格式，尝试解析
             parts = item_text.split()
             if len(parts) >= 2:
                 code = parts[0]
@@ -1123,17 +1311,54 @@ class NewSettingsDialog(QDialog):
             else:
                 code = item_text
                 name = ""
+        return code, name
 
-        # 使用股票代码处理器来验证和格式化代码
+    def _format_and_validate_code(self, code):
+        """格式化并验证股票代码"""
         from stock_monitor.utils.stock_utils import StockCodeProcessor
 
         processor = StockCodeProcessor()
         clean_code = processor.format_stock_code(code)
-        if clean_code:
-            code = clean_code
+        return clean_code if clean_code else None
 
-        # 委托给信号处理器统一处理查重和插入
-        self._handle_stock_search_added(code, name)
+    def _is_duplicate(self, code):
+        """检查股票是否已在列表中"""
+        for i in range(self.watch_list.count()):
+            item = self.watch_list.item(i)
+            if item:
+                user_data = item.data(Qt.ItemDataRole.UserRole)
+                if user_data == code or f"({code})" in item.text():
+                    return True
+        return False
+
+    def _show_duplicate_warning(self, name):
+        """显示重复警告"""
+        from PyQt6 import QtWidgets
+
+        QtWidgets.QMessageBox.information(self, "提示", f"股票 {name} 已在自选股列表中")
+
+    def _add_to_watchlist(self, code, name):
+        """将股票添加到列表"""
+        from stock_monitor.utils.helpers import get_stock_emoji
+
+        emoji = get_stock_emoji(code, name)
+
+        display_text = f"{emoji} {name} ({code})"
+        if code.startswith("hk") and name:
+            if "-" in name:
+                name = name.split("-")[0].strip()
+            display_text = f"{emoji} {name} ({code})"
+        elif not name:
+            display_text = f"{emoji} {code}"
+
+        from PyQt6.QtWidgets import QListWidgetItem
+
+        new_item = QListWidgetItem(display_text)
+        new_item.setData(Qt.ItemDataRole.UserRole, code)
+        self.watch_list.addItem(new_item)
+
+        self.watch_list_manager.update_remove_button_state()
+        self.watch_list.clearSelection()
 
     def remove_selected_stocks(self):
         """删除选中的股票"""
@@ -1262,66 +1487,60 @@ class NewSettingsDialog(QDialog):
             shortcut.WorkingDirectory = os.path.dirname(target_path)
             shortcut.save()
         except ImportError:
-            # win32com不可用时的备选方案
-            try:
-                import shutil
+            # win32com 不可用时的备选方案
+            from stock_monitor.utils.logger import app_logger
 
-                if target_path.endswith(".py"):
-                    # 如果是Python脚本，创建批处理文件
-                    batch_content = f'@echo off\npython "{target_path}"\n'
-                    batch_path = shortcut_path.replace(".lnk", ".bat")
-                    with open(batch_path, "w") as f:
-                        f.write(batch_content)
-                else:
-                    # 如果是exe文件，直接复制
-                    shutil.copy2(target_path, shortcut_path.replace(".lnk", ".exe"))
-            except Exception as e:
-                from stock_monitor.utils.logger import app_logger
-
-                app_logger.error(f"创建快捷方式失败: {e}")
+            app_logger.warning(
+                "pywin32 未安装，无法创建开机启动快捷方式。"
+                "建议运行：pip install pywin32"
+            )
+            # 不再创建批处理文件作为备选，因为安全性和用户体验较差
+            return False
 
     def accept(self):
         """点击确定按钮时保存设置"""
-        # Save is handled by ViewModel via _save_config_via_vm connected to OK button
-        # self.save_config()
+        # [P1 FIX] 拆分为多个小方法，遵循单一职责原则
+        self._apply_auto_start()
+        self._cleanup_preview_state()
+        self._emit_config_changed_signal()
+        self._update_original_watch_list()
+        self.hide()
 
-        # 实际设置开机启动
+    def _apply_auto_start(self):
+        """应用开机启动设置"""
         auto_start_enabled = self.auto_start_checkbox.isChecked()
         self._set_auto_start(auto_start_enabled)
 
-        # 清除预览透明度并恢复主窗口的默认状态
+    def _cleanup_preview_state(self):
+        """清理预览状态并恢复主窗口默认状态"""
         if self.main_window:
             if hasattr(self.main_window, "_preview_transparency"):
                 delattr(self.main_window, "_preview_transparency")
             self.main_window.update()
-            # 恢复主窗口菜单的默认样式
             if hasattr(self.main_window, "menu") and self.main_window.menu:
                 self.main_window.menu.restore_default_style()
 
-        # 确保配置更改信号发出
+    def _emit_config_changed_signal(self):
+        """发送配置更改信号"""
         if self.main_window:
             stocks = self.get_stocks_from_list(self.watch_list)
             refresh_interval = self._map_refresh_text_to_value(
                 self.refresh_combo.currentText()
             )
-            # 添加调试信息
             from stock_monitor.utils.logger import app_logger
 
             app_logger.info(
-                f"发送配置更改信号: 股票列表={stocks}, 刷新间隔={refresh_interval}"
+                f"发送配置更改信号：股票列表={stocks}, 刷新间隔={refresh_interval}"
             )
             self.config_changed.emit(stocks, refresh_interval)
-            # 注意：刷新逻辑已在 on_config_changed 中处理，不再重复调用 refresh_now
 
-        # 更新原始列表为当前列表
+    def _update_original_watch_list(self):
+        """更新原始自选股列表"""
         self.original_watch_list = []
         for i in range(self.watch_list.count()):
             item = self.watch_list.item(i)
             if item:
                 self.original_watch_list.append(item.text())
-
-        # 使用hide()替代accept()避免可能的退出问题
-        self.hide()
 
     def reject(self):
         """点击取消按钮时恢复原始设置"""
@@ -1367,15 +1586,10 @@ class NewSettingsDialog(QDialog):
 
     def _map_refresh_value_to_text(self, value):
         """将刷新频率数值映射为文本"""
-        mapping = {1: "1秒", 2: "2秒", 5: "5秒", 10: "10秒", 30: "30秒"}
-        return mapping.get(value, "2秒")
+        mapping = {1: "1 秒", 2: "2 秒", 5: "5 秒", 10: "10 秒", 30: "30 秒"}
+        return mapping.get(value, "2 秒")
 
-    def on_display_setting_changed(self):
-        """当显示设置更改时，实时预览效果"""
-        # 注释掉实时预览功能，仅在用户点击确定后应用设置
-        # 发送信号通知主窗口更新样式
-        # self.settings_changed.emit()
-        pass
+    # [DEPRECATED] on_display_setting_changed 已移除，实时预览功能被禁用
 
     def on_font_setting_changed(self):
         """字体设置变化时的处理函数，用于实时预览（带防抖）"""
@@ -1469,41 +1683,51 @@ class NewSettingsDialog(QDialog):
     def closeEvent(self, event: QtGui.QCloseEvent):
         """设置对话框关闭事件 - 清理资源、断开信号连接"""
         try:
-            # 1. 停止定时器
+            # 1. 停止并清理定时器
             if hasattr(self, "_font_preview_timer") and self._font_preview_timer:
-                self._font_preview_timer.stop()
-                self._font_preview_timer.deleteLater()
+                try:
+                    self._font_preview_timer.stop()
+                    # 不立即调用 deleteLater()，避免后续访问已删除对象
+                    self._font_preview_timer = None
+                except Exception:
+                    pass  # 忽略定时器已删除的错误
 
-            # 2. 断开 ViewModel 信号
+            # 2. 断开 ViewModel 信号（只断开由本实例连接的）
             if hasattr(self, "viewModel"):
                 try:
-                    self.viewModel.search_results_updated.disconnect()
-                    self.viewModel.save_completed.disconnect()
-                    self.viewModel.error_occurred.disconnect()
+                    self.viewModel.search_results_updated.disconnect(
+                        self._on_search_results_updated
+                    )
+                    self.viewModel.save_completed.disconnect(self.accept)
+                    self.viewModel.error_occurred.disconnect(self._on_vm_error)
                 except Exception:
                     pass  # 忽略信号未连接的错误
 
-            # 3. 断开 UI 组件信号
+            # 3. 断开 UI 组件信号（只断开关键信号，避免重复断开）
+            # 注意：Qt 的 disconnect 在信号未连接时会抛出异常，因此需要 try-except
+            # 但我们应该只断开确实由我们连接的信号
             try:
-                self.search_input.textChanged.disconnect()
-                self.search_input.returnPressed.disconnect()
-                self.search_results.itemDoubleClicked.disconnect()
-                self.search_results.itemSelectionChanged.disconnect()
-                self.remove_button.clicked.disconnect()
-                self.move_up_button.clicked.disconnect()
-                self.move_down_button.clicked.disconnect()
-                self.watch_list.itemSelectionChanged.disconnect()
-                self.add_button.clicked.disconnect()
-                self.ok_button.clicked.disconnect()
-                self.cancel_button.clicked.disconnect()
-                self.check_update_button.clicked.disconnect()
-                self.test_push_button.clicked.disconnect()
-                self.test_app_button.clicked.disconnect()
-                self.btn_manual_report.clicked.disconnect()
-                self.push_mode_combo.currentIndexChanged.disconnect()
-                self.font_size_slider.valueChanged.disconnect()
-                self.font_family_combo.currentTextChanged.disconnect()
-                self.transparency_slider.valueChanged.disconnect()
+                # 搜索相关
+                self.search_input.textChanged.disconnect(self.viewModel.search_stocks)
+                self.search_input.returnPressed.disconnect(
+                    self._on_search_return_pressed
+                )
+                self.search_results.itemDoubleClicked.disconnect(
+                    self.add_stock_from_search
+                )
+                # 按钮相关
+                self.ok_button.clicked.disconnect(self._save_config_via_vm)
+                self.cancel_button.clicked.disconnect(self.reject)
+                # 设置相关
+                self.font_size_slider.valueChanged.disconnect(
+                    self.on_font_setting_changed
+                )
+                self.font_family_combo.currentTextChanged.disconnect(
+                    self.on_font_setting_changed
+                )
+                self.transparency_slider.valueChanged.disconnect(
+                    self.on_transparency_changed
+                )
             except Exception:
                 pass  # 忽略信号未连接的错误
 

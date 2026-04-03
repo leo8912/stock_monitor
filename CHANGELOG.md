@@ -1,5 +1,13 @@
 # 更新日志 (CHANGELOG)
 
+## v3.2.0 (2026-04-03)
+- **[UI] 设置界面布局优化**：自选股管理标签页采用左右对称布局（50%:50%），视觉更加平衡美观。
+- **[UI] 列表居中显示**：右侧自选股列表改为垂直列表形式，股票名称在每行中居中对齐，提升阅读体验。
+- **[FIX] 修复导入错误**：修正设置对话框中缺失的 `QListView` 和 `QtCore` 导入，确保程序稳定运行。
+- **[FIX] 日期数据清洗**：优化 mootdx 日期数据验证逻辑，提前过滤无效日期（如 "2634-73-54"），提升数据质量。
+- **[FIX] 企业微信 URL 验证**：兼容两种 Webhook URL 格式（`/cgi-bin/` 和 `/cgi/`），修复设置保存失败问题。
+- **[FIX] 对话框关闭事件**：优化 QTimer 清理逻辑，避免 C++ 对象删除后访问导致的运行时错误。
+
 ## v3.1.1 (2026-04-02)
 - **[MARKET] 修复竞价统计异常**：在全市场统计中增加了对价格为 0 的异常过滤，修复了集合竞价期间因无成交导致的“全盘大跌”误报问题。
 - **[UI] 优化指标切换时机**：根据用户反馈，将“竞价强度”展示时间从 09:35 提前至 09:30，实现开盘即刻切换至实时大单追踪。
@@ -102,14 +110,14 @@
   - 在 `mootdx_client` property 中添加返回值验证，检测 `Quotes.factory()` 是否返回 None
   - 添加完整的错误堆栈跟踪（使用 `traceback.format_exc()`）
   - 记录详细的初始化步骤日志
-  
+
 ### 🔧 优化 (Optimization)
 - **sync_mootdx_names 详细调试模式**：
   - 当 client 为 None 时输出 parent 引用信息
   - 记录每次 API 调用的参数和返回值
   - 添加 DataFrame 行数统计，便于定位数据问题
   - 异常处理中包含完整堆栈信息
-  
+
 ### 📝 说明
 - 这些调试信息将帮助定位 GitHub Actions 打包环境中 mootdx 初始化失败的根本原因
 - 下一次构建将输出详细的错误堆栈，便于快速解决问题
@@ -122,7 +130,7 @@
   - 修复 spec 文件中 hooks 目录路径检测逻辑，支持多种运行环境
   - 添加构建前目录结构检查，确保 hooks 目录存在
   - 增强调试日志输出，便于排查打包问题
-  
+
 ### 🔧 优化 (Optimization)
 - **spec 文件路径检测改进**：
   - 使用多路径尝试策略（GitHub Actions 环境 → 开发环境 → 打包后环境）
@@ -138,7 +146,7 @@
   - 所有日志调用都通过安全函数进行，防止日志系统关闭导致异常
   - 安全函数内部使用 `try-except Exception` 捕获所有异常
   - 当日志系统不可用时自动降级到 `print` 输出
-  
+
 ### 🔧 优化 (Optimization)
 - **日志系统容错架构改进**：
   - 将日志异常处理逻辑抽取为独立函数，避免重复代码
@@ -152,7 +160,7 @@
   - 将 `app_logger.error()` 的异常捕获从 `(ValueError, AttributeError)` 改为 `Exception`
   - `'NoneType' object has no attribute 'write'` 实际是 `TypeError`，不是 ValueError 或 AttributeError
   - 确保所有日志系统异常都能被正确捕获并降级到 `print` 输出
-  
+
 ### 🔧 优化 (Optimization)
 - **日志容错增强**：
   - 统一使用 `except Exception` 捕获所有可能的日志异常
@@ -165,7 +173,7 @@
   - 在 `_save_name_cache()` 中添加日志系统关闭时的兜底输出
   - `sync_mootdx_names()` 增加数据有效性检查，避免保存空数据
   - 改进错误消息格式，便于调试
-  
+
 ### 🔧 优化 (Optimization)
 - **日志系统容错**：
   - 所有调用 `app_logger` 的地方都添加了 `try-except` 保护
@@ -180,7 +188,7 @@
   - 添加 `_get_mootdx_client()` 方法，通过父对象触发延迟初始化
   - `sync_mootdx_names()` 现在使用 `_get_mootdx_client()` 获取 client，确保能触发初始化
   - 移除了 `resolve_missing()` 中的 client 检查，让 `sync_mootdx_names()` 内部处理
-  
+
 ### 🔧 优化 (Optimization)
 - **名称同步机制改进**：
   - `MootdxNameRegistry` 不再依赖构造函数传入的 client，而是通过 parent 引用动态获取
@@ -196,7 +204,7 @@
   - 现在 mootdx client 只在第一次访问时才创建，避免了打包环境中的路径问题
   - 初始化成功后自动更新 `name_registry` 的 client 引用
   - 添加了详细的日志记录初始化的成功/失败状态
-  
+
 ### 🔧 优化 (Optimization)
 - **打包环境兼容性提升**：
   - 延迟初始化策略使得打包后的 exe 和源代码运行行为一致
@@ -212,12 +220,12 @@
   - 为 `akshare` 和 `mootdx` 创建了专用的 PyInstaller hook 文件
   - 在 GitHub Actions 中强制重新安装 `akshare` 和 `mootdx` 确保路径可访问
   - 添加了完整的依赖收集逻辑，包括所有子模块和数据文件
-  
+
 - **mootdx 名称同步容错增强**：
   - 当 `mootdx_client` 未初始化时优雅降级，不再抛出 `'NoneType' object has no attribute 'write'` 错误
   - 添加了日志系统关闭时的兜底输出机制（使用 `print`）
   - `resolve_missing` 方法增加 client 可用性检查
-  
+
 - **设置对话框参数类型错误修复**：
   - 修复了点击添加按钮时 `'bool' object has no attribute 'text'` 错误
   - `add_stock_from_search` 方法现在兼容两种调用方式：
@@ -230,7 +238,7 @@
   - 添加了 mootdx 安装验证步骤
   - 调整了构建前清理步骤
   - 增强了日志输出便于调试
-  
+
 ### 📝 文档 (Documentation)
 - 创建了详细的 `PACKAGING_FIX.md` 文档，记录了所有 PyInstaller 打包问题的分析和解决方案
 
@@ -269,15 +277,15 @@
 ## [v3.0.0] - 2026-03-31
 
 ### 🚀 核心功能 (Core Features) - 量化监控 2.0
-- **全链路量化引擎 (`QuantEngine`)**: 
+- **全链路量化引擎 (`QuantEngine`)**:
   - 集成 `pandas_ta` 提供工业级技术指标计算（MACD、OBV 等）
   - 引入 **Alpha 超额倍率** 计算，精准衡量个股相对大盘的超额表现
   - 智能化财务审计系统，自动识别并标记高风险财报特征
-- **深度行情接入 (`mootdx`)**: 
+- **深度行情接入 (`mootdx`)**:
   - 切换至底层行情接口，支持更快速的批量数据更新及全市场股票名称自动同步
-- **回测统计系统 (`BacktestEngine`)**: 
+- **回测统计系统 (`BacktestEngine`)**:
   - 基于历史数据的综合评分胜率统计，为每一份预警提供实战概率参考
-- **智能预警与推送 (`QuantWorker`)**: 
+- **智能预警与推送 (`QuantWorker`)**:
   - 增强型触发逻辑：支持“高分主动捕捉”，即便无形态也会因综合评分达标而触发
   - 信息密度升级：推送内容整合了实时轨迹、Alpha 收益、财务风险及历史胜率
 
@@ -572,7 +580,7 @@
 ## [v2.6.6] - 2025-12-24
 
 ### 🐛 修复 (Fixes)
-- **更新脚本逻辑终极修复**: 
+- **更新脚本逻辑终极修复**:
   - 修复了 BAT 脚本中 `xcopy` 目标路径的引号转义 bug (`\"`)，解决了文件复制成功但脚本误判失败的问题。
   - 移除了 `xcopy` 的静默模式，现在可以看到具体的文件复制错误信息。
   - 增加了详细的目录路径打印，便于排查路径错误。

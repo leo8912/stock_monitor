@@ -1,3 +1,5 @@
+import re
+
 from PyQt6 import QtCore
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
@@ -40,6 +42,7 @@ class SettingsViewModel(QObject):
     save_completed = pyqtSignal()
     search_results_updated = pyqtSignal(list)
     error_occurred = pyqtSignal(str)
+    validation_failed = pyqtSignal(str, str)  # (field_name, error_message)
 
     def __init__(self):
         super().__init__()
@@ -52,6 +55,76 @@ class SettingsViewModel(QObject):
         self._search_timer.setSingleShot(True)
         self._search_timer.timeout.connect(self._perform_search)
         self._last_query = ""
+
+    def validate_settings(self, settings: dict) -> bool:
+        """验证配置有效性（保存前执行）
+
+        Returns:
+            bool: 验证是否通过
+        """
+        # 1. 验证 Webhook URL 格式
+        webhook = settings.get("wecom_webhook", "")
+        if webhook and not self._is_valid_webhook_url(webhook):
+            self.validation_failed.emit(
+                "wecom_webhook",
+                "Webhook URL 格式无效，应为 https://qyapi.weixin.qq.com/cgi/webhook/send?key=xxx",
+            )
+            return False
+
+        # 2. 验证企业微信配置完整性
+        push_mode = settings.get("push_mode", "")
+        if push_mode == "app":
+            corpid = settings.get("wecom_corpid", "")
+            corpsecret = settings.get("wecom_corpsecret", "")
+            agentid = settings.get("wecom_agentid", "")
+
+            if not corpid:
+                self.validation_failed.emit("wecom_corpid", "企业 ID 不能为空")
+                return False
+            if not corpsecret:
+                self.validation_failed.emit("wecom_corpsecret", "企业应用密钥不能为空")
+                return False
+            if not agentid:
+                self.validation_failed.emit("wecom_agentid", "应用 AgentId 不能为空")
+                return False
+
+        # 3. 验证刷新间隔范围
+        refresh_interval = settings.get("refresh_interval", 5)
+        if not isinstance(refresh_interval, int) or refresh_interval < 1:
+            self.validation_failed.emit(
+                "refresh_interval", "刷新间隔必须为大于 0 的整数"
+            )
+            return False
+        if refresh_interval > 3600:
+            self.validation_failed.emit("refresh_interval", "刷新间隔不能超过 3600 秒")
+            return False
+
+        # 4. 验证字体大小范围
+        font_size = settings.get("font_size", 13)
+        if not isinstance(font_size, int) or font_size < 8:
+            self.validation_failed.emit("font_size", "字体大小不能小于 8")
+            return False
+        if font_size > 72:
+            self.validation_failed.emit("font_size", "字体大小不能超过 72")
+            return False
+
+        # 5. 验证透明度范围
+        transparency = settings.get("transparency", 80)
+        if not isinstance(transparency, (int, float)) or transparency < 0:
+            self.validation_failed.emit("transparency", "透明度必须为 0-100 之间的数值")
+            return False
+        if transparency > 100:
+            self.validation_failed.emit("transparency", "透明度不能超过 100")
+            return False
+
+        return True
+
+    def _is_valid_webhook_url(self, url: str) -> bool:
+        """验证 Webhook URL 格式"""
+        # 企业微信 Webhook URL 正则表达式
+        # 支持两种格式：/cgi-bin/webhook/send 和 /cgi/webhook/send
+        pattern = r"^https://qyapi\.weixin\.qq\.com/cgi(?:-bin)?/webhook/send\?key=[A-Za-z0-9-]+$"
+        return bool(re.match(pattern, url))
 
     def load_settings(self):
         """Load all settings"""
@@ -77,6 +150,11 @@ class SettingsViewModel(QObject):
     def save_settings(self, settings: dict):
         """Save settings"""
         try:
+            # [UX] 保存前执行验证
+            if not self.validate_settings(settings):
+                # 验证失败时 validation_failed 信号已触发，直接返回
+                return False
+
             for key, value in settings.items():
                 self._config_manager.set(key, value)
 
