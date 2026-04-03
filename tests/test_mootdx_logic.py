@@ -23,12 +23,16 @@ class TestMootdxIntegration(unittest.TestCase):
     def test_fetch_large_orders_flow(self):
         """
         测试主动大单买卖量统计
-        数据集：vol >= 100 的条目：
-          - 索引 1: vol=100, buyorsell=0 (主动买入)
-          - 索引 2: vol=200, buyorsell=1 (主动卖出)
-          - 索引 4: vol=500, buyorsell=0 (主动买入)
-        buy_vol = 100 + 500 = 600
-        sell_vol = 200
+        阈值：500,000 元
+        数据集：
+          - vol=50: amount=50*10.0*100=50,000 (< 阈值，过滤)
+          - vol=100: amount=100*10.1*100=101,000 (< 阈值，过滤)
+          - vol=200: amount=200*10.2*100=204,000 (< 阈值，过滤)
+          - vol=80: amount=80*10.1*100=80,800 (< 阈值，过滤)
+          - vol=500: amount=500*10.3*100=515,000 (>= 阈值，统计) 主动买入
+        buy_vol = 515,000
+        sell_vol = 0
+        net = 515,000
         """
         data = {
             "time": ["09:30", "09:31", "09:32", "09:33", "09:34"],  # 添加时间列
@@ -43,9 +47,9 @@ class TestMootdxIntegration(unittest.TestCase):
         self.quant_engine._large_order_cache.clear()
 
         buy_vol, sell_vol, net = self.quant_engine.fetch_large_orders_flow("sh600519")
-        self.assertEqual(buy_vol, 600.0)  # 100 + 500
-        self.assertEqual(sell_vol, 200.0)  # 200
-        self.assertEqual(net, 400.0)  # 600 - 200
+        self.assertEqual(buy_vol, 515000.0)  # 只有 vol=500 的被统计
+        self.assertEqual(sell_vol, 0.0)  # vol=200 的金额不足阈值
+        self.assertEqual(net, 515000.0)
 
     def test_fetch_large_orders_flow_empty(self):
         """测试空数据时返回 (0.0, 0.0) 元组"""
