@@ -27,8 +27,10 @@ binaries = []
 
 # 基础隐藏导入
 hiddenimports = [
-    'pypinyin.style', 
+    'pypinyin.style',
     'curl_cffi',
+    'stock_monitor.core.cache',
+    'stock_monitor.core.cache.cache_warmer',
     # pandas 相关
     'pandas',
     'pandas.api.extensions',
@@ -197,6 +199,15 @@ try:
     datas += collect_data_files('zhconv', include_py_files=True)
 except Exception as e:
     print(f"Warning: Issue collecting zhconv: {str(e)}")
+
+# 强制收集 stock_monitor.core 的所有子模块，解决动态重构和重新导出导致的 ModuleNotFoundError
+try:
+    print("Collecting stock_monitor.core submodules...")
+    core_subs = collect_submodules('stock_monitor.core')
+    hiddenimports += core_subs
+    print(f"Collected {len(core_subs)} core submodules")
+except Exception as e:
+    print(f"Warning: Could not collect stock_monitor.core submodules: {e}")
 
 # 强制包含 akshare 和 pandas_ta（物理注入双重保险）
 try:

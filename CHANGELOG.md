@@ -1,5 +1,10 @@
 # 更新日志 (CHANGELOG)
 
+## [v3.2.2] - 2026-04-07
+
+### 🐛 修复 (Fixes)
+- **[BUILD/CI] PyInstaller 模块打包修复**：修复由于 `stock_monitor.core` 重构导致的隐式动态包（如 `cache`, `engine` 等）无法被 PyInstaller 打包分析器识别的问题，通过在 `stock_monitor.spec` 中显式添加 `collect_submodules` 指令强制执行隐藏依赖收集，彻底解决量化监控模块在打包冻结环境下的 `ModuleNotFoundError: No module named 'stock_monitor.core.cache'` 严重报错。
+
 ## v3.2.1 (2026-04-07)
 - **[UI] 自选股拖拽修复**：修复了设置界面中将 `QListView.Movement` 设为 `Static` 导致自选股列表无法拖拽的缺陷，更改为 `Snap` 模式以兼容网格对齐和拖拽排序。
 - **[FIX] 依赖路径纠偏**：修复了 `StockManager` 等核心模块因相对导入路径不规范引发的运行时定位异常。
