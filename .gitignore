@@ -34,7 +34,9 @@ test_*.db
 
 # 忽略运行时数据目录
 .stock_monitor/
-cache/
+/cache/
+# 确保源码中的 cache 包不被忽略
+!stock_monitor/core/cache/
 
 # 忽略 IDE 相关文件
 .vscode/

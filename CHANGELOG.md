@@ -1,5 +1,10 @@
 # 更新日志 (CHANGELOG)
 
+## [v3.2.4] - 2026-04-07
+
+### 🐛 修复 (Fixes)
+- **[BUILD/CI] .gitignore 规则导致源码包缺失**：修复 `.gitignore` 中第37行 `cache/` 全局规则误匹配 `stock_monitor/core/cache/` 源码子包的严重问题。该规则最初在 v3.0.2 中为排除运行时缓存目录而添加，但由于使用了不带路径前缀的通配模式，导致后续重构创建的 `core/cache/` Python 包（含 `CacheWarmer`、`PerformanceMonitor` 等核心类）从未被推送至 GitHub 远端仓库。修正为 `/cache/`（仅匹配根目录）并添加 `!stock_monitor/core/cache/` 显式排除规则，从根源上消除了 PyInstaller 打包后 `ModuleNotFoundError: No module named 'stock_monitor.core.cache'` 的反复发作。
+
 ## [v3.2.3] - 2026-04-07
 
 ### 🐛 修复 (Fixes)
