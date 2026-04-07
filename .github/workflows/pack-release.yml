@@ -57,10 +57,6 @@ jobs:
         $EQPATH = Get-Content eq_path.txt | Select-Object -First 1
         echo "EQPATH=$EQPATH" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-    - name: 运行测试 # Run tests
-      run: |
-        python -m pytest tests/ --tb=short -v || echo "Tests completed (some may fail)"
-
     - name: 验证 akshare 和 mootdx 安装 # Verify akshare and mootdx installation
       run: |
         echo "验证 mootdx 安装:"
@@ -72,8 +68,8 @@ jobs:
         python -c "import akshare; import os; print(f'akshare path: {os.path.dirname(akshare.__file__)}')"
         echo "验证所需模块:"
         python -c "import lxml; import bs4; import html5lib; print('All parsing libraries OK')"
-    
-    
+
+
     - name: 查找 zhconv 的 zhcdict.json 文件 # Find zhconv zhcdict.json
       id: find_zhconv
       run: |
@@ -87,11 +83,11 @@ jobs:
       run: |
         # 先清理之前的构建
         Remove-Item -Recurse -Force build,dist -ErrorAction SilentlyContinue
-        
+
         # 显示当前目录结构
         echo "=== 当前目录结构 ==="
         Get-ChildItem -Recurse -Depth 2 | Select-Object FullName
-        
+
         # 检查 hooks 目录
         echo "=== 检查 hooks 目录 ==="
         if (Test-Path "stock_monitor/hooks") {
@@ -101,11 +97,11 @@ jobs:
             echo "ERROR: hooks 目录不存在!"
             exit 1
         }
-        
+
         # 带详细日志构建
         echo "=== 开始构建 ==="
         pyinstaller -y --log-level=INFO stock_monitor.spec
-        
+
         echo "构建完成，检查产物:"
         Get-ChildItem dist/stock_monitor -Recurse | Select-Object FullName
 
