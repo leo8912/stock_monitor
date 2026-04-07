@@ -23,6 +23,41 @@ WEBHOOK_TIMEOUT_SECONDS = 5  # Webhook 超时时间 (秒)
 TOKEN_EXPIRY_BUFFER_SECONDS = 60  # Token 提前过期缓冲 (秒)
 
 
+# ====== 重试装饰器 ======
+def retry(max_attempts: int = 3, backoff_factor: float = 0.5):
+    """
+    指数退避重试装饰器
+    - max_attempts: 最大重试次数 (默认3次)
+    - backoff_factor: 退避因子 (默认0.5秒)
+      重试延迟: 0.5s, 1s, 2s, 4s...
+    """
+
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            for attempt in range(max_attempts):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    if attempt < max_attempts - 1:
+                        wait_time = backoff_factor * (2**attempt)
+                        app_logger.warning(
+                            f"[重试] {func.__name__} 失败 (第{attempt+1}次), "
+                            f"{wait_time:.1f}秒后重试... 原因: {e}"
+                        )
+                        time.sleep(wait_time)
+                    else:
+                        app_logger.error(
+                            f"[重试失败] {func.__name__} 已达最大重试次数({max_attempts}次), "
+                            f"最后异常: {e}"
+                        )
+            # 全部重试失败，返回False
+            return False
+
+        return wrapper
+
+    return decorator
+
+
 class NotifierService:
     # 简单的应用 Token 缓存: {corp_id: (token, expiry_ts)}
     _token_cache = {}
@@ -56,10 +91,14 @@ class NotifierService:
         return None
 
     @classmethod
+    @retry(max_attempts=3, backoff_factor=0.5)
     def send_wecom_app_message(
         cls, config: dict, title: str, description: str, url: str = ""
     ) -> bool:
-        """发送企业微信应用文本卡片消息"""
+        """发送企业微信应用文本卡片消息
+
+        支持自动重试机制（指数退避）
+        """
         corp_id = config.get("wecom_corpid")
         secret = config.get("wecom_corpsecret")
         agent_id = config.get("wecom_agentid")
@@ -98,11 +137,15 @@ class NotifierService:
                 return False
         except Exception as e:
             app_logger.error(f"企微应用消息推送异常: {e}")
-            return False
+            raise  # 让retry装饰器捕获异常
 
     @staticmethod
+    @retry(max_attempts=3, backoff_factor=0.5)
     def send_wecom_webhook_text(webhook_url: str, content: str) -> bool:
-        """向企业微信机器人的 Webhook 发送纯文本消息"""
+        """向企业微信机器人的 Webhook 发送纯文本消息
+
+        支持自动重试机制（指数退避）
+        """
         if not webhook_url or not webhook_url.startswith("https://"):
             app_logger.warning(f"无效的 Webhook URL: {webhook_url}")
             return False
@@ -118,9 +161,10 @@ class NotifierService:
 
         except (HTTPStatusError, APIResponseError, NetworkRequestError) as e:
             app_logger.error(f"Webhook 消息推送失败：{e}")
-            return False
-        except Exception:
-            return False
+            raise  # 让retry装饰器捕获异常
+        except Exception as e:
+            app_logger.error(f"Webhook 消息推送异常: {e}")
+            raise  # 让retry装饰器捕获异常
 
     @classmethod
     def dispatch_alert(

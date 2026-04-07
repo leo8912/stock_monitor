@@ -495,8 +495,8 @@ class NewSettingsDialog(QDialog):
         self.watch_list.setWrapping(False)  # 不自动换行
         self.watch_list.setViewMode(QListView.ViewMode.ListMode)  # 列表模式，一行一个
         self.watch_list.setMovement(
-            QListView.Movement.Static
-        )  # 静态模式（拖拽由 DragDropMode 控制）
+            QListView.Movement.Snap
+        )  # Snap 模式：项对齐网格且允许拖拽排序
         self.watch_list.setStyleSheet(
             "QListWidget::item { text-align: center; }"
         )  # 文本居中对齐

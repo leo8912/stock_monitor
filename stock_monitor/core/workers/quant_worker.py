@@ -2,15 +2,23 @@
 量化雷达扫描后台线程（并行优化版）
 """
 
+import json
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 
 from PyQt6 import QtCore
 
+from stock_monitor.utils.logger import app_logger
+
 from ...services.notifier import NotifierService
-from ...utils.logger import app_logger
 from ..backtest_engine import BacktestEngine
+from ..cache_warmer import CacheWarmer, PerformanceMonitor
 from ..quant_engine import QuantEngine
+
+# 缓存文件路径 (与应用日志同目录)
+CACHE_DIR = Path(__file__).parent.parent.parent / "cache"
+SIGNAL_CACHE_FILE = CACHE_DIR / "signal_cache.json"
 
 
 class QuantWorker(QtCore.QThread):
@@ -32,18 +40,83 @@ class QuantWorker(QtCore.QThread):
         self._alert_cache: set[str] = set()
         self._signal_manager: dict[str, float] = {}
         self._active_signals: dict[str, dict[str, dict]] = {}
-        self._last_signal_time = {}
+        self._last_signal_time = {}  # 从磁盘加载持久化数据
         self._signals_history = {}
         self._daily_report_times = ["11:35", "15:05"]
         self._last_report_type = ""
         self._last_report_date = ""
 
+        # 性能优化：缓存预热器和性能监测
+        self.cache_warmer = CacheWarmer(self.engine, self.fetcher, max_workers=4)
+        self.perf_monitor = PerformanceMonitor()
+        self._cache_warmed = False
+
         from ...data.stock.stock_db import StockDatabase
 
         self.db = StockDatabase()
 
+        # 启动时加载持久化的信号缓存
+        self._load_signal_cache()
+
     def set_symbols(self, symbols: list[str]):
         self.symbols = symbols
+
+    def _load_signal_cache(self):
+        """从磁盘加载信号缓存（防止重复告警）"""
+        try:
+            if not SIGNAL_CACHE_FILE.exists():
+                app_logger.debug("信号缓存文件不存在，初始化新缓存")
+                self._last_signal_time = {}
+                return
+
+            with open(SIGNAL_CACHE_FILE, encoding="utf-8") as f:
+                data = json.load(f)
+
+            # 恢复_last_signal_time dict，需要转换key回tuple格式
+            self._last_signal_time = {}
+            for key_str, timestamp in data.items():
+                # key_str 格式: "symbol::signal_name"
+                parts = key_str.split("::")
+                if len(parts) == 2:
+                    symbol, sig_name = parts
+                    self._last_signal_time[(symbol, sig_name)] = timestamp
+
+            # 清理过期缓存项（超过24小时）
+            now = time.time()
+            expired_keys = [
+                k
+                for k, v in self._last_signal_time.items()
+                if now - v > 86400  # 24小时
+            ]
+            for key in expired_keys:
+                del self._last_signal_time[key]
+
+            app_logger.info(
+                f"加载信号缓存成功：{len(self._last_signal_time)} 个活跃信号，"
+                f"已清理 {len(expired_keys)} 个过期项"
+            )
+        except Exception as e:
+            app_logger.error(f"加载信号缓存失败：{e}，使用空缓存")
+            self._last_signal_time = {}
+
+    def _save_signal_cache(self):
+        """保存信号缓存到磁盘"""
+        try:
+            # 确保缓存目录存在
+            CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+            # 转换dict，将tuple key转换为字符串格式
+            data = {}
+            for (symbol, sig_name), timestamp in self._last_signal_time.items():
+                key_str = f"{symbol}::{sig_name}"
+                data[key_str] = timestamp
+
+            with open(SIGNAL_CACHE_FILE, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+
+            app_logger.debug(f"信号缓存已保存：{len(data)} 个信号")
+        except Exception as e:
+            app_logger.error(f"保存信号缓存失败：{e}")
 
     def start_worker(self):
         if not self._is_running:
@@ -52,6 +125,8 @@ class QuantWorker(QtCore.QThread):
 
     def stop_worker(self):
         self._is_running = False
+        # 在停止前保存信号缓存，防止重启后出现重复告警
+        self._save_signal_cache()
         self.wait(1000)
 
     def check_and_trigger_reports(self):
@@ -246,12 +321,32 @@ class QuantWorker(QtCore.QThread):
         from ...core.market_manager import MarketManager
 
         app_logger.info("量化雷达侦测线程已启动...")
+        save_cache_counter = 0  # 每10次循环保存一次缓存
+
+        # 首次运行时进行缓存预热
+        cache_warming_attempted = False
+
         while self._is_running:
             try:
                 self.config = load_config()
                 if not self.config.get("quant_enabled", False):
                     self.msleep(5000)
                     continue
+
+                # 在第一次进入市场开盘时进行缓存预热
+                if MarketManager.is_market_open() and not cache_warming_attempted:
+                    cache_warming_attempted = True
+                    if self.symbols and not self._cache_warmed:
+                        app_logger.info("触发缓存预热...")
+                        try:
+                            self.cache_warmer.warm_cache_for_symbols(
+                                self.symbols,
+                                categories=[1, 2, 3, 9],  # 15m, 30m, 60m, daily
+                                offset=100,
+                            )
+                            self._cache_warmed = True
+                        except Exception as e:
+                            app_logger.error(f"缓存预热失败：{e}")
 
                 if MarketManager.is_market_open():
                     current_interval = self.config.get(
@@ -261,200 +356,29 @@ class QuantWorker(QtCore.QThread):
                         self.symbols
                         and time.time() - self.last_scan_time >= current_interval
                     ):
+                        scan_start = time.time()
                         self.perform_scan_parallel()
+                        scan_duration = time.time() - scan_start
+                        self.perf_monitor.record_scan_time(scan_duration)
                         self.last_scan_time = time.time()
 
                 self.check_and_trigger_reports()
+
+                # 定期保存信号缓存（每10秒保存一次，避免过于频繁的磁盘I/O）
+                save_cache_counter += 1
+                if save_cache_counter >= 10:
+                    self._save_signal_cache()
+                    save_cache_counter = 0
 
             except Exception as e:
                 app_logger.error(f"QuantWorker 运行异常：{e}")
             self.msleep(1000)
 
     def perform_scan(self):
-        """对全部自选股执行批量量化扫描"""
-        self.scan_started.emit()
-        app_logger.info(f"开始量化扫描，监控标的: {len(self.symbols)} 只")
-        now = time.time()
-        current_time_str = time.strftime("%H:%M")
-
-        for symbol in self.symbols:
-            if not self._is_running:
-                break
-            try:
-                stock_name = self.fetcher.name_registry.get_name(symbol)
-
-                # 解析代码和市场，用于兼容低层 API (如回测)
-                code, market, _ = self.engine._parse_symbol(symbol)
-
-                # 获取最新价格和K线
-                p_info = self.engine.get_latest_price_info(symbol)
-                daily_df = self.engine.fetch_bars(symbol, category=9, offset=100)
-
-                # 1. 执行形态扫描
-                signals = self.engine.scan_all_timeframes(symbol)
-
-                # 2. 策略检测 2: OBV 累积 (成交量异常)
-                obv_signals = self.engine.detect_obv_accumulation(symbol, daily_df)
-                for sig in obv_signals:
-                    signals.append(
-                        {
-                            "name": f"OBV低位累积({sig['level']})",
-                            "tf": "Daily",
-                            "time": sig["time"],
-                        }
-                    )
-
-                # 3. 核心可靠性检查 (新增强化逻辑)
-                # 检查日线级别 MACD 底背离的历史可靠性
-                daily_stats = self.backtester.get_strategy_stats(
-                    code, market, category=9
-                )
-
-                # 新增：共振模型检查 (Confluence)
-                is_confluence = False
-                rsrs_z, _ = self.engine.calculate_rsrs(daily_df)
-                has_macd_div = any(s["name"] == "MACD底背离" for s in signals)
-                if has_macd_div and rsrs_z > 0.7:
-                    is_confluence = True
-
-                is_priority = False
-                wr_label = ""
-                if daily_stats and daily_stats.get("total_signals", 0) >= 3:
-                    if daily_stats["win_rate"] >= 0.8:
-                        is_priority = True
-                        wr_label = (
-                            f" [💎 历史胜率 {daily_stats['win_rate'] * 100:.0f}%]"
-                        )
-
-                # 4. 计算最终分数并判定触发阈值
-                score, audit = self.engine.calculate_intensity_score_with_symbol(
-                    symbol, daily_df, signals
-                )
-
-                # 弹性阈值：高可靠品种只需 2 分，普通品种 3 分
-                threshold = 2 if is_priority else 3
-
-                # 共振信号强制触发
-                if is_confluence:
-                    signals.append(
-                        {
-                            "name": "⚡策略共振(底背离+RSRS)",
-                            "tf": "Daily",
-                            "time": current_time_str,
-                        }
-                    )
-                    score = max(score, 4)  # 强制高分
-
-                if not signals and score >= threshold:
-                    signals.append(
-                        {
-                            "name": "多因子综合走强" + wr_label,
-                            "tf": "Daily",
-                            "time": current_time_str,
-                        }
-                    )
-
-                # 5. 如果检测到量化信号，执行推送
-                if signals:
-                    for sig in signals:
-                        tf_cn = self.engine.TF_CHINESE_MAP.get(
-                            sig.get("tf", "Daily"), sig.get("tf", "Daily")
-                        )
-                        sig_name = f"{tf_cn}:{sig['name']}"
-                        last_t = self._last_signal_time.get((symbol, sig_name), 0)
-
-                        # 核心逻辑：如果是新信号或是 30 分钟冷却期后，执行推送
-                        if now - last_t > 1800:
-                            # 记录到当日历史流水
-                            if symbol not in self._signals_history:
-                                self._signals_history[symbol] = []
-
-                            self._signals_history[symbol].append(
-                                {
-                                    "time": current_time_str,
-                                    "name": sig_name,
-                                    "score": score,
-                                }
-                            )
-
-                            # 记录最后触发时间，用于冷却期控制
-                            self._last_signal_time[(symbol, sig_name)] = now
-
-                            # 构造增强版推送信息
-                            # 获取超额收益 (Alpha)
-                            benchmark_pct = self.engine.get_market_relative_strength()
-                            alpha = p_info.get("pct", 0.0) - benchmark_pct
-
-                            # 获取历史评分胜率 (对应该评分区间的表现)
-                            # 如果 score=4 则查 >=3 的表现
-                            min_backtest_score = 3 if score >= 3 else 1
-                            stats = self.backtester.get_score_stats(
-                                symbol, market, min_score=min_backtest_score
-                            )
-                            stats_text = ""
-                            if stats and stats.get("total_signals", 0) >= 3:
-                                wr = stats["win_rate"] * 100
-                                ap = stats["avg_profit"] * 100
-                                icon = "✅" if wr >= 60 else ("⚡" if wr >= 45 else "⚠️")
-                                stats_text = f'\n<div class="gray">历史复盘: {icon} 同类评分胜率 {wr:.0f}% (均益 {ap:+.1f}%)</div>'
-
-                            # 获取更直观的标签
-                            fin_label = audit.get("label", "[财务稳健]")
-                            fin_reasons = " / ".join(audit.get("reasons", []))
-                            fin_info = (
-                                f"{fin_label} {fin_reasons if fin_reasons else ''}"
-                            )
-
-                            # 高可靠品种标题增强
-                            display_name = (
-                                f"🔥 {stock_name}" if is_priority else stock_name
-                            )
-                            if is_confluence:
-                                display_name = f"💎【策略共振】{stock_name}"
-
-                            display_sig = " [精细关注]" if is_priority else ""
-                            if is_confluence:
-                                display_sig = " [超高可靠/重仓机会]"
-
-                            # 组装展示内容
-                            cycle_info = (
-                                f'<div class="gray">信号详情: {sig_name}</div>\n'
-                            )
-                            cycle_info += f'<div class="highlight">🚀 超值强度: {score:+}分 (Alpha: {alpha:+.2f}%)</div>\n'
-                            cycle_info += (
-                                f'<div class="orange">🏥 财务审计: {fin_info}</div>\n'
-                            )
-                            cycle_info += stats_text
-
-                            history_list = self._signals_history.get(symbol, [])
-                            if history_list:
-                                cycle_info += "\n今日轨迹: " + " → ".join(
-                                    [f"{h['time']} {h['name']}" for h in history_list]
-                                )
-
-                            from stock_monitor.services.notifier import NotifierService
-
-                            NotifierService.dispatch_alert(
-                                config=self.config,
-                                symbol=symbol,
-                                stock_name=display_name,
-                                signals=[
-                                    f"{sig_name}{display_sig} [评分: {score:+}分]",
-                                    fin_info,
-                                ],
-                                cycle_info=cycle_info,
-                                price_info=p_info,
-                            )
-                            app_logger.info(
-                                f"发送量化异动即时推送: {stock_name} ({sig_name})"
-                            )
-
-            except Exception as e:
-                app_logger.error(f"标的 {symbol} 扫描异常: {e}")
-            time.sleep(0.3)
-
-        self.scan_finished.emit()
-        app_logger.info("本轮量化扫描完毕")
+        """对全部自选股执行批量量化扫描（串行兼容入口，委托并行版本执行）"""
+        # 直接委托并行版本，线程池大小由配置决定
+        # 保留此方法以兼容外部调用
+        self.perform_scan_parallel()
 
     def perform_scan_parallel(self):
         """并行量化扫描（ThreadPoolExecutor 优化版）"""
@@ -465,9 +389,28 @@ class QuantWorker(QtCore.QThread):
             self.scan_finished.emit()
             return
 
-        # 使用线程池并行处理，每只股票独立线程
-        max_workers = min(10, len(self.symbols))  # 最多 10 个并发线程
+        # 从配置读取线程池大小限制，带安全边界
+        # 默认：min(CPU核心数, 符号数, 16)
+        # 范围：[2, 32]
+        max_workers = self.config.get("quant_max_workers", None)
+        if max_workers is None:
+            # 自动推荐：CPU核心数默认为4-8，但不超过16
+            import os
+
+            cpu_count = os.cpu_count() or 4
+            max_workers = min(cpu_count, 16)
+        else:
+            max_workers = int(max_workers)
+
+        # 应用安全边界
+        max_workers = min(max(max_workers, 2), 32)  # 至少2线程，最多32线程
+        max_workers = min(max_workers, len(self.symbols))  # 不超过符号数
+
         results = []
+
+        app_logger.info(
+            f"使用 {max_workers} 个线程扫描（配置: {self.config.get('quant_max_workers', '自动')}, 建议: CPU核心优化）"
+        )
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # 提交所有扫描任务
@@ -476,7 +419,7 @@ class QuantWorker(QtCore.QThread):
                 for symbol in self.symbols
             }
 
-            # 收集结果
+            # 收集结果，带超时保护（避免长期阻塞）
             for future in as_completed(futures, timeout=120):
                 symbol = futures[future]
                 try:

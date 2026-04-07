@@ -257,5 +257,115 @@ class TestNotifierServiceEdgeCases(unittest.TestCase):
         )
 
 
+class TestNotifierServiceRetry(unittest.TestCase):
+    """NotifierService 重试机制测试"""
+
+    def setUp(self):
+        """测试前准备"""
+        NotifierService._token_cache.clear()
+        self.test_config = {
+            "wecom_corpid": "test_corp_id",
+            "wecom_corpsecret": "test_secret",
+            "wecom_agentid": 1000001,
+            "wecom_webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test",
+        }
+
+    def tearDown(self):
+        """测试后清理"""
+        NotifierService._token_cache.clear()
+
+    @patch("stock_monitor.services.notifier.requests.post")
+    @patch("stock_monitor.services.notifier.NotifierService._get_app_token")
+    def test_send_wecom_app_message_retry_on_network_error(
+        self, mock_get_token, mock_post
+    ):
+        """测试网络错误自动重试"""
+        # 模拟 Token 成功
+        mock_get_token.return_value = "test_token"
+
+        # 模拟前两次失败，第三次成功
+        mock_response_success = MagicMock()
+        mock_response_success.json.return_value = {"errcode": 0, "errmsg": "ok"}
+
+        mock_post.side_effect = [
+            Exception("Connection timeout"),
+            Exception("Connection refused"),
+            mock_response_success,
+        ]
+
+        # 调用方法（应该自动重试）
+        result = NotifierService.send_wecom_app_message(
+            self.test_config, title="测试标题", description="测试描述"
+        )
+
+        # 验证最终成功
+        self.assertTrue(result)
+
+        # 验证调用了 3 次（初次 + 2 次重试）
+        self.assertEqual(mock_post.call_count, 3)
+
+    @patch("stock_monitor.services.notifier.requests.post")
+    @patch("stock_monitor.services.notifier.NotifierService._get_app_token")
+    def test_send_wecom_app_message_retry_exhausted(self, mock_get_token, mock_post):
+        """测试重试次数用尽后返回 False"""
+        # 模拟 Token 成功
+        mock_get_token.return_value = "test_token"
+
+        # 模拟始终失败
+        mock_post.side_effect = Exception("Persistent network error")
+
+        # 调用方法（应该重试 3 次后返回 False）
+        result = NotifierService.send_wecom_app_message(
+            self.test_config, title="测试标题", description="测试描述"
+        )
+
+        # 验证返回 False
+        self.assertFalse(result)
+
+        # 验证重试了 3 次（max_attempts=3）
+        self.assertEqual(mock_post.call_count, 3)
+
+    @patch("stock_monitor.services.notifier.SafeRequest.post")
+    def test_send_wecom_webhook_text_retry_on_error(self, mock_post):
+        """测试 Webhook 消息重试"""
+        # 模拟前两次失败，第三次成功
+        mock_response_success = MagicMock()
+        mock_response_success.json.return_value = {"errcode": 0}
+
+        mock_post.side_effect = [
+            Exception("Network timeout"),
+            Exception("Temporary failure"),
+            mock_response_success,
+        ]
+
+        # 调用方法（应该自动重试）
+        result = NotifierService.send_wecom_webhook_text(
+            "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test", "测试消息"
+        )
+
+        # 验证最终成功
+        self.assertTrue(result)
+
+        # 验证调用了 3 次
+        self.assertEqual(mock_post.call_count, 3)
+
+    @patch("stock_monitor.services.notifier.SafeRequest.post")
+    def test_send_wecom_webhook_text_retry_exhausted(self, mock_post):
+        """测试 Webhook 重试次数用尽"""
+        # 模拟始终失败
+        mock_post.side_effect = Exception("Persistent network error")
+
+        # 调用方法
+        result = NotifierService.send_wecom_webhook_text(
+            "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test", "测试消息"
+        )
+
+        # 验证返回 False
+        self.assertFalse(result)
+
+        # 验证重试了 3 次
+        self.assertEqual(mock_post.call_count, 3)
+
+
 if __name__ == "__main__":
     unittest.main()

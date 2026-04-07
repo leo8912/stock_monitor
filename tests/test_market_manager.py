@@ -112,7 +112,7 @@ class TestMarketManagerSingleton(unittest.TestCase):
 class TestMarketManagerIsMarketOpen(unittest.TestCase):
     """MarketManager.is_market_open() 静态方法测试"""
 
-    @patch("stock_monitor.core.market_manager.datetime")
+    @patch("stock_monitor.core.market.market_manager.datetime")
     def test_weekend_saturday(self, mock_datetime):
         """测试周六闭市"""
         mock_now = datetime.datetime(2024, 1, 6, 10, 0)  # Saturday
@@ -123,7 +123,7 @@ class TestMarketManagerIsMarketOpen(unittest.TestCase):
 
         self.assertFalse(result)
 
-    @patch("stock_monitor.core.market_manager.datetime")
+    @patch("stock_monitor.core.market.market_manager.datetime")
     def test_weekend_sunday(self, mock_datetime):
         """测试周日闭市"""
         mock_now = datetime.datetime(2024, 1, 7, 10, 0)  # Sunday
@@ -134,7 +134,7 @@ class TestMarketManagerIsMarketOpen(unittest.TestCase):
 
         self.assertFalse(result)
 
-    @patch("stock_monitor.core.market_manager.datetime")
+    @patch("stock_monitor.core.market.market_manager.datetime")
     def test_weekday_morning_trading(self, mock_datetime):
         """测试工作日交易时段（上午）"""
         mock_now = datetime.datetime(2024, 1, 8, 10, 0)  # Monday 10:00
@@ -145,7 +145,7 @@ class TestMarketManagerIsMarketOpen(unittest.TestCase):
 
         self.assertTrue(result)
 
-    @patch("stock_monitor.core.market_manager.datetime")
+    @patch("stock_monitor.core.market.market_manager.datetime")
     def test_weekday_afternoon_trading(self, mock_datetime):
         """测试工作日交易时段（下午）"""
         mock_now = datetime.datetime(2024, 1, 8, 14, 0)  # Monday 14:00
@@ -156,7 +156,7 @@ class TestMarketManagerIsMarketOpen(unittest.TestCase):
 
         self.assertTrue(result)
 
-    @patch("stock_monitor.core.market_manager.datetime")
+    @patch("stock_monitor.core.market.market_manager.datetime")
     def test_weekday_before_market(self, mock_datetime):
         """测试工作日开市前"""
         mock_now = datetime.datetime(2024, 1, 8, 9, 0)  # Monday 09:00
@@ -167,7 +167,7 @@ class TestMarketManagerIsMarketOpen(unittest.TestCase):
 
         self.assertFalse(result)
 
-    @patch("stock_monitor.core.market_manager.datetime")
+    @patch("stock_monitor.core.market.market_manager.datetime")
     def test_weekday_lunch_break(self, mock_datetime):
         """测试工作日午休时间"""
         mock_now = datetime.datetime(2024, 1, 8, 12, 0)  # Monday 12:00
@@ -178,7 +178,7 @@ class TestMarketManagerIsMarketOpen(unittest.TestCase):
 
         self.assertFalse(result)
 
-    @patch("stock_monitor.core.market_manager.datetime")
+    @patch("stock_monitor.core.market.market_manager.datetime")
     def test_weekday_after_market(self, mock_datetime):
         """测试工作日收市后"""
         mock_now = datetime.datetime(2024, 1, 8, 15, 30)  # Monday 15:30
@@ -189,7 +189,7 @@ class TestMarketManagerIsMarketOpen(unittest.TestCase):
 
         self.assertFalse(result)
 
-    @patch("stock_monitor.core.market_manager.datetime")
+    @patch("stock_monitor.core.market.market_manager.datetime")
     def test_market_open_start_time(self, mock_datetime):
         """测试开市时间点（9:15）"""
         mock_now = datetime.datetime(2024, 1, 8, 9, 15)  # Monday 09:15
@@ -200,7 +200,7 @@ class TestMarketManagerIsMarketOpen(unittest.TestCase):
 
         self.assertTrue(result)
 
-    @patch("stock_monitor.core.market_manager.datetime")
+    @patch("stock_monitor.core.market.market_manager.datetime")
     def test_market_morning_end_time(self, mock_datetime):
         """测试上午收市时间点（11:30）"""
         mock_now = datetime.datetime(2024, 1, 8, 11, 30)  # Monday 11:30
@@ -211,7 +211,7 @@ class TestMarketManagerIsMarketOpen(unittest.TestCase):
 
         self.assertTrue(result)
 
-    @patch("stock_monitor.core.market_manager.datetime")
+    @patch("stock_monitor.core.market.market_manager.datetime")
     def test_market_afternoon_start_time(self, mock_datetime):
         """测试下午开市时间点（13:00）"""
         mock_now = datetime.datetime(2024, 1, 8, 13, 0)  # Monday 13:00
@@ -222,7 +222,7 @@ class TestMarketManagerIsMarketOpen(unittest.TestCase):
 
         self.assertTrue(result)
 
-    @patch("stock_monitor.core.market_manager.datetime")
+    @patch("stock_monitor.core.market.market_manager.datetime")
     def test_market_afternoon_end_time(self, mock_datetime):
         """测试下午收市时间点（15:00）"""
         mock_now = datetime.datetime(2024, 1, 8, 15, 0)  # Monday 15:00
@@ -237,7 +237,7 @@ class TestMarketManagerIsMarketOpen(unittest.TestCase):
 class TestMarketManagerGetMarketStatus(unittest.TestCase):
     """MarketManager.get_market_status() 测试"""
 
-    @patch("stock_monitor.core.market_manager.MarketManager.is_market_open")
+    @patch("stock_monitor.core.market.market_manager.MarketManager.is_market_open")
     def test_get_market_status_open(self, mock_is_open):
         """测试获取开市状态"""
         mock_is_open.return_value = True
@@ -246,7 +246,7 @@ class TestMarketManagerGetMarketStatus(unittest.TestCase):
 
         self.assertEqual(status, "开市")
 
-    @patch("stock_monitor.core.market_manager.MarketManager.is_market_open")
+    @patch("stock_monitor.core.market.market_manager.MarketManager.is_market_open")
     def test_get_market_status_closed(self, mock_is_open):
         """测试获取闭市状态"""
         mock_is_open.return_value = False
@@ -259,7 +259,7 @@ class TestMarketManagerGetMarketStatus(unittest.TestCase):
 class TestMarketManagerGetRefreshInterval(unittest.TestCase):
     """MarketManager.get_refresh_interval() 测试"""
 
-    @patch("stock_monitor.core.market_manager.MarketManager.is_market_open")
+    @patch("stock_monitor.core.market.market_manager.MarketManager.is_market_open")
     def test_get_refresh_interval_during_market(self, mock_is_open):
         """测试开市期间的刷新间隔"""
         mock_is_open.return_value = True
@@ -268,7 +268,7 @@ class TestMarketManagerGetRefreshInterval(unittest.TestCase):
 
         self.assertEqual(interval, 5)
 
-    @patch("stock_monitor.core.market_manager.MarketManager.is_market_open")
+    @patch("stock_monitor.core.market.market_manager.MarketManager.is_market_open")
     def test_get_refresh_interval_after_market(self, mock_is_open):
         """测试闭市期间的刷新间隔"""
         mock_is_open.return_value = False

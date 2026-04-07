@@ -21,15 +21,22 @@ class TestQuantEngine(unittest.TestCase):
 
     def test_initialization(self):
         """测试初始化"""
+        from stock_monitor.core.quant_engine import LRUCacheWithTTL
+
         # 验证 LRU 缓存已初始化
         self.assertIsNotNone(self.engine._bars_lru_cache)
         self.assertEqual(self.engine._bars_lru_cache.max_size, 128)
         self.assertEqual(self.engine._bars_lru_cache.default_ttl, 60)
 
-        # 验证其他缓存已初始化
-        self.assertIsInstance(self.engine._avg_vol_cache, dict)
-        self.assertIsInstance(self.engine._auction_cache, dict)
-        self.assertIsInstance(self.engine._large_order_cache, dict)
+        # 验证其他缓存已初始化为LRU缓存
+        self.assertIsInstance(self.engine._avg_vol_cache, LRUCacheWithTTL)
+        self.assertIsInstance(self.engine._auction_cache, LRUCacheWithTTL)
+        self.assertIsInstance(self.engine._large_order_cache, LRUCacheWithTTL)
+
+        # 验证这些缓存有容量限制
+        self.assertEqual(self.engine._avg_vol_cache.max_size, 256)
+        self.assertEqual(self.engine._auction_cache.max_size, 256)
+        self.assertEqual(self.engine._large_order_cache.max_size, 512)
 
         # 验证财务过滤器已初始化
         self.assertIsNotNone(self.engine.fin_filter)
@@ -187,8 +194,9 @@ class TestQuantEngine(unittest.TestCase):
         vol1 = self.engine.get_five_day_avg_minute_volume("000001")
 
         # 验证缓存已创建
-        self.assertIn("000001", self.engine._avg_vol_cache)
-        self.assertEqual(self.engine._avg_vol_cache["000001"]["date"], today)
+        cached_value = self.engine._avg_vol_cache.get("000001")
+        self.assertIsNotNone(cached_value)
+        self.assertEqual(cached_value["date"], today)
 
         # 第二次调用应该使用缓存
         vol2 = self.engine.get_five_day_avg_minute_volume("000001")
@@ -224,13 +232,14 @@ class TestQuantEngineCacheMechanism(unittest.TestCase):
     def test_auction_cache_structure(self):
         """测试竞价缓存结构"""
         # 模拟竞价数据
-        auction_data = {"000001": {"price": 10.5, "vol": 10000, "intensity": 0.8}}
+        auction_data = {"price": 10.5, "vol": 10000, "intensity": 0.8}
 
-        self.engine._auction_cache.update(auction_data)
+        # 使用LRU缓存的set方法
+        self.engine._auction_cache.set("000001", auction_data)
 
         # 验证缓存结构
-        self.assertIn("000001", self.engine._auction_cache)
-        cached = self.engine._auction_cache["000001"]
+        cached = self.engine._auction_cache.get("000001")
+        self.assertIsNotNone(cached)
         self.assertIn("price", cached)
         self.assertIn("vol", cached)
         self.assertIn("intensity", cached)

@@ -10,10 +10,6 @@ class TestStockDataFetcher(unittest.TestCase):
         self.mock_init_use = patcher.start()
         self.addCleanup(patcher.stop)
 
-        sleep_patcher = patch("stock_monitor.core.stock_data_fetcher.time.sleep")
-        self.mock_sleep = sleep_patcher.start()
-        self.addCleanup(sleep_patcher.stop)
-
         self.fetcher = StockDataFetcher()
         # Ensure we start with a clean mock for each test if needed,
         # though individual tests set it again.

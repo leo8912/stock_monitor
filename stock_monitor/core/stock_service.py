@@ -5,7 +5,8 @@
 
 from typing import Any, Optional
 
-from ..utils.logger import app_logger
+from stock_monitor.utils.logger import app_logger
+
 from .stock_data_fetcher import StockDataFetcher
 from .stock_data_processor import StockDataProcessor
 from .stock_data_validator import StockDataValidator
@@ -85,7 +86,7 @@ class StockDataService:
         Returns:
             List[Tuple]: 格式化后的股票数据列表
         """
-        from ..data.market.quotation import get_name_by_code
+        from stock_monitor.data.market.quotation import get_name_by_code
 
         stocks = []
 
@@ -132,7 +133,7 @@ class StockDataService:
         Returns:
             Optional[Dict[str, Any]]: 全市场股票数据字典,失败返回None
         """
-        from ..utils.error_handler import safe_call
+        from stock_monitor.utils.error_handler import safe_call
 
         quotation_engine = safe_call(
             self._init_sina_if_needed,

@@ -112,7 +112,7 @@ class TestBacktestCacheMechanism(unittest.TestCase):
         self.mock_quant_engine = MagicMock(spec=QuantEngine)
         self.engine = BacktestEngine(self.mock_quant_engine)
 
-    @patch("stock_monitor.core.backtest_engine.datetime")
+    @patch("stock_monitor.core.engine.backtest_engine.datetime")
     def test_cache_hit_scenario(self, mock_datetime):
         """测试缓存命中场景"""
         # 模拟今天的日期

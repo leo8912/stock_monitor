@@ -11,7 +11,6 @@ DIContainer 单元测试模块
 """
 
 import unittest
-from unittest.mock import patch
 
 from stock_monitor.config.manager import ConfigManager
 from stock_monitor.core.container import DIContainer
@@ -195,8 +194,7 @@ class TestDIContainerDependencyResolution(unittest.TestCase):
 
         self.assertIs(instance.service1, dep1)
 
-    @patch("stock_monitor.core.container.app_logger")
-    def test_resolve_missing_required_dependency(self, mock_logger):
+    def test_resolve_missing_required_dependency(self):
         """测试缺少必需依赖时抛出异常"""
 
         class ServiceWithRequiredDep:

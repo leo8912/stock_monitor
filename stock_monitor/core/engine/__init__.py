@@ -1,0 +1,103 @@
+"""
+量化分析引擎层 (Quant Engine Layer)
+
+职责:
+- 技术指标计算 (MACD, RSRS, OBV, RSI, BB, Volume)
+- 形态识别和信号生成
+- 策略回测和验证
+- 金融数据验证
+
+模块包含:
+- quant_engine.py: 核心量化引擎
+- quant_constants.py: 指标参数和常量
+- financial_filter.py: 财务过滤器
+- backtest_engine.py: 回测引擎
+"""
+
+from .backtest_engine import BacktestEngine
+from .financial_filter import FinancialFilter
+from .quant_engine import QuantEngine
+from .quant_engine_constants import (
+    BBAND_LOOKBACK,
+    BBAND_STD_DEV,
+    BIG_ORDER_THRESHOLD_AMOUNT,
+    BIG_ORDER_THRESHOLD_LARGE_CAP,
+    BIG_ORDER_THRESHOLD_MID_CAP,
+    BIG_ORDER_THRESHOLD_SMALL_CAP,
+    CACHE_TTL_SECONDS,
+    EARLIEST_COMPENSATION_TIME,
+    MACD_FAST_PERIOD,
+    MACD_SIGNAL_PERIOD,
+    MACD_SLOW_PERIOD,
+    MACD_WINDOW,
+    MARKET_CAP_MID_LIMIT,
+    MARKET_CAP_SMALL_LIMIT,
+    MARKET_CLOSE_HOUR,
+    MARKET_OPEN_TIME,
+    MARKET_TRADE_START_TIME,
+    MAX_AVG_VOL_CACHE_AGE,
+    MAX_CACHE_SIZE,
+    MAX_PB_RATIO,
+    MAX_PE_RATIO,
+    MAX_TRANSACTION_FETCH,
+    MIN_DATA_POINTS_FOR_BB,
+    MIN_DATA_POINTS_FOR_MACD,
+    MIN_DATA_POINTS_FOR_RSI,
+    MIN_MARKET_CAP,
+    MIN_OPERATING_PROFIT_GROWTH,
+    MIN_ORDER_VOLUME_HANDS,
+    MIN_ROE,
+    RSI_PERIOD,
+    RSRS_THRESHOLD,
+    RSRS_WEAK_THRESHOLD,
+    SIGNAL_COOLDOWN_MINUTES,
+    SIGNAL_INTENSITY_HIGH,
+    SIGNAL_INTENSITY_MEDIUM,
+    TF_CHINESE_MAP,
+    TRANSACTION_BATCH_SIZE,
+    FreqMap,
+)
+
+__all__ = [
+    "QuantEngine",
+    "FinancialFilter",
+    "BacktestEngine",
+    "CACHE_TTL_SECONDS",
+    "MAX_CACHE_SIZE",
+    "MAX_AVG_VOL_CACHE_AGE",
+    "MIN_DATA_POINTS_FOR_BB",
+    "MIN_DATA_POINTS_FOR_MACD",
+    "MIN_DATA_POINTS_FOR_RSI",
+    "BIG_ORDER_THRESHOLD_AMOUNT",
+    "BIG_ORDER_THRESHOLD_SMALL_CAP",
+    "BIG_ORDER_THRESHOLD_MID_CAP",
+    "BIG_ORDER_THRESHOLD_LARGE_CAP",
+    "MARKET_CAP_SMALL_LIMIT",
+    "MARKET_CAP_MID_LIMIT",
+    "MAX_TRANSACTION_FETCH",
+    "TRANSACTION_BATCH_SIZE",
+    "MIN_ORDER_VOLUME_HANDS",
+    "MARKET_OPEN_TIME",
+    "MARKET_TRADE_START_TIME",
+    "EARLIEST_COMPENSATION_TIME",
+    "MARKET_CLOSE_HOUR",
+    "MACD_WINDOW",
+    "MACD_FAST_PERIOD",
+    "MACD_SLOW_PERIOD",
+    "MACD_SIGNAL_PERIOD",
+    "BBAND_LOOKBACK",
+    "BBAND_STD_DEV",
+    "RSI_PERIOD",
+    "RSRS_THRESHOLD",
+    "RSRS_WEAK_THRESHOLD",
+    "FreqMap",
+    "TF_CHINESE_MAP",
+    "SIGNAL_INTENSITY_HIGH",
+    "SIGNAL_INTENSITY_MEDIUM",
+    "SIGNAL_COOLDOWN_MINUTES",
+    "MIN_MARKET_CAP",
+    "MAX_PE_RATIO",
+    "MAX_PB_RATIO",
+    "MIN_ROE",
+    "MIN_OPERATING_PROFIT_GROWTH",
+]
