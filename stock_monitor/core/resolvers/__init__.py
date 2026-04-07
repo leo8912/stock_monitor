@@ -12,7 +12,7 @@
 - mootdx_registry.py: mootdx客户端注册
 """
 
-from .mootdx_registry import MootdxRegistry
+from .mootdx_registry import MootdxNameRegistry
 from .symbol_resolver import SymbolResolver, SymbolType
 
-__all__ = ["SymbolResolver", "SymbolType", "MootdxRegistry"]
+__all__ = ["SymbolResolver", "SymbolType", "MootdxNameRegistry"]

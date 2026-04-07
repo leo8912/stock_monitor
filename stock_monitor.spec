@@ -278,7 +278,7 @@ block_cipher = None
 
 a = Analysis(
     ['stock_monitor/main.py'],
-    pathex=[],
+    pathex=[os.path.abspath('.')],
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,

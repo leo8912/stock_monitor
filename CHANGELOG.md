@@ -1,5 +1,11 @@
 # 更新日志 (CHANGELOG)
 
+## [v3.2.3] - 2026-04-07
+
+### 🐛 修复 (Fixes)
+- **[BUILD/CI] PyInstaller 分析器根路径修正**：彻底排除了 PyInstaller 默认相对路径导致无法精准识别 `stock_monitor` 自定义命名空间的缺陷。通过在 `stock_monitor.spec` 中植入 `pathex=[os.path.abspath('.')]` 强制映射模块树，使依赖搜集图谱重归正确，彻底消灭了打包应用时遗漏核心包文件的 `ModuleNotFoundError`。
+- **[FIX] 模块重构引入错误修复**：修正了 `stock_monitor.core.resolvers.__init__.py` 中废弃的 `MootdxRegistry` 名称导出错误，更新为了正确的 `MootdxNameRegistry`，阻止了 `collect_submodules` 分析全链路时由于导入错误而发生的断崖式忽略。
+
 ## [v3.2.2] - 2026-04-07
 
 ### 🐛 修复 (Fixes)
