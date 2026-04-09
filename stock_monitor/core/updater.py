@@ -57,7 +57,7 @@ class AppUpdater:
             app_logger.info("执行更新后钩子...")
 
             # 检查并初始化数据库
-            from stock_monitor.core.container import container
+            from stock_monitor.core.config.container import container
             from stock_monitor.data.stock.stock_db import StockDatabase
 
             stock_db = container.get(StockDatabase)

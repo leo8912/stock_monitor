@@ -4,7 +4,7 @@ from PyQt6 import QtCore
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
 from stock_monitor.config.manager import ConfigManager
-from stock_monitor.core.container import container
+from stock_monitor.core.config.container import container
 from stock_monitor.data.stock.stocks import load_stock_data
 from stock_monitor.utils.helpers import get_stock_emoji
 from stock_monitor.utils.logger import app_logger

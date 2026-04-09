@@ -2,29 +2,63 @@ import json
 import os
 import shutil
 import sys
+from pathlib import Path
 from typing import Any
 
 from ..utils.logger import app_logger
 
+APP_DIR_NAME = "stock_monitor"
+CONFIG_DIR_NAME = ".stock_monitor"
 
-# 配置文件路径 - 存在用户目录中，避免更新时丢失
-# 简化配置路径处理逻辑，统一使用.stock_monitor目录
+
+def _get_legacy_repo_config_dir() -> Path:
+    """返回旧版开发环境使用的仓库内配置目录。"""
+    package_root = Path(__file__).resolve().parent.parent
+    return package_root / CONFIG_DIR_NAME
+
+
+def _get_user_data_root() -> Path:
+    """返回当前用户的数据根目录。"""
+    if sys.platform == "win32":
+        base_dir = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
+        if base_dir:
+            return Path(base_dir)
+    return Path.home() / ".local" / "share"
+
+
+def _get_user_config_dir() -> Path:
+    """开发环境统一使用用户目录，避免污染仓库。"""
+    return _get_user_data_root() / APP_DIR_NAME
+
+
+def _migrate_legacy_repo_config_if_needed(target_dir: Path) -> None:
+    """首次切换到用户目录时，迁移旧仓库内的配置和缓存。"""
+    legacy_dir = _get_legacy_repo_config_dir()
+    if legacy_dir.resolve() == target_dir.resolve():
+        return
+
+    if not legacy_dir.exists() or target_dir.exists():
+        return
+
+    try:
+        target_dir.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(legacy_dir, target_dir)
+        app_logger.info(f"已迁移旧配置目录: {legacy_dir} -> {target_dir}")
+    except Exception as e:
+        app_logger.warning(f"迁移旧配置目录失败，将继续使用新目录: {e}")
+
+
 def get_config_dir():
-    """获取配置目录路径，区分开发环境和生产环境"""
-    # PyInstaller环境使用可执行文件所在目录，其他环境使用main.py所在目录
+    """获取配置目录路径，区分开发环境和生产环境。"""
     if hasattr(sys, "_MEIPASS"):
-        # PyInstaller打包环境 - 使用可执行文件所在目录
-        config_dir = os.path.join(os.path.dirname(sys.executable), ".stock_monitor")
+        config_dir = Path(os.path.dirname(sys.executable)) / CONFIG_DIR_NAME
     else:
-        # 普通环境 - 使用main.py所在目录
-        current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        config_dir = os.path.join(current_dir, ".stock_monitor")
+        config_dir = _get_user_config_dir()
+        _migrate_legacy_repo_config_if_needed(config_dir)
 
+    config_dir.mkdir(parents=True, exist_ok=True)
     app_logger.info(f"使用配置目录: {config_dir}")
-
-    # 确保配置目录存在
-    os.makedirs(config_dir, exist_ok=True)
-    return config_dir
+    return str(config_dir)
 
 
 CONFIG_DIR = get_config_dir()

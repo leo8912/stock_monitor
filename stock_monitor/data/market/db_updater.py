@@ -28,7 +28,7 @@ def get_stock_list() -> list[dict[str, str]]:
         List[Dict[str, str]]: 股票列表
     """
     try:
-        from stock_monitor.core.container import container
+        from stock_monitor.core.config.container import container
         from stock_monitor.data.stock.stock_db import StockDatabase
 
         stock_db = container.get(StockDatabase)
@@ -64,7 +64,7 @@ def preload_popular_stocks_data() -> None:
             "hk03690",  # 美团
         ]
 
-        from stock_monitor.core.stock_manager import stock_manager
+        from stock_monitor.core.market.stock_manager import stock_manager
 
         # 使用stock_manager获取数据，这会自动触发缓存
         stock_manager.get_stock_list_data(popular_stocks)

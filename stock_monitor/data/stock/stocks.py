@@ -18,7 +18,7 @@ def load_stock_data() -> list[dict[str, Any]]:
         List[Dict[str, Any]]: 股票数据列表，每个元素包含 'code' 和 'name' 字段
     """
     # 从SQLite数据库加载股票数据
-    from stock_monitor.core.container import container
+    from stock_monitor.core.config.container import container
     from stock_monitor.data.stock.stock_db import StockDatabase
 
     stock_db = container.get(StockDatabase)

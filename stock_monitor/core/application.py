@@ -12,8 +12,8 @@ from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import QMessageBox
 
 from stock_monitor.config.manager import ConfigManager
-from stock_monitor.core.container import container
-from stock_monitor.core.startup import (
+from stock_monitor.core.config.container import container
+from stock_monitor.core.config.startup import (
     apply_pending_updates,
     check_update_status,
     setup_auto_start,

@@ -75,7 +75,7 @@ def setup_auto_start():
     """
     try:
         from stock_monitor.config.manager import ConfigManager
-        from stock_monitor.core.container import container
+        from stock_monitor.core.config.container import container
 
         # 通过 DI 容器获取 ConfigManager，保持架构一致性
         config_manager = container.get(ConfigManager)

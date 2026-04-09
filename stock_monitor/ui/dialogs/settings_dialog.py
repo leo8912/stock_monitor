@@ -248,6 +248,11 @@ class NewSettingsDialog(QDialog):
         self._font_preview_timer.timeout.connect(self._apply_font_preview)
         self._pending_font_family = None
         self._pending_font_size = None
+        self._original_display_settings = {
+            "font_family": "微软雅黑",
+            "font_size": 13,
+            "transparency": 80,
+        }
 
         # 连接信号槽
         self._connect_signals()
@@ -1097,6 +1102,11 @@ class NewSettingsDialog(QDialog):
             # Transparency
             tp = settings.get("transparency", 80)
             self.transparency_slider.setValue(int(tp))
+            self._original_display_settings = {
+                "font_family": ff,
+                "font_size": int(fs),
+                "transparency": int(tp),
+            }
 
             # Quant settings
             self.quant_enabled_checkbox.setChecked(settings.get("quant_enabled", False))
@@ -1169,6 +1179,11 @@ class NewSettingsDialog(QDialog):
         """点击确定按钮的处理函数"""
         # 1. 保存配置
         if self._save_config_via_vm():
+            self._sync_original_display_settings_from_controls()
+            self._clear_preview_state()
+            if self.main_window:
+                self.main_window.update_font_size()
+                self.main_window.update()
             # 2. 保存成功，执行接受操作
             self.accept()
 
@@ -1514,8 +1529,7 @@ class NewSettingsDialog(QDialog):
     def _cleanup_preview_state(self):
         """清理预览状态并恢复主窗口默认状态"""
         if self.main_window:
-            if hasattr(self.main_window, "_preview_transparency"):
-                delattr(self.main_window, "_preview_transparency")
+            self._clear_preview_state()
             self.main_window.update()
             if hasattr(self.main_window, "menu") and self.main_window.menu:
                 self.main_window.menu.restore_default_style()
@@ -1534,6 +1548,27 @@ class NewSettingsDialog(QDialog):
             )
             self.config_changed.emit(stocks, refresh_interval)
 
+    def _sync_original_display_settings_from_controls(self):
+        """记录当前已确认的显示设置，供取消回滚使用。"""
+        self._original_display_settings = {
+            "font_family": self.font_family_combo.currentText(),
+            "font_size": self.font_size_slider.value(),
+            "transparency": self.transparency_slider.value(),
+        }
+
+    def _clear_preview_state(self):
+        """清理主窗口预览态，不触及持久化配置。"""
+        if not self.main_window:
+            return
+
+        for attr_name in (
+            "_preview_font_family",
+            "_preview_font_size",
+            "_preview_transparency",
+        ):
+            if hasattr(self.main_window, attr_name):
+                delattr(self.main_window, attr_name)
+
     def _update_original_watch_list(self):
         """更新原始自选股列表"""
         self.original_watch_list = []
@@ -1551,10 +1586,15 @@ class NewSettingsDialog(QDialog):
 
         # 恢复主窗口的原始字体设置
         if self.main_window:
+            self.font_family_combo.setCurrentText(
+                self._original_display_settings["font_family"]
+            )
+            self.font_size_slider.setValue(self._original_display_settings["font_size"])
+            self.transparency_slider.setValue(
+                self._original_display_settings["transparency"]
+            )
+            self._clear_preview_state()
             self.main_window.update_font_size()
-            # 清除预览透明度并恢复主窗口的默认状态
-            if hasattr(self.main_window, "_preview_transparency"):
-                delattr(self.main_window, "_preview_transparency")
             self.main_window.update()
             # 恢复主窗口菜单的默认样式
             if hasattr(self.main_window, "menu") and self.main_window.menu:
@@ -1629,16 +1669,9 @@ class NewSettingsDialog(QDialog):
                 app_logger.warning(f"检测到非法的字体大小: {font_size}，自动修正为 13")
             app_logger.debug(f"预览字体设置: {font_family}, {font_size}px")
 
-            # 保存当前字体设置到配置（临时，用于预览）
-            from stock_monitor.config.manager import ConfigManager
-
-            config_manager = ConfigManager()
-
-            # 临时设置新字体
-            config_manager.set("font_family", font_family)
-            config_manager.set("font_size", font_size)
-
-            # 调用主窗口的字体更新方法（会更新所有组件）
+            # 预览只写入主窗口内存态，点击“确定”时再统一持久化
+            self.main_window._preview_font_family = font_family
+            self.main_window._preview_font_size = font_size
             self.main_window.update_font_size()
 
         except Exception as e:
@@ -1716,7 +1749,7 @@ class NewSettingsDialog(QDialog):
                     self.add_stock_from_search
                 )
                 # 按钮相关
-                self.ok_button.clicked.disconnect(self._save_config_via_vm)
+                self.ok_button.clicked.disconnect(self._on_ok_clicked)
                 self.cancel_button.clicked.disconnect(self.reject)
                 # 设置相关
                 self.font_size_slider.valueChanged.disconnect(
@@ -1749,8 +1782,7 @@ class NewSettingsDialog(QDialog):
         try:
             # 清除主窗口的预览透明度
             if self.main_window:
-                if hasattr(self.main_window, "_preview_transparency"):
-                    delattr(self.main_window, "_preview_transparency")
+                self._clear_preview_state()
                 if hasattr(self.main_window, "menu") and self.main_window.menu:
                     self.main_window.menu.restore_default_style()
         except Exception as e:

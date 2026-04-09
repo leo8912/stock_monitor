@@ -7,16 +7,34 @@
 
 import json
 import os
+import shutil
 import time
+from pathlib import Path
 from typing import Any, Optional
+
+from stock_monitor.config.manager import get_config_dir
 
 from .logger import app_logger
 
-# 缓存文件路径
-CACHE_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "cache"
+LEGACY_CACHE_DIR = (
+    Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) / "cache"
 )
-CACHE_FILE = os.path.join(CACHE_DIR, "last_session.json")
+CACHE_DIR = Path(get_config_dir()) / "cache"
+CACHE_FILE = CACHE_DIR / "last_session.json"
+
+
+def _migrate_legacy_session_cache_if_needed() -> None:
+    """将旧版仓库内会话缓存迁移到用户目录。"""
+    legacy_cache_file = LEGACY_CACHE_DIR / "last_session.json"
+    if CACHE_FILE.exists() or not legacy_cache_file.exists():
+        return
+
+    try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(legacy_cache_file, CACHE_FILE)
+        app_logger.info(f"已迁移旧会话缓存: {legacy_cache_file} -> {CACHE_FILE}")
+    except Exception as e:
+        app_logger.warning(f"迁移旧会话缓存失败，将继续使用新目录: {e}")
 
 
 def save_session_cache(data: dict[str, Any]) -> bool:
@@ -30,14 +48,15 @@ def save_session_cache(data: dict[str, Any]) -> bool:
         bool: 保存成功返回True，否则返回False
     """
     try:
+        _migrate_legacy_session_cache_if_needed()
         # 确保缓存目录存在
-        os.makedirs(CACHE_DIR, exist_ok=True)
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
         # 添加时间戳
         cache_data = {"timestamp": time.time(), "data": data}
 
         # 写入缓存文件: 使用原子写入机制
-        temp_file = f"{CACHE_FILE}.tmp"
+        temp_file = CACHE_FILE.with_suffix(f"{CACHE_FILE.suffix}.tmp")
         with open(temp_file, "w", encoding="utf-8") as f:
             json.dump(cache_data, f, ensure_ascii=False, indent=2)
             f.flush()
@@ -64,8 +83,9 @@ def load_session_cache(max_age: int = 86400) -> Optional[dict[str, Any]]:  # 默
         Optional[Dict[str, Any]]: 缓存数据，如果不存在、已过期或损坏则返回None
     """
     try:
+        _migrate_legacy_session_cache_if_needed()
         # 检查缓存文件是否存在
-        if not os.path.exists(CACHE_FILE):
+        if not CACHE_FILE.exists():
             app_logger.debug("会话缓存文件不存在")
             return None
 
@@ -79,7 +99,7 @@ def load_session_cache(max_age: int = 86400) -> Optional[dict[str, Any]]:  # 默
             app_logger.debug("会话缓存已过期")
             # 删除过期的缓存文件
             try:
-                os.remove(CACHE_FILE)
+                CACHE_FILE.unlink()
             except Exception:
                 pass
             return None
@@ -90,7 +110,7 @@ def load_session_cache(max_age: int = 86400) -> Optional[dict[str, Any]]:  # 默
         app_logger.error(f"加载会话缓存失败: {e}")
         # 删除损坏的缓存文件
         try:
-            os.remove(CACHE_FILE)
+            CACHE_FILE.unlink()
         except Exception:
             pass
         return None
@@ -104,8 +124,8 @@ def clear_session_cache() -> bool:
         bool: 清除成功返回True，否则返回False
     """
     try:
-        if os.path.exists(CACHE_FILE):
-            os.remove(CACHE_FILE)
+        if CACHE_FILE.exists():
+            CACHE_FILE.unlink()
             app_logger.info("会话缓存已清除")
         return True
     except Exception as e:

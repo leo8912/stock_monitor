@@ -5,14 +5,13 @@
 
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Optional
 
 from stock_monitor.utils.logger import app_logger
 
 
 class CacheWarmer:
     """缓存预热管理器
-    
+
     功能:
     1. 批量预加载K线数据
     2. 预计算常用指标缓存
@@ -21,7 +20,7 @@ class CacheWarmer:
 
     def __init__(self, quant_engine, stock_fetcher, max_workers: int = 4):
         """初始化缓存预热器
-        
+
         Args:
             quant_engine: QuantEngine 实例
             stock_fetcher: StockDataFetcher 实例
@@ -43,12 +42,12 @@ class CacheWarmer:
         self, symbols: list[str], categories: list[int] = None, offset: int = 100
     ) -> dict:
         """批量预热指定股票的缓存
-        
+
         Args:
             symbols: 股票代码列表
             categories: K线周期列表 (默认: [1, 2, 3, 9] = 15m/30m/60m/daily)
             offset: 获取K线数量 (默认: 100)
-            
+
         Returns:
             缓存预热统计信息
         """
@@ -103,12 +102,12 @@ class CacheWarmer:
         self, symbol: str, categories: list[int], offset: int
     ) -> bool:
         """单个股票的缓存预热（供线程池调用）
-        
+
         Args:
             symbol: 股票代码
             categories: K线周期列表
             offset: K线数量
-            
+
         Returns:
             是否预热成功
         """
@@ -120,9 +119,7 @@ class CacheWarmer:
                         symbol, category=category, offset=offset
                     )
                     if bars_df is None or bars_df.empty:
-                        app_logger.debug(
-                            f"符号 {symbol} 周期 {category} 数据为空"
-                        )
+                        app_logger.debug(f"符号 {symbol} 周期 {category} 数据为空")
                         continue
 
                     # 预计算常用指标缓存
@@ -150,7 +147,7 @@ class CacheWarmer:
 
     def clear_caches(self):
         """清空所有缓存
-        
+
         用于测试或手动重置缓存
         """
         try:
@@ -172,7 +169,7 @@ class CacheWarmer:
 
     def get_cache_status(self) -> dict:
         """获取当前缓存状态统计
-        
+
         Returns:
             缓存统计信息（命中率、大小等）
         """
@@ -206,7 +203,7 @@ class IndicatorComputationOptimizer:
 
     def __init__(self, quant_engine):
         """初始化指标计算优化器
-        
+
         Args:
             quant_engine: QuantEngine 实例
         """
@@ -218,12 +215,12 @@ class IndicatorComputationOptimizer:
         self, symbol: str, indicators: list[str], bars_df=None
     ) -> dict:
         """按需计算指定指标集合
-        
+
         Args:
             symbol: 股票代码
             indicators: 指标名称列表 (e.g., ['MACD', 'OBV', 'RSRS'])
             bars_df: 可选的K线数据（如果不提供会自动获取）
-            
+
         Returns:
             指标计算结果字典
         """
@@ -244,44 +241,52 @@ class IndicatorComputationOptimizer:
                     results["RSRS"] = {"z_score": z_score, "slope": slope}
 
                 elif indicator_name == "OBV":
-                    obv_signals = self.engine.detect_obv_accumulation(
-                        symbol, bars_df
-                    )
+                    obv_signals = self.engine.detect_obv_accumulation(symbol, bars_df)
                     results["OBV"] = obv_signals
 
                 elif indicator_name == "MACD":
-                    signals = [s for s in self.engine.scan_all_timeframes(symbol)
-                               if "MACD" in s.get("name", "")]
+                    signals = [
+                        s
+                        for s in self.engine.scan_all_timeframes(symbol)
+                        if "MACD" in s.get("name", "")
+                    ]
                     results["MACD"] = signals
 
                 elif indicator_name == "BB":
                     # Bollinger Bands检测
-                    signals = [s for s in self.engine.scan_all_timeframes(symbol)
-                               if "布林" in s.get("name", "")]
+                    signals = [
+                        s
+                        for s in self.engine.scan_all_timeframes(symbol)
+                        if "布林" in s.get("name", "")
+                    ]
                     results["BB"] = signals
 
                 elif indicator_name == "RSI":
                     # RSI检测
-                    signals = [s for s in self.engine.scan_all_timeframes(symbol)
-                               if "RSI" in s.get("name", "")]
+                    signals = [
+                        s
+                        for s in self.engine.scan_all_timeframes(symbol)
+                        if "RSI" in s.get("name", "")
+                    ]
                     results["RSI"] = signals
 
                 elif indicator_name == "VOLUME":
                     # 成交量脉冲
-                    signals = [s for s in self.engine.scan_all_timeframes(symbol)
-                               if "成交量" in s.get("name", "")]
+                    signals = [
+                        s
+                        for s in self.engine.scan_all_timeframes(symbol)
+                        if "成交量" in s.get("name", "")
+                    ]
                     results["VOLUME"] = signals
 
             except Exception as e:
-                app_logger.warning(
-                    f"计算 {symbol} 的 {indicator_name} 指标失败：{e}"
-                )
+                app_logger.warning(f"计算 {symbol} 的 {indicator_name} 指标失败：{e}")
 
         return results
 
     def invalidate_cache(self, symbol: str = None):
         """使缓存失效
-        
+
         Args:
             symbol: 如果指定，只清空该股票的缓存；否则清空所有缓存
         """
@@ -304,7 +309,7 @@ class PerformanceMonitor:
 
     def record_scan_time(self, duration_seconds: float):
         """记录一次扫描的耗时
-        
+
         Args:
             duration_seconds: 扫描耗时（秒）
         """
@@ -314,7 +319,7 @@ class PerformanceMonitor:
 
     def record_cache_hits(self, hit_rate: float):
         """记录缓存命中率
-        
+
         Args:
             hit_rate: 命中率 (0-100)
         """
@@ -324,7 +329,7 @@ class PerformanceMonitor:
 
     def get_statistics(self) -> dict:
         """获取性能统计信息
-        
+
         Returns:
             性能指标统计
         """
@@ -345,7 +350,7 @@ class PerformanceMonitor:
 
     def format_statistics(self) -> str:
         """格式化性能统计为可读的字符串
-        
+
         Returns:
             格式化的统计信息字符串
         """

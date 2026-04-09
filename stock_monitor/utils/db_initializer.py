@@ -3,7 +3,7 @@
 用于初始化 SQLite 数据库
 """
 
-from stock_monitor.core.container import container
+from stock_monitor.core.config.container import container
 from stock_monitor.data.stock.stock_db import StockDatabase
 from stock_monitor.utils.logger import app_logger
 

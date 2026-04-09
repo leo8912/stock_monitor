@@ -2,7 +2,7 @@ from typing import Any
 
 from PyQt6 import QtCore
 
-from stock_monitor.core.market_manager import MarketManager, market_manager
+from stock_monitor.core.market.market_manager import MarketManager, market_manager
 from stock_monitor.core.workers.base import BaseWorker
 from stock_monitor.utils.logger import app_logger
 
@@ -41,7 +41,7 @@ class MarketStatsWorker(BaseWorker):
                 #      continue
 
                 app_logger.info("[市场统计] 开始获取全市场数据...")
-                from stock_monitor.core.stock_manager import stock_manager
+                from stock_monitor.core.market.stock_manager import stock_manager
 
                 market_data = stock_manager.get_all_market_data()
 

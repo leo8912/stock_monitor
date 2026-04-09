@@ -304,6 +304,35 @@ class QuantEngine:
 
         return df
 
+    def _safe_fetch_chunk(
+        self,
+        api_method,
+        symbol: str,
+        market: int,
+        category: int,
+        start: int,
+        offset: int,
+    ) -> pd.DataFrame:
+        """
+        拉取单个 K 线分片，并在日期解析异常时返回空表而不是打断整次抓取。
+        """
+        try:
+            return api_method(
+                symbol=symbol,
+                market=market,
+                category=category,
+                start=start,
+                offset=offset,
+            )
+        except Exception as e:
+            error_msg = str(e)
+            if "datetime" in error_msg or "time data" in error_msg:
+                app_logger.warning(
+                    f"K线分片日期异常 [{symbol} cat={category} start={start} offset={offset}]: {error_msg}"
+                )
+                return pd.DataFrame()
+            raise
+
     def _do_fetch(
         self,
         symbol: str,
@@ -321,14 +350,20 @@ class QuantEngine:
         )
 
         if offset <= 800:
-            return api_method(
-                symbol=symbol, market=market, category=category, start=0, offset=offset
+            return self._safe_fetch_chunk(
+                api_method,
+                symbol=symbol,
+                market=market,
+                category=category,
+                start=0,
+                offset=offset,
             )
         else:
             chunks = []
             for start in range(0, offset, 800):
                 current_offset = min(800, offset - start)
-                chunk = api_method(
+                chunk = self._safe_fetch_chunk(
+                    api_method,
                     symbol=symbol,
                     market=market,
                     category=category,
@@ -942,7 +977,7 @@ class QuantEngine:
                     # 检查该 batch 中最老记录的时间（TDX 是倒序排列的）
                     oldest_time = df.iloc[-1]["time"]
 
-                    if oldest_time <= "09:15":
+                    if oldest_time <= "09:25":
                         app_logger.debug(
                             f"{code} 已回溯至开盘时刻或更早 ({oldest_time})，停止抓取。"
                         )
@@ -959,7 +994,6 @@ class QuantEngine:
                 if not dfs:
                     app_logger.debug(f"{code} 首次大单获取从 TDX 无结果，尝试补偿")
                     # 即使 TDX 没结果，也要尝试盘后补全逻辑
-                    self._fetch_ak_fallback_money_flow(pure_code, market, cache)
                     buy, sell = cache.get("buy_vol", 0.0), cache.get("sell_vol", 0.0)
                     return (buy, sell, buy - sell)
 
@@ -989,7 +1023,6 @@ class QuantEngine:
                 )
 
                 # [DONE] 统一通过私有方法处理补偿判定
-                self._fetch_ak_fallback_money_flow(pure_code, market, cache, full_df)
 
             else:
                 # ====== 增量拉取：只请求最新 batch，倒序匹配 ======
@@ -1024,7 +1057,7 @@ class QuantEngine:
 
                 if not new_added_df.empty:
                     new_added_df = new_added_df.copy()
-                    new_added_df = new_added_df[new_added_df["time"] >= "09:15"]
+                    new_added_df = new_added_df[new_added_df["time"] >= "09:25"]
                     new_added_df["amount"] = (
                         new_added_df["price"] * new_added_df["vol"] * 100
                     )

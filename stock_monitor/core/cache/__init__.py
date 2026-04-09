@@ -20,6 +20,6 @@ from .cache_warmer import (
 
 __all__ = [
     "CacheWarmer",
-    "IndicatorComputationOptimizer", 
+    "IndicatorComputationOptimizer",
     "PerformanceMonitor",
 ]

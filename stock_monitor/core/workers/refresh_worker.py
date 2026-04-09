@@ -2,7 +2,7 @@ import time
 
 from PyQt6 import QtCore
 
-from stock_monitor.core.market_manager import MarketManager
+from stock_monitor.core.market.market_manager import MarketManager
 from stock_monitor.utils.logger import app_logger
 from stock_monitor.utils.stock_utils import StockCodeProcessor
 
@@ -166,7 +166,7 @@ class RefreshWorker(QtCore.QThread):
                 # app_logger.debug(f"开始刷新 {len(local_user_stocks)} 只股票数据")
 
                 # 使用 stock_manager 获取和处理数据
-                from stock_monitor.core.stock_manager import stock_manager
+                from stock_monitor.core.market.stock_manager import stock_manager
 
                 stocks, failed_count = stock_manager.fetch_and_process_stocks(
                     local_user_stocks
@@ -350,7 +350,7 @@ class RefreshWorker(QtCore.QThread):
                 return
 
             try:
-                from stock_monitor.core.stock_manager import stock_manager
+                from stock_monitor.core.market.stock_manager import stock_manager
 
                 stocks, failed_count = stock_manager.fetch_and_process_stocks(
                     user_stocks

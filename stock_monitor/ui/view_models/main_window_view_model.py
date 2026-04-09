@@ -1,9 +1,9 @@
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from stock_monitor.config.manager import ConfigManager
-from stock_monitor.core.container import container
-from stock_monitor.core.stock_data_fetcher import StockDataFetcher
-from stock_monitor.core.stock_manager import StockManager
+from stock_monitor.core.config.container import container
+from stock_monitor.core.data.stock_data_fetcher import StockDataFetcher
+from stock_monitor.core.market.stock_manager import StockManager
 from stock_monitor.core.workers import MarketStatsWorker, QuantWorker, RefreshWorker
 from stock_monitor.data.stock.stock_db import StockDatabase
 from stock_monitor.data.stock.stocks import load_stock_data

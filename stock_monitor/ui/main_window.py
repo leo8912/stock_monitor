@@ -6,7 +6,7 @@ from PyQt6.QtCore import (
 )
 
 from stock_monitor.config.manager import ConfigManager
-from stock_monitor.core.container import container
+from stock_monitor.core.config.container import container
 from stock_monitor.models.stock_data import StockRowData
 
 # Workers are now managed by ViewModel
@@ -45,6 +45,7 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
     def __init__(self):
         QtWidgets.QWidget.__init__(self)
         DraggableWindowMixin.__init__(self)
+        self._topmost_restore_pending = False
         # 初始化依赖注入容器
         self._container = container
         # 初始化ViewModel
@@ -506,11 +507,16 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
     def update_font_size(self):
         """更新主窗口字体大小"""
         try:
-            # 从配置中读取字体大小和字体族
-            font_size = self._config_helper.get_int(ConfigKeys.FONT_SIZE, 13)
-            font_family = self._config_helper.get_str(
-                ConfigKeys.FONT_FAMILY, "微软雅黑"
-            )
+            # 优先使用内存预览值，避免取消时也落盘
+            font_family = getattr(self, "_preview_font_family", None)
+            font_size = getattr(self, "_preview_font_size", None)
+
+            if font_family is None:
+                font_family = self._config_helper.get_str(
+                    ConfigKeys.FONT_FAMILY, "微软雅黑"
+                )
+            if font_size is None:
+                font_size = self._config_helper.get_int(ConfigKeys.FONT_SIZE, 13)
 
             try:
                 font_size = int(font_size)
@@ -544,6 +550,45 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
             self.adjust_window_height()
         except Exception as e:
             app_logger.error(f"更新主窗口字体大小失败: {e}")
+
+    def _schedule_topmost_restore(self, delay_ms: int = 0):
+        """合并置顶修正请求，避免重复抢占。"""
+        if getattr(self, "_topmost_restore_pending", False):
+            return
+
+        self._topmost_restore_pending = True
+
+        def _restore():
+            self._topmost_restore_pending = False
+            self._ensure_topmost()
+
+        QtCore.QTimer.singleShot(delay_ms, _restore)
+
+    def showEvent(self, event: QtGui.QShowEvent):
+        super().showEvent(event)
+        self._schedule_topmost_restore()
+
+    def changeEvent(self, event: QtCore.QEvent):
+        super().changeEvent(event)
+        if (
+            event.type() == QtCore.QEvent.Type.ActivationChange
+            and not self.isActiveWindow()
+        ):
+            self._schedule_topmost_restore(100)
+
+    def moveEvent(self, event: QtGui.QMoveEvent):
+        super().moveEvent(event)
+        self._schedule_topmost_restore()
+
+    def resizeEvent(self, event: QtGui.QResizeEvent):
+        super().resizeEvent(event)
+        self._schedule_topmost_restore()
+
+    def nativeEvent(self, event_type, message):
+        handled, result = DraggableWindowMixin.nativeEvent(self, event_type, message)
+        if handled:
+            return handled, result
+        return False, 0
 
     def refresh_now(self, stocks_list=None, skip_placeholders=False):
         """

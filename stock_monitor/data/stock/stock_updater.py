@@ -55,7 +55,7 @@ def incremental_update_stock_database() -> bool:
 
         # 4. 批量插入/更新数据库
         app_logger.info(f"开始更新股票数据库，共 {len(stocks_data)} 条记录...")
-        from stock_monitor.core.container import container
+        from stock_monitor.core.config.container import container
 
         stock_db = container.get(StockDatabase)
         count = stock_db.insert_stocks(stocks_data)
