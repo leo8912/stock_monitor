@@ -73,3 +73,5 @@ stock_monitor/.stock_monitor/
 # OS files
 .DS_Store
 Thumbs.db
+activate_env.bat
+VENV_GUIDE.md
