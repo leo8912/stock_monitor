@@ -202,7 +202,8 @@ class NotifierService:
             f"**关键信号：**\n"
             f"{signal_rows}\n\n"
             f"---\n\n"
-            f"{cycle_info}"
+            f"{cycle_info}\n\n"
+            f"> 💡 提示：若链接无法点击或格式错乱，请使用【企业微信】查看以获得最佳体验。"
         )
 
         # 1. 尝试企业应用（使用 markdown 格式）

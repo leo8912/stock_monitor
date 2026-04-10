@@ -655,8 +655,16 @@ class QuantWorker(QtCore.QThread):
         is_confluence,
     ) -> dict:
         """
-        处理并发送信号（优化版：防抖动 + 信号合并）
+        处理并发送信号（优化版：防抖动 + 信号合并 + 强度门槛）
         """
+        # 【新增】强度门槛检查：防止低分信号频繁打扰
+        min_push_score = self.config.get("quant_min_push_score", 2)
+        if score < min_push_score and not is_confluence:
+            app_logger.debug(
+                f"[{symbol}] 评分 {score} 低于推送门槛 {min_push_score}，已拦截"
+            )
+            return None
+
         current_time_str = time.strftime("%H:%M")
         triggered = []
         merge_enabled = self.config.get("quant_alert_merge_enabled", True)
