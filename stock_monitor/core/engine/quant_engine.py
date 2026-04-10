@@ -574,8 +574,12 @@ class QuantEngine:
             app_logger.warning(f"指标计算异常: {e}")
             return {}
 
-    def get_market_relative_strength(self) -> float:
-        """获取个股相对于大盘的强弱。当前取上证指数 (sh000001) 同比涨跌幅。"""
+    def get_market_relative_strength(self) -> tuple[float, bool]:
+        """获取个股相对于大盘的强弱。当前取上证指数 (sh000001) 同比涨跌幅。
+
+        Returns:
+            tuple[float, bool]: (大盘涨跌幅, 数据是否有效)
+        """
         try:
             idx_symbol = "000001"
             idx_market = 1  # SH
@@ -585,16 +589,26 @@ class QuantEngine:
 
             now_ts = time.time()
             if "benchmark" in self._market_benchmark_cache:
-                cache_val, ts = self._market_benchmark_cache["benchmark"]
+                cache_val, ts, is_valid = self._market_benchmark_cache["benchmark"]
                 if now_ts - ts < 60:
-                    return cache_val
+                    return cache_val, is_valid
 
             idx_info = self.get_latest_price_info(idx_symbol, idx_market)
+
+            # 【优化】检查数据有效性，而非简单返回 0.0
+            if not idx_info or idx_info.get("pct") is None:
+                app_logger.warning(
+                    "[大盘数据] 上证指数数据获取失败，Alpha 计算将使用 0.0 作为基准"
+                )
+                self._market_benchmark_cache["benchmark"] = (0.0, now_ts, False)
+                return 0.0, False
+
             idx_pct = idx_info.get("pct", 0.0)
-            self._market_benchmark_cache["benchmark"] = (idx_pct, now_ts)
-            return idx_pct
-        except Exception:
-            return 0.0
+            self._market_benchmark_cache["benchmark"] = (idx_pct, now_ts, True)
+            return idx_pct, True
+        except Exception as e:
+            app_logger.error(f"[大盘数据] 获取上证指数异常：{e}")
+            return 0.0, False
 
     def calculate_intensity_score(
         self, df: pd.DataFrame, signals: list[dict], end_idx: int = None
@@ -745,13 +759,38 @@ class QuantEngine:
         """获取最新价格和涨跌幅（从日线K线计算）"""
         try:
             df = self.fetch_bars(symbol, market, category=9, offset=3)
-            if df.empty or len(df) < 2:
+
+            # 【优化】详细诊断日志
+            if df.empty:
+                app_logger.warning(
+                    f"[价格获取] {symbol} 返回空 DataFrame，可能原因：网络超时/数据源异常"
+                )
                 return {}
-            now = df.iloc[-1]["close"]
-            prev = df.iloc[-2]["close"]
-            pct = ((now - prev) / prev * 100) if prev != 0 else 0
+
+            if len(df) < 2:
+                app_logger.warning(
+                    f"[价格获取] {symbol} 数据不足（仅{len(df)}条），无法计算涨跌幅"
+                )
+                if not df.empty:
+                    # 至少返回当前价格
+                    return {"price": float(df.iloc[-1]["close"]), "pct": 0.0}
+                return {}
+
+            now = float(df.iloc[-1]["close"])
+            prev = float(df.iloc[-2]["close"])
+
+            if prev == 0:
+                app_logger.warning(f"[价格获取] {symbol} 前一日收盘价为 0，数据异常")
+                return {"price": now, "pct": 0.0}
+
+            pct = (now - prev) / prev * 100
             return {"price": now, "pct": pct}
-        except Exception:
+
+        except KeyError as e:
+            app_logger.error(f"[价格获取] {symbol} 数据列缺失：{e}")
+            return {}
+        except Exception as e:
+            app_logger.error(f"[价格获取] {symbol} 未知异常：{type(e).__name__}: {e}")
             return {}
 
     def _ensure_ta_active(self, df: pd.DataFrame):

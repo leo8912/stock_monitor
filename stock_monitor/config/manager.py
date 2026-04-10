@@ -187,6 +187,11 @@ class ConfigManager:
             "wecom_corpid": "",
             "wecom_corpsecret": "",
             "wecom_agentid": "",
+            # 量化推送防抖动配置
+            "quant_alert_cooldown": 1800,  # 基础冷却时间（秒），默认30分钟
+            "quant_alert_score_threshold": 2,  # 评分变化阈值，超过此值才重新推送
+            "quant_alert_merge_enabled": True,  # 是否启用信号合并推送
+            "quant_max_workers": None,  # 量化扫描线程数（None=自动）
         }
 
     def _ensure_required_keys_exist(self, config: dict[str, Any]) -> None:

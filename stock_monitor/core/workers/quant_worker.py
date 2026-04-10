@@ -46,6 +46,9 @@ class QuantWorker(QtCore.QThread):
         self._last_report_type = ""
         self._last_report_date = ""
 
+        # 【新增】信号状态追踪：{(symbol, sig_name): {"last_score": int, "last_push_ts": float}}
+        self._signal_states: dict[tuple[str, str], dict] = {}
+
         # 性能优化：缓存预热器和性能监测
         self.cache_warmer = CacheWarmer(self.engine, self.fetcher, max_workers=4)
         self.perf_monitor = PerformanceMonitor()
@@ -67,6 +70,7 @@ class QuantWorker(QtCore.QThread):
             if not SIGNAL_CACHE_FILE.exists():
                 app_logger.debug("信号缓存文件不存在，初始化新缓存")
                 self._last_signal_time = {}
+                self._signal_states = {}
                 return
 
             with open(SIGNAL_CACHE_FILE, encoding="utf-8") as f:
@@ -74,12 +78,23 @@ class QuantWorker(QtCore.QThread):
 
             # 恢复_last_signal_time dict，需要转换key回tuple格式
             self._last_signal_time = {}
-            for key_str, timestamp in data.items():
+            self._signal_states = {}
+
+            for key_str, value in data.items():
                 # key_str 格式: "symbol::signal_name"
                 parts = key_str.split("::")
                 if len(parts) == 2:
                     symbol, sig_name = parts
-                    self._last_signal_time[(symbol, sig_name)] = timestamp
+                    key_tuple = (symbol, sig_name)
+
+                    # 兼容旧格式（仅时间戳）和新格式（状态对象）
+                    if isinstance(value, dict):
+                        # 新格式：{"last_score": int, "last_push_ts": float}
+                        self._signal_states[key_tuple] = value
+                        self._last_signal_time[key_tuple] = value.get("last_push_ts", 0)
+                    else:
+                        # 旧格式：直接是时间戳
+                        self._last_signal_time[key_tuple] = value
 
             # 清理过期缓存项（超过24小时）
             now = time.time()
@@ -90,6 +105,7 @@ class QuantWorker(QtCore.QThread):
             ]
             for key in expired_keys:
                 del self._last_signal_time[key]
+                self._signal_states.pop(key, None)
 
             app_logger.info(
                 f"加载信号缓存成功：{len(self._last_signal_time)} 个活跃信号，"
@@ -98,6 +114,7 @@ class QuantWorker(QtCore.QThread):
         except Exception as e:
             app_logger.error(f"加载信号缓存失败：{e}，使用空缓存")
             self._last_signal_time = {}
+            self._signal_states = {}
 
     def _save_signal_cache(self):
         """保存信号缓存到磁盘"""
@@ -107,14 +124,14 @@ class QuantWorker(QtCore.QThread):
 
             # 转换dict，将tuple key转换为字符串格式
             data = {}
-            for (symbol, sig_name), timestamp in self._last_signal_time.items():
+            for (symbol, sig_name), state in self._signal_states.items():
                 key_str = f"{symbol}::{sig_name}"
-                data[key_str] = timestamp
+                data[key_str] = state
 
             with open(SIGNAL_CACHE_FILE, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
 
-            app_logger.debug(f"信号缓存已保存：{len(data)} 个信号")
+            app_logger.debug(f"信号缓存已保存：{len(data)} 个信号状态")
         except Exception as e:
             app_logger.error(f"保存信号缓存失败：{e}")
 
@@ -259,62 +276,49 @@ class QuantWorker(QtCore.QThread):
     def _format_report_content(
         self, title: str, all_signals: list, strong_signals: list, report_type: str
     ) -> str:
-        """格式化报告内容"""
+        """格式化报告内容（使用 Markdown 格式）"""
         if not all_signals:
-            return "<div class='gray'>今日无显著信号</div>"
+            return "今日无显著信号"
 
         # 按评分排序
         all_signals.sort(key=lambda x: x["score"], reverse=True)
         strong_signals.sort(key=lambda x: x["score"], reverse=True)
 
-        # HTML 格式报告
-        html = [
-            '<div style="font-size:14px;line-height:1.6;">',
-            f'<div style="color:#1f272e;font-weight:bold;margin-bottom:10px;">{title}</div>',
-            '<div style="margin-bottom:15px;">',
-            f'<span style="color:#00aa00;">✅ 总信号数：{len(all_signals)}</span> | ',
-            f'<span style="color:#ff6b6b;">🔥 强信号：{len(strong_signals)}</span>',
-            "</div>",
+        # Markdown 格式报告
+        md = [
+            f"**{title}**\n\n",
+            f"✅ 总信号数：{len(all_signals)} | 🔥 强信号：{len(strong_signals)}\n\n",
         ]
 
         # 强信号优先展示
         if strong_signals:
-            html.append(
-                '<div style="margin-bottom:15px;"><strong>🌟 重点关注：</strong></div>'
-            )
+            md.append("**🌟 重点关注：**\n")
             for sig in strong_signals[:5]:  # 最多显示 5 个
                 fin_label = sig["audit"].get("label", "")
-                html.append(
-                    f'<div style="padding:5px;margin:5px 0;background:#f8f9fa;border-left:3px solid #ff6b6b;">'
-                    f'<strong>{sig["name"]}</strong> ({sig["symbol"]}) '
-                    f'<span style="color:#ff6b6b;">[{sig["signals"][0]}]</span> '
-                    f'<span style="color:#00aa00;">评分:{sig["score"]:+}</span> '
-                    f'{fin_label}'
-                    f'</div>'
+                md.append(
+                    f"> **{sig['name']}** ({sig['symbol']}) "
+                    f"[{sig['signals'][0]}] "
+                    f"评分:{sig['score']:+} "
+                    f"{fin_label}"
                 )
+            md.append("")
 
         # 全部信号列表
         if all_signals:
-            html.append(
-                '<div style="margin-top:15px;"><strong>📋 全部信号：</strong></div>'
-            )
+            md.append("**📋 全部信号：**\n")
             for sig in all_signals[:20]:  # 最多显示 20 个
                 price_info = (
-                    f'￥{sig["price"]:.2f} ({sig["pct"]:+.1f}%)'
+                    f"￥{sig['price']:.2f} ({sig['pct']:+.1f}%)"
                     if sig["price"] > 0
                     else "--"
                 )
-                html.append(
-                    f'<div style="padding:3px;margin:3px 0;color:#555;">'
-                    f'• {sig["name"]} [{sig["signals"][0]}] '
-                    f'<span style="color:#00aa00;">+{sig["score"]}</span> '
-                    f'{price_info}'
-                    f'</div>'
+                md.append(
+                    f"• {sig['name']} [{sig['signals'][0]}] "
+                    f"+{sig['score']} "
+                    f"{price_info}"
                 )
 
-        html.append("</div>")
-
-        return "\n".join(html)
+        return "\n".join(md)
 
     def run(self):
         from ...config.manager import load_config
@@ -510,6 +514,135 @@ class QuantWorker(QtCore.QThread):
 
         return None
 
+    def _should_push_signal(
+        self, symbol: str, sig_name: str, current_score: int
+    ) -> tuple[bool, str]:
+        """
+        判断是否应该推送信号（防抖动核心逻辑）
+
+        Returns:
+            (should_push, reason): 是否推送及原因
+        """
+        now = time.time()
+        state_key = (symbol, sig_name)
+
+        # 1. 获取配置参数
+        cooldown = self.config.get("quant_alert_cooldown", 1800)  # 默认30分钟
+        score_threshold = self.config.get("quant_alert_score_threshold", 2)
+
+        # 2. 首次出现或缓存缺失 → 允许推送
+        if state_key not in self._signal_states:
+            return True, "新信号"
+
+        state = self._signal_states[state_key]
+        last_push_ts = state.get("last_push_ts", 0)
+        last_score = state.get("last_score", -999)
+
+        # 3. 冷却时间检查
+        elapsed = now - last_push_ts
+        if elapsed < cooldown:
+            # 4. 冷却期内：只有评分显著变化才重新推送
+            score_diff = abs(current_score - last_score)
+            if score_diff >= score_threshold:
+                return True, f"评分显著变化 ({last_score:+}→{current_score:+})"
+            else:
+                return False, f"冷却中 (剩余{int(cooldown - elapsed)}s)"
+
+        # 5. 超过冷却时间 → 允许推送
+        return True, "冷却结束"
+
+    def _update_signal_state(self, symbol: str, sig_name: str, score: int):
+        """更新信号状态记录"""
+        state_key = (symbol, sig_name)
+        self._signal_states[state_key] = {
+            "last_score": score,
+            "last_push_ts": time.time(),
+        }
+
+    def _merge_signals_for_symbol(
+        self, symbol: str, stock_name: str, signals_data: list[dict]
+    ) -> dict:
+        """
+        将同一股票的多个信号合并为一条精简推送
+
+        Args:
+            symbol: 股票代码
+            stock_name: 股票名称
+            signals_data: 信号列表 [{sig_name, score, audit, p_info, ...}]
+
+        Returns:
+            合并后的推送数据
+        """
+        if not signals_data:
+            return None
+
+        # 取最高分作为主评分
+        max_score_sig = max(signals_data, key=lambda x: x["score"])
+
+        # 构建精简标题
+        is_confluence = any(s.get("is_confluence") for s in signals_data)
+        is_priority = any(s.get("is_priority") for s in signals_data)
+
+        if is_confluence:
+            title_prefix = "💎【策略共振】"
+        elif is_priority:
+            title_prefix = "🔥【精细关注】"
+        else:
+            title_prefix = "🚨"
+
+        # 价格信息
+        p_info = max_score_sig.get("p_info", {})
+
+        # 【优化】检查价格有效性
+        if p_info and p_info.get("price", 0) > 0:
+            pct = p_info.get("pct", 0.0)
+            sign = "+" if pct >= 0 else ""
+            price_suffix = f" {sign}{pct:.2f}%"
+        else:
+            price_suffix = " (价格待更新)"
+            app_logger.debug(f"[合并推送] {symbol} 价格数据缺失")
+
+        title = f"{title_prefix}{stock_name} ({symbol}){price_suffix}"
+
+        # 构建信号摘要
+        score_summary = ", ".join(
+            [f"{s['sig_name']}({s['score']:+})" for s in signals_data]
+        )
+
+        # 财务审计（取最优）
+        best_audit = max(
+            signals_data, key=lambda x: x.get("audit", {}).get("score_offset", 0)
+        )
+        fin_label = best_audit.get("audit", {}).get("label", "[财务稳健]")
+        fin_reasons = " / ".join(best_audit.get("audit", {}).get("reasons", []))
+        fin_info = f"{fin_label} {fin_reasons}" if fin_reasons else fin_label
+
+        # 历史轨迹
+        history_list = self._signals_history.get(symbol, [])
+        history_text = ""
+        if history_list:
+            history_text = "\n今日轨迹：" + " → ".join(
+                [f"{h['time']} {h['name']}" for h in history_list[-5:]]  # 最近5条
+            )
+
+        # 构建推送内容（Markdown 格式）
+        cycle_info = (
+            f"信号组合：{score_summary}\n\n"
+            f"🚀 **综合强度**：{max_score_sig['score']:+}分\n\n"
+            f"🏥 **财务审计**：{fin_info}"
+        )
+
+        if history_text:
+            cycle_info += f"\n{history_text}"
+
+        return {
+            "title": title,
+            "signals_text": f"检测到 {len(signals_data)} 个技术信号",
+            "cycle_info": cycle_info,
+            "p_info": p_info,
+            "max_score": max_score_sig["score"],
+        }
+
     def _process_signals(
         self,
         symbol,
@@ -521,34 +654,75 @@ class QuantWorker(QtCore.QThread):
         is_priority,
         is_confluence,
     ) -> dict:
-        """处理并发送信号"""
-        now = time.time()
+        """
+        处理并发送信号（优化版：防抖动 + 信号合并）
+        """
         current_time_str = time.strftime("%H:%M")
         triggered = []
+        merge_enabled = self.config.get("quant_alert_merge_enabled", True)
+
+        # 【阶段1】收集所有待推送信号
+        pending_signals = []
 
         for sig in signals:
             tf_cn = self.engine.TF_CHINESE_MAP.get(sig.get("tf", "Daily"), "日线")
             sig_name = f"{tf_cn}:{sig['name']}"
-            last_t = self._last_signal_time.get((symbol, sig_name), 0)
 
-            if now - last_t > 1800:  # 30 分钟冷却
-                if symbol not in self._signals_history:
-                    self._signals_history[symbol] = []
+            # 防抖动检测
+            should_push, reason = self._should_push_signal(symbol, sig_name, score)
 
-                self._signals_history[symbol].append(
+            if should_push:
+                pending_signals.append(
                     {
-                        "time": current_time_str,
-                        "name": sig_name,
+                        "sig": sig,
+                        "sig_name": sig_name,
                         "score": score,
+                        "audit": audit,
+                        "p_info": p_info,
+                        "is_priority": is_priority,
+                        "is_confluence": is_confluence,
+                        "reason": reason,
                     }
                 )
+                app_logger.debug(f"[{symbol}] {sig_name} 允许推送: {reason}")
+            else:
+                app_logger.debug(f"[{symbol}] {sig_name} 跳过: {reason}")
 
-                self._last_signal_time[(symbol, sig_name)] = now
+        if not pending_signals:
+            return None
 
-                benchmark_pct = self.engine.get_market_relative_strength()
-                alpha = p_info.get("pct", 0.0) - benchmark_pct
+        # 【阶段2】根据配置决定是合并推送还是单独推送
+        if merge_enabled and len(pending_signals) > 1:
+            # 合并推送模式
+            merged = self._merge_signals_for_symbol(symbol, stock_name, pending_signals)
+            if merged:
+                NotifierService.dispatch_alert(
+                    config=self.config,
+                    symbol=symbol,
+                    stock_name=merged["title"].replace(f" ({symbol})", ""),
+                    signals=[merged["signals_text"]],
+                    cycle_info=merged["cycle_info"],
+                    price_info=merged["p_info"],
+                )
+                app_logger.info(
+                    f"发送合并推送：{symbol} ({len(pending_signals)}个信号)"
+                )
 
-                min_backtest_score = 3 if score >= 3 else 1
+                # 更新所有信号的状态
+                for ps in pending_signals:
+                    self._update_signal_state(symbol, ps["sig_name"], ps["score"])
+                    triggered.append(ps["sig_name"])
+        else:
+            # 单独推送模式（保持原有逻辑）
+            for ps in pending_signals:
+                benchmark_pct, is_valid = self.engine.get_market_relative_strength()
+                if not is_valid:
+                    app_logger.warning(
+                        f"[{symbol}] 大盘数据获取失败，Alpha 计算可能不准确"
+                    )
+                alpha = ps["p_info"].get("pct", 0.0) - benchmark_pct
+
+                min_backtest_score = 3 if ps["score"] >= 3 else 1
                 stats = self.backtester.get_score_stats(
                     symbol,
                     1 if symbol.startswith("sh") else 0,
@@ -559,29 +733,33 @@ class QuantWorker(QtCore.QThread):
                     wr = stats["win_rate"] * 100
                     ap = stats["avg_profit"] * 100
                     icon = "✅" if wr >= 60 else ("⚡" if wr >= 45 else "⚠️")
-                    stats_text = f'\n<div class="gray">历史复盘：{icon} 同类评分胜率 {wr:.0f}% (均益 {ap:+.1f}%)</div>'
+                    stats_text = (
+                        f"\n历史复盘：{icon} 同类评分胜率 {wr:.0f}% (均益 {ap:+.1f}%)"
+                    )
 
-                fin_label = audit.get("label", "[财务稳健]")
-                fin_reasons = " / ".join(audit.get("reasons", []))
+                fin_label = ps["audit"].get("label", "[财务稳健]")
+                fin_reasons = " / ".join(ps["audit"].get("reasons", []))
                 fin_info = f"{fin_label} {fin_reasons if fin_reasons else ''}"
 
-                display_name = f"🔥 {stock_name}" if is_priority else stock_name
-                if is_confluence:
+                display_name = f"🔥 {stock_name}" if ps["is_priority"] else stock_name
+                if ps["is_confluence"]:
                     display_name = f"💎【策略共振】{stock_name}"
 
-                display_sig = " [精细关注]" if is_priority else ""
-                if is_confluence:
+                display_sig = " [精细关注]" if ps["is_priority"] else ""
+                if ps["is_confluence"]:
                     display_sig = " [超高可靠/重仓机会]"
 
-                cycle_info = f'<div class="gray">信号详情：{sig_name}</div>\n'
-                cycle_info += f'<div class="highlight">🚀 超值强度：{score:+}分 (Alpha: {alpha:+.2f}%)</div>\n'
-                cycle_info += f'<div class="orange">🏥 财务审计：{fin_info}</div>\n'
+                cycle_info = f"信号详情：{ps['sig_name']}\n\n"
+                cycle_info += (
+                    f"🚀 **超值强度**：{ps['score']:+}分 (Alpha: {alpha:+.2f}%)\n\n"
+                )
+                cycle_info += f"🏥 **财务审计**：{fin_info}\n"
                 cycle_info += stats_text
 
                 history_list = self._signals_history.get(symbol, [])
                 if history_list:
                     cycle_info += "\n今日轨迹：" + " → ".join(
-                        [f"{h['time']} {h['name']}" for h in history_list]
+                        [f"{h['time']} {h['name']}" for h in history_list[-5:]]
                     )
 
                 NotifierService.dispatch_alert(
@@ -589,13 +767,30 @@ class QuantWorker(QtCore.QThread):
                     symbol=symbol,
                     stock_name=display_name,
                     signals=[
-                        f"{sig_name}{display_sig} [评分：{score:+}分]",
+                        f"{ps['sig_name']}{display_sig} [评分：{ps['score']:+}分]",
                         fin_info,
                     ],
                     cycle_info=cycle_info,
-                    price_info=p_info,
+                    price_info=ps["p_info"],
                 )
-                app_logger.info(f"发送量化异动即时推送：{stock_name} ({sig_name})")
-                triggered.append(sig_name)
+                app_logger.info(
+                    f"发送量化异动即时推送：{stock_name} ({ps['sig_name']}) [{ps['reason']}]"
+                )
+
+                # 更新状态
+                self._update_signal_state(symbol, ps["sig_name"], ps["score"])
+                triggered.append(ps["sig_name"])
+
+        # 记录历史轨迹
+        if symbol not in self._signals_history:
+            self._signals_history[symbol] = []
+        for ps in pending_signals:
+            self._signals_history[symbol].append(
+                {
+                    "time": current_time_str,
+                    "name": ps["sig_name"],
+                    "score": ps["score"],
+                }
+            )
 
         return {"symbol": symbol, "signals": triggered}

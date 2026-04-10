@@ -95,7 +95,7 @@ class NotifierService:
     def send_wecom_app_message(
         cls, config: dict, title: str, description: str, url: str = ""
     ) -> bool:
-        """发送企业微信应用文本卡片消息
+        """发送企业微信应用消息（使用 markdown 格式以获得更好的渲染效果）
 
         支持自动重试机制（指数退避）
         """
@@ -114,16 +114,13 @@ class NotifierService:
         send_url = (
             f"https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token={token}"
         )
+
+        # 【优化】使用 markdown 消息类型替代 textcard，以获得更好的渲染效果
         payload = {
             "touser": "@all",
-            "msgtype": "textcard",
+            "msgtype": "markdown",
             "agentid": agent_id,
-            "textcard": {
-                "title": title,
-                "description": description,
-                "url": url or "https://www.google.com",  # 必填，临时指向
-                "btntxt": "查看详情",
-            },
+            "markdown": {"content": f"# {title}\n\n{description}"},
             "safe": 0,
         }
 
@@ -178,51 +175,59 @@ class NotifierService:
     ) -> bool:
         """
         分发预警：优先使用企业应用通道，若未配置则回退到 Webhook 文字。
+        【优化】使用 Markdown 格式替代 HTML，确保企业微信正确渲染
         """
         if not signals:
             return False
-        current_time = time.strftime("%H:%M:%S")
 
-        # 准备基础信息
-        p = price_info.get("price", 0.0) if price_info else 0.0
-        pct = price_info.get("pct", 0.0) if price_info else 0.0
-        sign = "+" if pct >= 0 else ""
+        # 【优化】优雅处理缺失的价格数据
+        if price_info and price_info.get("price", 0) > 0:
+            p = price_info.get("price", 0.0)
+            pct = price_info.get("pct", 0.0)
+            sign = "+" if pct >= 0 else ""
+            price_display = f"{sign}{pct:.2f}%"
+            price_detail = f"📊 **实时股价**: ¥{p:.2f} ({sign}{pct:.2f}%)"
+        else:
+            # 价格数据缺失时的降级显示
+            price_display = "价格待更新"
+            price_detail = "📊 **实时股价**: -- (数据获取中)"
+            app_logger.debug(f"[推送降级] {symbol} 价格数据缺失，使用降级显示")
 
-        title = f"🚨 异动: {stock_name} ({symbol}) {sign}{pct:.2f}%"
+        title = f"🚨 异动: {stock_name} ({symbol}) {price_display}"
 
-        # 信号行与历史回顾
+        # 【优化】使用 Markdown 格式替代 HTML
         signal_rows = "\n".join([f"• {s}" for s in signals])
         desc_body = (
-            f'<div class="gray">{current_time} 实时股价: {p:.2f}</div>\n'
-            f'<div class="highlight">关键信号：</div>\n'
-            f"{signal_rows}\n"
-            f"--------------------\n"
+            f"{price_detail}\n\n"
+            f"**关键信号：**\n"
+            f"{signal_rows}\n\n"
+            f"---\n\n"
             f"{cycle_info}"
         )
 
-        # 1. 尝试企业应用
+        # 1. 尝试企业应用（使用 markdown 格式）
         if config.get("push_mode") == "app" or config.get("wecom_corpsecret"):
             res = cls.send_wecom_app_message(config, title, desc_body)
             if res:
                 return True
 
-        # 2. 回退到 Webhook
+        # 2. 回退到 Webhook（纯文本）
         webhook_url = config.get("wecom_webhook", "")
-        body = f"{title}\n时间: {current_time}\n股价: {p:.2f}\n信号:\n{signal_rows}\n{cycle_info}"
+        body = f"{title}\n\n{price_detail}\n\n**关键信号：**\n{signal_rows}\n\n---\n\n{cycle_info}"
         return cls.send_wecom_webhook_text(webhook_url, body)
 
     @classmethod
     def dispatch_report(
         cls, config: dict, title: str, content_items: list[str], footer: str = ""
     ) -> bool:
-        """推送汇总型报告"""
+        """推送汇总型报告（使用 markdown 格式）"""
         if not content_items:
             return False
 
-        # 1. 企业应用通道 (每一个股一条卡片信息，防止信息过长被隐藏)
+        # 1. 企业应用通道 (每一个股一条 markdown 信息，防止信息过长被隐藏)
         if config.get("push_mode") == "app" or config.get("wecom_corpsecret"):
             # 发送概览总卡片
-            header_desc = f"{footer}\n报告时间: {time.strftime('%Y-%m-%d %H:%M')}"
+            header_desc = f"{footer}\n\n**报告时间**: {time.strftime('%Y-%m-%d %H:%M')}"
             cls.send_wecom_app_message(config, f"📊 {title} (总览)", header_desc)
 
             # 循环发送每一个股详情卡片
@@ -246,10 +251,12 @@ class NotifierService:
         if not webhook_url:
             return False
 
-        md_content = f"### 📊 {title}\n报告时间：{time.strftime('%Y-%m-%d %H:%M')}\n\n"
-        md_content += "\n".join(content_items)
+        md_content = (
+            f"### 📊 {title}\n\n**报告时间**：{time.strftime('%Y-%m-%d %H:%M')}\n\n"
+        )
+        md_content += "\n\n".join(content_items)
         if footer:
-            md_content += f"\n\n---\n{footer}"
+            md_content += f"\n\n---\n\n{footer}"
 
         try:
             payload = {"msgtype": "markdown", "markdown": {"content": md_content}}
@@ -267,12 +274,12 @@ class NotifierService:
         webhook_override: Optional[str] = None,
     ) -> bool:
         """
-        发送自定义消息（用于定时复盘报告）
+        发送自定义消息（用于定时复盘报告，使用 markdown 格式）
 
         Args:
             config: 配置字典
             title: 消息标题
-            content: 消息内容（HTML 格式）
+            content: 消息内容（markdown 格式）
             webhook_override: 可选的 Webhook URL 覆盖
 
         Returns:
@@ -290,14 +297,18 @@ class NotifierService:
                 app_logger.warning("未配置 Webhook URL，无法发送消息")
                 return False
 
-            # 将 HTML 转换为简单的文本格式
-            import re
+            # 如果内容是 HTML 格式，转换为简单的文本格式
+            if "<" in content and ">" in content:
+                import re
 
-            text_content = re.sub(r"<[^>]+>", "", content)  # 移除 HTML 标签
-            text_content = text_content.replace("&nbsp;", " ").strip()
+                text_content = re.sub(r"<[^>]+>", "", content)  # 移除 HTML 标签
+                text_content = text_content.replace("&nbsp;", " ").strip()
+                md_content = text_content
+            else:
+                md_content = content
 
             return cls.send_wecom_webhook_text(
-                webhook_url, f"{title}\n\n{text_content}"
+                webhook_url, f"# {title}\n\n{md_content}"
             )
         except Exception as e:
             app_logger.error(f"发送自定义消息失败：{e}")

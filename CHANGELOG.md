@@ -1,5 +1,51 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.0.0] - 2026-04-10
+
+### 📝 规范与文档 (Documentation & Rules)
+- **[DOCS] 全面中文本地化**：完成项目核心文档体系的中文化重构。
+  - **规则文件中文化**：将 `.agents/rules/` 和 `.agents/skills/` 下的所有说明性文字转换为中文，保留关键技术术语英文原名。
+  - **工作流规范化**：优化 `version-release.md`，增加触发器定义并清理冗余指令。
+  - **命名规范统一**：将 `docs/` 目录下的技术文档重命名为直观易懂的中文文件名（如 `量化预警防抖动指南.md`）。
+- **[STRUCTURE] 智能体配置中心收敛**：
+  - 统一将所有开发守则、最佳实践与架构约束集中至 `.agents/rules/` 目录。
+  - 创建 `project-structure-rules.md` 明确项目目录结构与文件命名约定。
+  - 清理 `.lingma/` 目录下的过时文件，消除潜在的配置冲突。
+
+## [v3.2.6] - 2026-04-10
+
+### 🚀 核心功能增强 (Core Enhancements)
+- **[量化推送] 智能防抖动与去重系统**：彻底解决量化信号频繁重复推送问题。
+  - **信号冷却机制**：为每个股票代码和信号类型设置独立冷却时间窗口（默认 30 分钟）。
+  - **状态变更检测**：只有当信号评分发生显著变化（默认 ≥ 2 分）时才重新推送，避免静默期刷屏。
+  - **信号合并推送**：将同一股票在同一周期内触发的多个信号合并为一条精简消息，提升信息密度。
+  - **配置化管理**：新增 `quant_alert_cooldown`、`quant_alert_score_threshold`、`quant_alert_merge_enabled` 三个可配置参数。
+  - **持久化缓存**：自动保存信号状态至磁盘，应用重启后继续生效，避免重复告警。
+
+### 🔧 技术优化 (Technical Improvements)
+- **[推送内容] Alpha 指标详解与优化**：
+  - **Alpha 定义**：个股相对于大盘的超额收益（Alpha = 个股涨跌幅 - 上证指数涨跌幅）。
+  - **计算逻辑**：在 `QuantWorker._process_signals` 中实时计算，展示格式为 `(Alpha: +1.25%)`。
+  - **基准缓存**：上证指数数据缓存 1 分钟，减少重复请求。
+- **[推送内容] 价格显示优雅降级**：
+  - **问题修复**：解决价格获取失败时显示 `0.00` 的问题。
+  - **优化方案**：价格缺失时显示“价格待更新”而非 `+0.00%`，提升用户体验。
+  - **影响范围**：`NotifierService.dispatch_alert` 和 `QuantWorker._merge_signals_for_symbol`。
+- **[日志增强] 价格获取详细诊断**：
+  - **空 DataFrame**：记录“网络超时/数据源异常”警告。
+  - **数据不足**：记录“仅N条，无法计算涨跌幅”警告。
+  - **异常分类**：区分 `KeyError`（列缺失）和通用异常，便于快速定位问题。
+- **[Config] 扩展默认配置**：在 `config/manager.py` 中添加量化推送防抖动相关参数的默认值。
+- **[Worker] 重构信号处理逻辑**：优化 `QuantWorker._process_signals` 方法，引入 `_should_push_signal`、`_update_signal_state`、`_merge_signals_for_symbol` 三个辅助方法，提升代码可读性和可维护性。
+- **[Cache] 增强缓存格式兼容性**：支持新旧两种缓存格式自动迁移，确保升级平滑过渡。
+
+### 📝 文档与规范 (Documentation)
+- **[DOCS] 新增防抖动配置指南**：创建 `docs/quant-alert-deduplication-guide.md`，详细说明三大核心机制、配置调优建议及常见问题。
+- **[DOCS] 推送内容深度分析**：创建 `docs/quant-alert-content-analysis.md`，详解 Alpha 指标含义、股价显示为 0 的原因及优化方案。
+- **[TESTS] 新增单元测试**：
+  - `tests/test_quant_alert_deduplication.py`：覆盖冷却机制、评分检测、信号合并、缓存持久化四大场景。
+  - `tests/test_quant_alert_content.py`：验证 Alpha 计算、价格显示优化、日志增强等功能。
+
 ## [v3.2.5] - 2026-04-09
 
 ### 🎨 UI/UX 优化 (UI Improvements)
