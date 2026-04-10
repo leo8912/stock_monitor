@@ -195,22 +195,60 @@ class NotifierService:
 
         title = f"🚨 异动: {stock_name} ({symbol}) {price_display}"
 
-        # 【优化】使用 Markdown 格式替代 HTML
+        # 【优化】使用纯文本格式以确保个人微信链接可点击
         signal_rows = "\n".join([f"• {s}" for s in signals])
         desc_body = (
             f"{price_detail}\n\n"
-            f"**关键信号：**\n"
+            f"关键信号：\n"
             f"{signal_rows}\n\n"
             f"---\n\n"
-            f"{cycle_info}\n\n"
-            f"> 💡 提示：若链接无法点击或格式错乱，请使用【企业微信】查看以获得最佳体验。"
+            f"{cycle_info}"
         )
 
-        # 1. 尝试企业应用（使用 markdown 格式）
+        # 1. 尝试企业应用（改用 text 格式以兼容个人微信）
         if config.get("push_mode") == "app" or config.get("wecom_corpsecret"):
-            res = cls.send_wecom_app_message(config, title, desc_body)
-            if res:
-                return True
+            agent_id = config.get("wecom_agentid", "")
+            corp_id = config.get("wecom_corpid", "")
+            corp_secret = config.get("wecom_corpsecret", "")
+
+            if not all([agent_id, corp_id, corp_secret]):
+                app_logger.warning("企微应用配置不完整，跳过推送")
+                return False
+
+            # 获取 Access Token
+            token_url = f"https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid={corp_id}&corpsecret={corp_secret}"
+            try:
+                token_resp = requests.get(token_url, timeout=10).json()
+                access_token = token_resp.get("access_token")
+                if not access_token:
+                    app_logger.error(f"获取企微 Token 失败: {token_resp}")
+                    return False
+            except Exception as e:
+                app_logger.error(f"获取企微 Token 异常: {e}")
+                return False
+
+            send_url = f"https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token={access_token}"
+
+            # 构造纯文本内容
+            full_content = f"{title}\n\n{desc_body}"
+            payload = {
+                "touser": "@all",
+                "msgtype": "text",
+                "agentid": int(agent_id) if str(agent_id).isdigit() else agent_id,
+                "text": {"content": full_content},
+                "safe": 0,
+            }
+            try:
+                resp = requests.post(send_url, json=payload, timeout=10).json()
+                if resp.get("errcode") == 0:
+                    app_logger.info(f"企微应用消息发送成功: {title}")
+                    return True
+                else:
+                    app_logger.error(f"企微应用消息发送失败: {resp}")
+                    return False
+            except Exception as e:
+                app_logger.error(f"企微应用消息推送异常: {e}")
+                return False
 
         # 2. 回退到 Webhook（纯文本）
         webhook_url = config.get("wecom_webhook", "")

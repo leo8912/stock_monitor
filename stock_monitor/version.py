@@ -2,7 +2,7 @@ import os
 import sys
 
 # 注意：修改此文件中的版本号会触发 GitHub Actions 自动构建 Release。
-__version__ = "4.0.2"
+__version__ = "4.0.3"
 
 try:
     # 1. Try to get version from installed package metadata (Python 3.8+)
