@@ -102,26 +102,39 @@ def setup_auto_start():
         if auto_start:
             # 获取应用程序路径
             if hasattr(sys, "_MEIPASS"):
-                # PyInstaller打包环境
+                # PyInstaller打包环境：直接指向exe文件
                 app_path = sys.executable
+                app_logger.info(f"[生产环境] 使用打包可执行文件: {app_path}")
             else:
-                # 开发环境：使用__file__解析而非直接信任 sys.argv[0]
+                # 开发环境：构建Python解释器 + 主入口脚本的组合命令
+                python_exe = sys.executable
+
+                # 优先尝试定位 main.py 作为应用入口
                 try:
-                    # 优先使用__file__的绝对路径构建应用路径
-                    app_path = str(
-                        Path(__file__).resolve().parent.parent / "__main__.py"
-                    )
-                except (NameError, ValueError):
-                    # __file__不可用，回退到 sys.argv[0]但进行路径验证
-                    app_root = Path(__file__).resolve().parent.parent
-                    argv_path = Path(sys.argv[0]).resolve()
-                    try:
-                        # 确保 sys.argv[0]在应用目录内，防止路径遍历攻击
-                        argv_path.relative_to(app_root)
-                        app_path = str(argv_path)
-                    except ValueError:
-                        app_logger.error(f"检测到不安全的路径：{sys.argv[0]}，拒绝使用")
-                        return
+                    # 从 startup.py 向上推导项目根目录
+                    # startup.py 位于 stock_monitor/core/config/
+                    # 需要向上3层到达 stock_monitor/ 目录
+                    project_root = Path(__file__).resolve().parent.parent.parent
+                    main_script = project_root / "main.py"
+
+                    if main_script.exists():
+                        app_path = f'"{python_exe}" "{main_script}"'
+                        app_logger.info(f"[开发环境] 使用主入口脚本: {main_script}")
+                    else:
+                        # 回退方案：尝试 __main__.py
+                        main_module = project_root / "__main__.py"
+                        if main_module.exists():
+                            app_path = f'"{python_exe}" "{main_module}"'
+                            app_logger.info(f"[开发环境] 使用模块入口: {main_module}")
+                        else:
+                            app_logger.error(
+                                f"[开发环境] 未找到有效的应用入口脚本 "
+                                f"(已搜索: {main_script}, {main_module})"
+                            )
+                            return
+                except Exception as e:
+                    app_logger.error(f"[开发环境] 解析应用路径失败: {e}")
+                    return
 
             # 创建快捷方式
             _create_shortcut(app_path, shortcut_path)
@@ -129,8 +142,33 @@ def setup_auto_start():
         else:
             # 如果禁用开机启动且快捷方式存在，则删除
             if os.path.exists(shortcut_path):
-                os.remove(shortcut_path)
-                app_logger.info(f"已删除开机启动快捷方式: {shortcut_path}")
+                try:
+                    # 【安全校验】验证快捷方式确实指向我们的应用
+                    import win32com.client
+
+                    shell = win32com.client.Dispatch("WScript.Shell")
+                    shortcut = shell.CreateShortCut(shortcut_path)
+                    target = shortcut.Targetpath
+
+                    # 检查目标路径是否包含我们的应用标识
+                    is_our_shortcut = any(
+                        keyword in target.lower()
+                        for keyword in ["stock_monitor", "stockmonitor", "main.py"]
+                    )
+
+                    if is_our_shortcut:
+                        os.remove(shortcut_path)
+                        app_logger.info(f"已删除开机启动快捷方式: {shortcut_path}")
+                    else:
+                        app_logger.warning(
+                            f"跳过删除快捷方式（可能不属于本应用）: {shortcut_path} -> {target}"
+                        )
+                except ImportError:
+                    # win32com不可用时直接删除（兼容性考虑）
+                    os.remove(shortcut_path)
+                    app_logger.info(f"已删除开机启动快捷方式: {shortcut_path}")
+                except Exception as e:
+                    app_logger.error(f"删除快捷方式时出错: {e}")
     except Exception as e:
         app_logger.error(f"设置开机启动失败: {e}")
 
