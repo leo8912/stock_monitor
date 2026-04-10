@@ -1,5 +1,17 @@
 # 更新日志 (CHANGELOG)
 
+## [v3.2.5] - 2026-04-09
+
+### 🎨 UI/UX 优化 (UI Improvements)
+- **[UI] 强制直角无边框**：彻底修复 Windows 11 环境下主窗口显示圆角的问题。
+  - 引入 `DwmSetWindowAttribute` API 调用，从系统底层禁用 DWM 圆角渲染。
+  - 增加 `BypassWindowManagerHint` 标志位并配合延迟二次加固逻辑，消除启动闪烁。
+  - 统一本地源码运行与打包后的视觉表现，确保“直角无边框”风格一致。
+- **[UI] 动态列隐藏**：优化股票表格显示逻辑，当无累计资金（主动大单）数据时自动隐藏该列，避免界面出现空白列。
+
+### 📝 规范与文档 (Documentation)
+- **[RULES] 新增开发规范**：创建 `.agents/rules/ui-window-style-rules.md` 和 `version-update-rules.md`，明确 UI 样式实现标准及版本迭代流程。
+
 ## [v3.2.4] - 2026-04-07
 
 ### 🐛 修复 (Fixes)

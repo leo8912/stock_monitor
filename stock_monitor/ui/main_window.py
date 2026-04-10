@@ -540,7 +540,16 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
 
                 qss = load_global_stylesheet(font_family, font_size)
                 if qss:
-                    self.setStyleSheet(qss)
+                    # 确保在应用全局样式时，MainWindow 的直角属性被显式保留
+                    # 将 #MainWindow 的直角定义追加到 QSS 末尾，利用 CSS 层叠特性覆盖可能的冲突
+                    corner_fix_qss = """
+                    #MainWindow {
+                        background-color: transparent;
+                        border: none;
+                        border-radius: 0px;
+                    }
+                    """
+                    self.setStyleSheet(qss + corner_fix_qss)
 
             # 更新加载标签字体
             if hasattr(self, "loading_label") and self.loading_label:

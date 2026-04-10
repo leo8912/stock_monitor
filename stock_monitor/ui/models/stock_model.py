@@ -33,6 +33,7 @@ class StockTableModel(QtCore.QAbstractTableModel):
         self._font_size = 13
         self._font_family = "微软雅黑"
         self._show_seal_column = False
+        self._show_large_order_column = True  # 默认显示大单列，如果没数据则隐藏
 
     def rowCount(self, parent=None) -> int:
         if parent is None:
@@ -45,7 +46,9 @@ class StockTableModel(QtCore.QAbstractTableModel):
         count = 3  # 名称, 价格, 涨跌幅
         if self._show_seal_column:
             count += 1
-        return count + 1  # 始终预留大单列 (或者根据需要动态显示)
+        if self._show_large_order_column:
+            count += 1
+        return count
 
     def data(
         self, index: QtCore.QModelIndex, role: int = QtCore.Qt.ItemDataRole.DisplayRole
@@ -58,11 +61,18 @@ class StockTableModel(QtCore.QAbstractTableModel):
 
         # 根据当前显示的列（Section）映射到逻辑数据
         # 逻辑列顺序：0:名称, 1:价格, 2:涨跌幅, 3:封单, 4:大单
-        if not self._show_seal_column and col >= self.COL_SEAL:
-            # 如果不显示封单列，则原本序号为 3 的 Section 其实对应的是“大单”
-            logical_col = self.COL_LARGE_ORDER
-        else:
-            logical_col = col
+        current_col_index = col
+        if not self._show_seal_column and current_col_index >= self.COL_SEAL:
+            current_col_index += 1
+
+        if (
+            not self._show_large_order_column
+            and current_col_index >= self.COL_LARGE_ORDER
+        ):
+            # 这种情况理论上不会发生，因为 columnCount 已经限制了最大列数
+            return None
+
+        logical_col = current_col_index
 
         # 文本显示
         if role == QtCore.Qt.ItemDataRole.DisplayRole:
@@ -220,14 +230,27 @@ class StockTableModel(QtCore.QAbstractTableModel):
         # 检查是否需要显示封单列
         has_seal = any(item.seal_type for item in new_data) if new_data else False
 
+        # 检查是否需要显示大单列 (只要有任意一只股票有数据就显示)
+        has_large_order = (
+            any(
+                item.large_order_info or item.auction_intensity > 0 for item in new_data
+            )
+            if new_data
+            else False
+        )
+
         # 布局变更检测
-        layout_changed = has_seal != self._show_seal_column
+        layout_changed = (
+            has_seal != self._show_seal_column
+            or has_large_order != self._show_large_order_column
+        )
         row_count_changed = len(new_data) != len(self._data)
 
         # 如果行数和布局都没变，使用增量更新（更快）
         if not layout_changed and not row_count_changed and self._data:
             self._data = new_data
             self._show_seal_column = has_seal
+            self._show_large_order_column = has_large_order
             # 仅发送 dataChanged 信号，避免全量刷新
             self.dataChanged.emit(
                 self.index(0, 0),
@@ -239,6 +262,7 @@ class StockTableModel(QtCore.QAbstractTableModel):
             self.beginResetModel()
             self._data = new_data
             self._show_seal_column = has_seal
+            self._show_large_order_column = has_large_order
             self.endResetModel()
             return layout_changed or row_count_changed
 

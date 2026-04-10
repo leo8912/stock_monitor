@@ -4,6 +4,14 @@
     font-size: {{FONT_SIZE}}px;
 }
 
+/* 强制主窗口直角，防止初始闪烁及系统级圆角 */
+#MainWindow {
+    background-color: transparent;
+    border: none;
+    border-radius: 0px;
+    outline: none;
+}
+
 /* QDialog */
 QDialog {
     background-color: #1e1e1e;

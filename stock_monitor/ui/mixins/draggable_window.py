@@ -14,14 +14,59 @@ class DraggableWindowMixin:
         # The host class should handle its own initialization
         self.drag_position: Optional[QtCore.QPoint] = None
 
+    def _apply_windows_11_corner_fix(self):
+        """通过 Windows API 强制禁用 Windows 11 的窗口圆角（支持重试）"""
+        try:
+            import ctypes
+
+            # Windows 11 DWM API 常量
+            DWMWA_WINDOW_CORNER_PREFERENCE = 33
+            DWMWCP_DONOTROUND = 1  # 1: 不圆角
+
+            hwnd = int(self.winId())
+            if hwnd == 0:
+                return False
+
+            # 调用 DwmSetWindowAttribute 禁用圆角
+            result = ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_WINDOW_CORNER_PREFERENCE,
+                ctypes.byref(ctypes.c_int(DWMWCP_DONOTROUND)),
+                ctypes.sizeof(ctypes.c_int),
+            )
+            return result == 0  # S_OK
+        except Exception:
+            return False
+
     def setup_draggable_window(self):
         """Initialize draggable window properties"""
         if isinstance(self, QtWidgets.QWidget):
+            # 1. 核心标志位：绕过窗口管理器是防止系统自动加圆角的关键
             self.setWindowFlags(
                 QtCore.Qt.WindowType.WindowStaysOnTopHint
                 | QtCore.Qt.WindowType.FramelessWindowHint
+                | QtCore.Qt.WindowType.BypassWindowManagerHint
             )
+
+            # 2. 必须在 setWindowFlags 之后立即设置，否则可能失效
             self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
+
+            # 3. 预先设置对象名和直角样式，防止初始闪烁
+            self.setObjectName("MainWindow")
+            self.setStyleSheet("""
+                #MainWindow {
+                    background-color: transparent;
+                    border: none;
+                    border-radius: 0px;
+                }
+            """)
+
+            # 4. 【关键修复】立即尝试禁用圆角
+            self._apply_windows_11_corner_fix()
+
+            # 5. 【双重保险】延迟 50ms 再次执行，确保在 DWM 完成初始渲染后强制覆盖
+            # 这能解决本地源码运行时偶尔出现的“先圆后直”现象
+            QtCore.QTimer.singleShot(50, self._apply_windows_11_corner_fix)
 
             # 使用 Windows API 隐藏任务栏按钮（替代 Qt 的 Tool 标志，避免其副作用）
             self._hide_from_taskbar()
