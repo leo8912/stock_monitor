@@ -115,12 +115,12 @@ class NotifierService:
             f"https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token={token}"
         )
 
-        # 【优化】使用 markdown 消息类型替代 textcard，以获得更好的渲染效果
+        # 【优化】使用 text 消息类型替代 markdown，以获得更好的个人微信兼容性
         payload = {
             "touser": "@all",
-            "msgtype": "markdown",
+            "msgtype": "text",
             "agentid": agent_id,
-            "markdown": {"content": f"# {title}\n\n{description}"},
+            "text": {"content": f"{title}\n\n{description}"},
             "safe": 0,
         }
 
@@ -290,15 +290,13 @@ class NotifierService:
         if not webhook_url:
             return False
 
-        md_content = (
-            f"### 📊 {title}\n\n**报告时间**：{time.strftime('%Y-%m-%d %H:%M')}\n\n"
-        )
-        md_content += "\n\n".join(content_items)
+        text_content = f"📊 {title}\n\n报告时间：{time.strftime('%Y-%m-%d %H:%M')}\n\n"
+        text_content += "\n\n".join([item.replace("**", "") for item in content_items])
         if footer:
-            md_content += f"\n\n---\n\n{footer}"
+            text_content += f"\n\n---\n\n{footer.replace('**', '')}"
 
         try:
-            payload = {"msgtype": "markdown", "markdown": {"content": md_content}}
+            payload = {"msgtype": "text", "text": {"content": text_content}}
             resp = requests.post(webhook_url, json=payload, timeout=10)
             return resp.json().get("errcode") == 0
         except Exception:
@@ -336,18 +334,20 @@ class NotifierService:
                 app_logger.warning("未配置 Webhook URL，无法发送消息")
                 return False
 
-            # 如果内容是 HTML 格式，转换为简单的文本格式
-            if "<" in content and ">" in content:
-                import re
+            # 如果内容包含 HTML 标签或 Markdown 符号，尝试进行简单的清理转换为纯文本
+            import re
 
-                text_content = re.sub(r"<[^>]+>", "", content)  # 移除 HTML 标签
+            text_content = content
+            if "<" in text_content and ">" in text_content:
+                text_content = re.sub(r"<[^>]+>", "", text_content)  # 移除 HTML 标签
                 text_content = text_content.replace("&nbsp;", " ").strip()
-                md_content = text_content
-            else:
-                md_content = content
+
+            # 移除常见的 Markdown 标记
+            text_content = text_content.replace("**", "")
+            text_content = re.sub(r"^#+\s+", "", text_content, flags=re.MULTILINE)
 
             return cls.send_wecom_webhook_text(
-                webhook_url, f"# {title}\n\n{md_content}"
+                webhook_url, f"【{title}】\n\n{text_content}"
             )
         except Exception as e:
             app_logger.error(f"发送自定义消息失败：{e}")
