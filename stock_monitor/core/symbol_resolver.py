@@ -1,4 +1,4 @@
-"""兼容旧路径: 从 core.resolvers 重新导出符号解析器。"""
+"""兼容旧路径"""
 
 from stock_monitor.core.resolvers.symbol_resolver import (
     SymbolConfig,

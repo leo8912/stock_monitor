@@ -1,4 +1,4 @@
-"""兼容旧路径: 从 core.engine 重新导出 BacktestEngine。"""
+"""兼容旧路径"""
 
 from stock_monitor.core.engine.backtest_engine import BacktestEngine
 

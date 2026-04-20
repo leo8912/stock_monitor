@@ -169,7 +169,8 @@ class RefreshWorker(QtCore.QThread):
                 from stock_monitor.core.market.stock_manager import stock_manager
 
                 stocks, failed_count = stock_manager.fetch_and_process_stocks(
-                    local_user_stocks
+                    local_user_stocks,
+                    sync_quant_data=not first_fetch_done,
                 )
 
                 # 检查变化并更新
@@ -353,7 +354,8 @@ class RefreshWorker(QtCore.QThread):
                 from stock_monitor.core.market.stock_manager import stock_manager
 
                 stocks, failed_count = stock_manager.fetch_and_process_stocks(
-                    user_stocks
+                    user_stocks,
+                    sync_quant_data=True,
                 )
                 all_failed = failed_count == len(user_stocks) and len(user_stocks) > 0
 

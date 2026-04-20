@@ -66,8 +66,9 @@ try:
     )
 
     _market_available = True
-except (ImportError, ModuleNotFoundError):
+except Exception as e:
     _market_available = False
+    print(f"Market layer import warning: {e}")
 
 # ============================================================================
 # 解析层 (Resolvers Layer)

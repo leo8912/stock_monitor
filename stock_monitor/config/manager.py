@@ -69,17 +69,24 @@ class ConfigManager:
     """配置管理器，封装配置的加载和保存操作"""
 
     _instance = None
+    _default_config_path = CONFIG_PATH  # 类级别默认值
 
     def __new__(cls, config_path: str = CONFIG_PATH):
         """
         实现单例模式，确保全局只有一个配置管理器实例
 
         Args:
-            config_path: 配置文件路径
+            config_path: 配置文件路径（仅首次调用生效）
+
+        Note:
+            单例模式下，首次调用确定配置路径，后续调用忽略参数
         """
         if cls._instance is None:
+            # 首次创建：存储路径到类属性
+            cls._default_config_path = config_path
             cls._instance = super().__new__(cls)
             cls._instance._initialized = False
+            cls._instance._config_path = config_path  # 直接存储到实例
         return cls._instance
 
     def __init__(self, config_path: str = CONFIG_PATH):
@@ -87,12 +94,25 @@ class ConfigManager:
         初始化配置管理器
 
         Args:
-            config_path: 配置文件路径
+            config_path: 配置文件路径（仅首次调用生效）
+
+        Note:
+            单例模式下，首次调用确定配置路径，后续调用忽略参数
         """
         if self._initialized:
+            # 单例已初始化，检查是否传入了不同的路径
+            if (
+                config_path != self._config_path
+                and config_path != self.__class__._default_config_path
+            ):
+                app_logger.warning(
+                    f"ConfigManager 单例已初始化，忽略传入的 config_path: {config_path} "
+                    f"(已使用: {self._config_path})"
+                )
             return
 
-        self.config_path = config_path
+        self._config_path = config_path
+        self.config_path = config_path  # 保持向后兼容
         self._config: dict[str, Any] = {}
         self._load_config()
         self._initialized = True

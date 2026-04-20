@@ -4,6 +4,7 @@
 
 import concurrent.futures
 import json
+import threading
 from typing import Any
 
 from stock_monitor.core.engine.quant_engine import QuantEngine
@@ -36,6 +37,8 @@ class StockManager:
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         self._large_orders_cache = {}
         self._auction_cache = {}  # [NEW] 集合竞价缓存
+        # 线程安全锁 - 保护缓存读写
+        self._cache_lock = threading.Lock()
 
     def has_stock_data_changed(self, stocks: list[StockRowData]) -> bool:
         """检查股票数据是否发生变化"""
@@ -77,28 +80,36 @@ class StockManager:
             try:
                 # 1. 大单流向
                 res = self._quant_engine.fetch_large_orders_flow(code)
-                self._large_orders_cache[code] = res
 
                 # 2. 集合竞价分析 [NEW]
                 import time
 
                 now_hm = time.strftime("%H:%M")
+                auc_res = None
                 # 仅在盘前或开盘初期关注竞价
                 if "09:00" <= now_hm <= "10:00" or "15:00" <= now_hm <= "17:00":
                     auc_res = self._quant_engine.fetch_call_auction_data(code)
-                    self._auction_cache[code] = auc_res
+
+                # 线程安全地更新缓存
+                with self._cache_lock:
+                    self._large_orders_cache[code] = res
+                    if auc_res is not None:
+                        self._auction_cache[code] = auc_res
             except Exception as e:
                 app_logger.warning(f"获取 {code} 量化数据失败: {e}")
 
     def fetch_and_process_stocks(
-        self, stock_codes: list[str]
+        self, stock_codes: list[str], sync_quant_data: bool = False
     ) -> tuple[list[StockRowData], int]:
         """获取并处理股票数据"""
         # 1. 批量获取基础行情数据
         data_dict = self._stock_data_service.get_multiple_stocks_data(stock_codes)
 
         # 2. 异步派发量化数据拉取任务 (大单+竞价)
-        self._executor.submit(self._async_fetch_quant_data, stock_codes)
+        if sync_quant_data:
+            self._async_fetch_quant_data(stock_codes)
+        else:
+            self._executor.submit(self._async_fetch_quant_data, stock_codes)
 
         # 3. 处理并整合数据
         failed_count = sum(1 for data in data_dict.values() if data is None)
@@ -106,12 +117,15 @@ class StockManager:
         for code in stock_codes:
             info = data_dict.get(code)
             if info:
-                # 瞬间从缓存读取异步大单结果
-                info["large_order_vol"] = self._large_orders_cache.get(
-                    code, (0.0, 0.0, 0.0)
-                )
+                # 线程安全地从缓存读取异步大单结果
+                with self._cache_lock:
+                    large_order_vol = self._large_orders_cache.get(
+                        code, (0.0, 0.0, 0.0)
+                    )
+                    auction_data = self._auction_cache.get(code, {})
+                info["large_order_vol"] = large_order_vol
                 # 注入竞价数据 [NEW]
-                info["auction_data"] = self._auction_cache.get(code, {})
+                info["auction_data"] = auction_data
 
                 try:
                     info_json = json.dumps(info, sort_keys=True)

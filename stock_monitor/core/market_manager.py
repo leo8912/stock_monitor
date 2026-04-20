@@ -1,4 +1,4 @@
-"""兼容旧路径: 从 core.market 重新导出 MarketManager。"""
+"""兼容旧路径"""
 
 from stock_monitor.core.market.market_manager import (
     MarketManager,

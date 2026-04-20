@@ -74,6 +74,10 @@ def setup_auto_start():
     通过在用户启动文件夹中创建/删除快捷方式实现
     """
     try:
+        if not hasattr(sys, "_MEIPASS"):
+            app_logger.info("[开发环境] 跳过开机启动设置，避免影响已安装版本的启动项")
+            return
+
         from stock_monitor.config.manager import ConfigManager
         from stock_monitor.core.config.container import container
 

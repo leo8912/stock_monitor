@@ -14,7 +14,7 @@ StockManager 单元测试模块
 import unittest
 from unittest.mock import MagicMock
 
-from stock_monitor.core.stock_manager import StockManager
+from stock_monitor.core.market.stock_manager import StockManager
 from stock_monitor.models.stock_data import StockRowData
 
 

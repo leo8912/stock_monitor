@@ -1084,10 +1084,12 @@ class NewSettingsDialog(QDialog):
             map_val_to_text = {1: "1秒", 2: "2秒", 5: "5秒", 10: "10秒", 30: "30秒"}
             text = map_val_to_text.get(ri, "5秒")
             index = self.refresh_combo.findText(text)
+            if index < 0:
+                index = self.refresh_combo.findText(text.replace("秒", " 秒"))
             if index >= 0:
                 self.refresh_combo.setCurrentIndex(index)
             else:
-                self.refresh_combo.setCurrentIndex(1)
+                self.refresh_combo.setCurrentIndex(0)
 
             # Font size
             fs = settings.get("font_size", 13)
@@ -1133,16 +1135,8 @@ class NewSettingsDialog(QDialog):
         try:
             stocks = self.get_stocks_from_list(self.watch_list)
 
-            # Map refresh text to int
-            map_text_to_val = {
-                "1 秒": 1,
-                "2 秒": 2,
-                "5 秒": 5,
-                "10 秒": 10,
-                "30 秒": 30,
-            }
             ri_text = self.refresh_combo.currentText()
-            ri = map_text_to_val.get(ri_text, 5)
+            ri = self._map_refresh_text_to_value(ri_text)
 
             settings = {
                 "user_stocks": stocks,
@@ -1445,6 +1439,10 @@ class NewSettingsDialog(QDialog):
 
             from stock_monitor.utils.logger import app_logger
 
+            if not hasattr(sys, "_MEIPASS"):
+                app_logger.info("[开发环境] 跳过设置页开机启动变更，避免影响已安装版本")
+                return
+
             # 获取启动文件夹路径
             startup_folder = os.path.join(
                 os.environ.get("APPDATA", ""),
@@ -1621,13 +1619,18 @@ class NewSettingsDialog(QDialog):
 
     def _map_refresh_text_to_value(self, text):
         """将刷新频率文本映射为数值"""
-        mapping = {"1秒": 1, "2秒": 2, "5秒": 5, "10秒": 10, "30秒": 30}
-        return mapping.get(text, 2)
+        import re
+
+        match = re.search(r"(\d+)", str(text))
+        if not match:
+            return 5
+        value = int(match.group(1))
+        return value if value in {1, 2, 5, 10, 30} else 5
 
     def _map_refresh_value_to_text(self, value):
         """将刷新频率数值映射为文本"""
-        mapping = {1: "1 秒", 2: "2 秒", 5: "5 秒", 10: "10 秒", 30: "30 秒"}
-        return mapping.get(value, "2 秒")
+        mapping = {1: "1秒", 2: "2秒", 5: "5秒", 10: "10秒", 30: "30秒"}
+        return mapping.get(value, "5秒")
 
     # [DEPRECATED] on_display_setting_changed 已移除，实时预览功能被禁用
 

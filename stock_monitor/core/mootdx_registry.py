@@ -1,4 +1,4 @@
-"""兼容旧路径: 从 core.resolvers 重新导出 MootdxRegistry。"""
+"""兼容旧路径"""
 
 from stock_monitor.core.resolvers.mootdx_registry import MootdxRegistry
 

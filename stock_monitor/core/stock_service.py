@@ -7,9 +7,9 @@ from typing import Any, Optional
 
 from stock_monitor.utils.logger import app_logger
 
-from .stock_data_fetcher import StockDataFetcher
-from .stock_data_processor import StockDataProcessor
-from .stock_data_validator import StockDataValidator
+from .data.stock_data_fetcher import StockDataFetcher
+from .data.stock_data_processor import StockDataProcessor
+from .data.stock_data_validator import StockDataValidator
 
 
 class StockDataService:

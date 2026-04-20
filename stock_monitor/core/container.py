@@ -1,4 +1,4 @@
-"""compatibility wrapper for old core.container path"""
+"""兼容旧路径"""
 
 from stock_monitor.core.config.container import DIContainer, container
 

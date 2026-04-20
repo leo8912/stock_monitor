@@ -4,7 +4,8 @@
 """
 
 import inspect
-from typing import Any, Callable, Optional, Union
+import warnings
+from typing import Any, Callable, Optional, TypeVar, Union
 
 from stock_monitor.config.manager import ConfigManager
 from stock_monitor.core.data import StockDataFetcher
@@ -12,6 +13,21 @@ from stock_monitor.core.market import StockManager
 from stock_monitor.core.stock_service import StockDataService
 from stock_monitor.data.stock.stock_db import StockDatabase
 from stock_monitor.utils.logger import app_logger
+
+# 类型变量用于泛型
+T = TypeVar("T")
+
+# 已知的自动创建服务类型注册表
+# 使用 frozenset 提高成员检查效率
+_AUTO_CREATEABLE_TYPES: frozenset[type] = frozenset(
+    [
+        ConfigManager,
+        StockDataService,
+        StockManager,
+        StockDatabase,
+        StockDataFetcher,
+    ]
+)
 
 
 class DIContainer:
@@ -74,6 +90,9 @@ class DIContainer:
 
         Returns:
             服务实例
+
+        Raises:
+            KeyError: 如果服务未注册且无法自动创建
         """
         # 优先返回已注册的单例
         if key in self._singletons:
@@ -87,42 +106,68 @@ class DIContainer:
             app_logger.debug(f"通过工厂创建服务: {key}")
             return instance
 
-        # 向后兼容:自动创建常见服务
+        # 向后兼容:自动创建已知服务类型
         if isinstance(key, type):
-            instance = self._auto_create(key)
-            if instance is not None:
-                self._singletons[key] = instance
-                return instance
+            # 检查是否为已知的可自动创建类型
+            if key in _AUTO_CREATEABLE_TYPES:
+                warnings.warn(
+                    f"服务 {key.__name__} 未显式注册，自动创建仅用于向后兼容。"
+                    f"建议使用 container.register_singleton({key.__name__}, {key.__name__}()) 显式注册。",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+                instance = self._auto_create(key)
+                if instance is not None:
+                    self._singletons[key] = instance
+                    return instance
+            else:
+                # 类型不在注册表中，无法自动创建
+                app_logger.error(
+                    f"服务未注册且无法自动创建: {key.__name__}。"
+                    f"请使用 container.register_singleton() 显式注册。"
+                )
 
         raise KeyError(f"服务未注册: {key}")
 
-    def _auto_create(self, service_type: type) -> Optional[Any]:
+    def _auto_create(self, service_type: type[T]) -> Optional[T]:
         """
         自动创建服务实例(向后兼容)
+
+        警告: 此功能仅为向后兼容而保留。新代码应显式注册所有服务。
 
         Args:
             service_type: 服务类型
 
         Returns:
             服务实例或None
+
+        Raises:
+            TypeError: 如果服务类型不在已知注册表中
         """
-        if service_type == ConfigManager:
+        # 使用 is 进行身份检查（更类型安全）
+        if service_type is ConfigManager:
             app_logger.debug("自动创建ConfigManager")
             return ConfigManager()
-        elif service_type == StockDataService:
+        elif service_type is StockDataService:
             app_logger.debug("自动创建StockDataService")
             return StockDataService()
-        elif service_type == StockManager:
+        elif service_type is StockManager:
             app_logger.debug("自动创建StockManager")
             stock_data_service = self.get(StockDataService)
             return StockManager(stock_data_service=stock_data_service)
-        elif service_type == StockDatabase:
+        elif service_type is StockDatabase:
             app_logger.debug("自动创建StockDatabase")
             return StockDatabase()
-        elif service_type == StockDataFetcher:
+        elif service_type is StockDataFetcher:
             app_logger.debug("自动创建StockDataFetcher")
             return StockDataFetcher()
 
+        # 类型不在已知注册表中
+        app_logger.warning(
+            f"尝试自动创建未知服务类型: {service_type.__name__}。"
+            f"已知类型: {[t.__name__ for t in _AUTO_CREATEABLE_TYPES]}。"
+            f"请显式注册此服务。"
+        )
         return None
 
     def resolve(self, cls: type) -> Any:

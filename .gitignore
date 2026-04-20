@@ -23,6 +23,7 @@ dist/
 .continue/
 .agent/
 .agents/
+.sisyphus/
 .workbuddy/
 skills-lock.json
 
