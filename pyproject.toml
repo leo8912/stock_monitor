@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stock_monitor"
-version = "4.0.4"
+version = "4.1.0"
 description = "A real-time stock monitoring application for A-shares"
 authors = [
     {name = "Stock Monitor Team"}
@@ -26,6 +26,10 @@ dependencies = [
     "beautifulsoup4>=4.11.0",
     "html5lib>=1.1",
     "pytz>=2024.1",
+    "urllib3>=2.0.6",
+    "certifi>=2024.0.0",
+    "matplotlib>=3.7.0",
+    "mplfinance>=0.12.10b0",
 ]
 requires-python = ">=3.9"
 

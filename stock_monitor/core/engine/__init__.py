@@ -55,13 +55,20 @@ from .quant_engine_constants import (
     SIGNAL_INTENSITY_MEDIUM,
     TF_CHINESE_MAP,
     TRANSACTION_BATCH_SIZE,
+    WAVE_MIN_K_COUNT,
+    WAVE_ZIGZAG_THRESHOLD,
     FreqMap,
 )
+from .wave_analyzer import WaveAnalysisResult, WaveAnalyzer
+from .wave_chart import WaveChart
 
 __all__ = [
     "QuantEngine",
     "FinancialFilter",
     "BacktestEngine",
+    "WaveAnalyzer",
+    "WaveAnalysisResult",
+    "WaveChart",
     "CACHE_TTL_SECONDS",
     "MAX_CACHE_SIZE",
     "MAX_AVG_VOL_CACHE_AGE",
@@ -100,4 +107,6 @@ __all__ = [
     "MAX_PB_RATIO",
     "MIN_ROE",
     "MIN_OPERATING_PROFIT_GROWTH",
+    "WAVE_ZIGZAG_THRESHOLD",
+    "WAVE_MIN_K_COUNT",
 ]

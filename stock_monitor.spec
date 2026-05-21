@@ -171,7 +171,7 @@ except Exception as e:
         print(f"Warning: Fallback collection for mootdx also failed: {str(e2)}")
 
 # 收集其他包的完整依赖（移除 mootdx 避免重复）
-pkgs_to_collect = ['pandas_ta', 'pytz', 'certifi', 'pypinyin']
+pkgs_to_collect = ['pandas_ta', 'pytz', 'certifi', 'pypinyin', 'matplotlib', 'mplfinance']
 
 for pkg in pkgs_to_collect:
     try:
@@ -208,6 +208,15 @@ try:
     print(f"Collected {len(core_subs)} core submodules")
 except Exception as e:
     print(f"Warning: Could not collect stock_monitor.core submodules: {e}")
+
+# 强制收集 stock_monitor.ui 的所有子模块，避免动态加载弹窗时出现 ModuleNotFoundError
+try:
+    print("Collecting stock_monitor.ui submodules...")
+    ui_subs = collect_submodules('stock_monitor.ui')
+    hiddenimports += ui_subs
+    print(f"Collected {len(ui_subs)} ui submodules")
+except Exception as e:
+    print(f"Warning: Could not collect stock_monitor.ui submodules: {e}")
 
 # 强制包含 akshare 和 pandas_ta（物理注入双重保险）
 try:

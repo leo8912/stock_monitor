@@ -963,7 +963,6 @@ class NewSettingsDialog(QDialog):
 
     def _on_test_push_clicked(self):
         """测试 Webhook 推送"""
-        import time
 
         # [P1 FIX] 检查冷却时间
         current_time = time.time()
@@ -993,7 +992,7 @@ class NewSettingsDialog(QDialog):
             QMessageBox.critical(self, "失败", "发送失败，请检查 Webhook 地址是否正确")
 
     def _on_test_app_clicked(self):
-        """测试企业应用推送"""
+        """测试企业应用推送并提供 IP 白名单诊断"""
         config = {
             "wecom_corpid": self.wecom_corpid_input.text().strip(),
             "wecom_corpsecret": self.wecom_corpsecret_input.text().strip(),
@@ -1004,21 +1003,70 @@ class NewSettingsDialog(QDialog):
             QMessageBox.warning(self, "提示", "请完整填写企业 ID、Secret 和 AgentID")
             return
 
-        from ...services.notifier import NotifierService
+        import re
 
-        success = NotifierService.send_wecom_app_message(
-            config,
-            "🚀 企业应用测试成功",
-            "您的股票监控系统已成功通过企业自建应用通道连接！\n当前时间: "
-            + time.strftime("%H:%M:%S"),
-        )
+        import requests
 
-        if success:
-            QMessageBox.information(
-                self, "成功", "测试应用卡片已发出，请检查手机企业微信"
-            )
-        else:
-            QMessageBox.critical(self, "失败", "发送失败，请检查配置参数及网络状态")
+        corp_id = config["wecom_corpid"]
+        secret = config["wecom_corpsecret"]
+        agent_id = config["wecom_agentid"]
+
+        try:
+            # 1. 尝试获取 Access Token
+            token_url = f"https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid={corp_id}&corpsecret={secret}"
+            token_resp = requests.get(token_url, timeout=10).json()
+            access_token = token_resp.get("access_token")
+            if not access_token:
+                QMessageBox.critical(
+                    self,
+                    "失败",
+                    f"获取企业微信 Access Token 失败，请检查企业 ID 和应用密钥是否正确。\n\n企微返回: {token_resp}",
+                )
+                return
+
+            # 2. 尝试发送测试消息
+            send_url = f"https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token={access_token}"
+            payload = {
+                "touser": "@all",
+                "msgtype": "text",
+                "agentid": int(agent_id) if str(agent_id).isdigit() else agent_id,
+                "text": {
+                    "content": f"🚀 企业应用测试成功\n\n您的股票监控系统已成功通过企业自建应用通道连接！\n当前时间: {time.strftime('%Y-%m-%d %H:%M:%S')}"
+                },
+                "safe": 0,
+            }
+            resp = requests.post(send_url, json=payload, timeout=10).json()
+            errcode = resp.get("errcode")
+
+            if errcode == 0:
+                QMessageBox.information(
+                    self, "成功", "测试应用消息已发出，请检查手机企业微信"
+                )
+            elif errcode == 60020:
+                errmsg = resp.get("errmsg", "")
+                ip_match = re.search(r"from ip:\s*([0-9.]+)", errmsg)
+                ip_str = ip_match.group(1) if ip_match else "您的公网IP"
+
+                QMessageBox.critical(
+                    self,
+                    "发送失败 (IP白名单限制)",
+                    f"❌ 企微自建应用推送失败：公网IP不在白名单内 (错误码 60020)\n\n"
+                    f"您的当前公网IP: {ip_str}\n\n"
+                    f"【解决方法】:\n"
+                    f"1. 登录企业微信管理后台 (work.weixin.qq.com)。\n"
+                    f"2. 进入 [应用管理] -> 点击您所填写的 [自建应用]。\n"
+                    f"3. 找到 [企业可信IP] 属性，点击配置，将上述IP {ip_str} 添加到白名单中。\n"
+                    f"4. 保存配置后，重新点击此处的“测试应用”。\n\n"
+                    f"💡 友情提示：本系统已配备自动 Webhook 兜底。即使不配置白名单，在运行期间若应用通道发送失败，也会自动回退到 Webhook 群机器人渠道为您推送消息。",
+                )
+            else:
+                QMessageBox.critical(
+                    self,
+                    "失败",
+                    f"发送失败，请检查配置参数及网络状态。\n\n企微错误码: {errcode}\n错误详情: {resp.get('errmsg')}",
+                )
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"测试推送过程中发生异常:\n{e}")
 
     def _on_push_mode_changed(self):
         """根据推送模式切换 UI 显示"""

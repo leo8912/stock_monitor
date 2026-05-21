@@ -1,5 +1,11 @@
 """综合技术分析 - 领益智造和万向钱潮"""
 
+import os
+import sys
+
+sys.path.append(
+    os.path.join(os.path.dirname(__file__), "../../stock_monitor/_internal")
+)
 import akshare as ak
 
 

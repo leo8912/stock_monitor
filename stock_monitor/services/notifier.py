@@ -3,6 +3,7 @@
 负责将底层量化分析引擎捕捉到的高优信号，即时推送到指定的外部通信渠道（如企业微信机器人）
 """
 
+import os
 import time
 from typing import Optional
 
@@ -205,55 +206,61 @@ class NotifierService:
             f"{cycle_info}"
         )
 
+        success = False
         # 1. 尝试企业应用（改用 text 格式以兼容个人微信）
         if config.get("push_mode") == "app" or config.get("wecom_corpsecret"):
             agent_id = config.get("wecom_agentid", "")
             corp_id = config.get("wecom_corpid", "")
             corp_secret = config.get("wecom_corpsecret", "")
 
-            if not all([agent_id, corp_id, corp_secret]):
-                app_logger.warning("企微应用配置不完整，跳过推送")
-                return False
+            if all([agent_id, corp_id, corp_secret]):
+                # 获取 Access Token
+                token_url = f"https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid={corp_id}&corpsecret={corp_secret}"
+                try:
+                    token_resp = requests.get(token_url, timeout=10).json()
+                    access_token = token_resp.get("access_token")
+                    if access_token:
+                        send_url = f"https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token={access_token}"
 
-            # 获取 Access Token
-            token_url = f"https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid={corp_id}&corpsecret={corp_secret}"
-            try:
-                token_resp = requests.get(token_url, timeout=10).json()
-                access_token = token_resp.get("access_token")
-                if not access_token:
-                    app_logger.error(f"获取企微 Token 失败: {token_resp}")
-                    return False
-            except Exception as e:
-                app_logger.error(f"获取企微 Token 异常: {e}")
-                return False
-
-            send_url = f"https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token={access_token}"
-
-            # 构造纯文本内容
-            full_content = f"{title}\n\n{desc_body}"
-            payload = {
-                "touser": "@all",
-                "msgtype": "text",
-                "agentid": int(agent_id) if str(agent_id).isdigit() else agent_id,
-                "text": {"content": full_content},
-                "safe": 0,
-            }
-            try:
-                resp = requests.post(send_url, json=payload, timeout=10).json()
-                if resp.get("errcode") == 0:
-                    app_logger.info(f"企微应用消息发送成功: {title}")
-                    return True
-                else:
-                    app_logger.error(f"企微应用消息发送失败: {resp}")
-                    return False
-            except Exception as e:
-                app_logger.error(f"企微应用消息推送异常: {e}")
-                return False
+                        # 构造纯文本内容
+                        full_content = f"{title}\n\n{desc_body}"
+                        payload = {
+                            "touser": "@all",
+                            "msgtype": "text",
+                            "agentid": int(agent_id)
+                            if str(agent_id).isdigit()
+                            else agent_id,
+                            "text": {"content": full_content},
+                            "safe": 0,
+                        }
+                        resp = requests.post(send_url, json=payload, timeout=10).json()
+                        if resp.get("errcode") == 0:
+                            app_logger.info(f"企微应用消息发送成功: {title}")
+                            success = True
+                        else:
+                            app_logger.error(f"企微应用消息发送失败: {resp}")
+                    else:
+                        app_logger.error(f"获取企微 Token 失败: {token_resp}")
+                except Exception as e:
+                    app_logger.error(f"企微应用消息推送异常: {e}")
+            else:
+                app_logger.warning("企微应用配置不完整，跳过应用通道推送")
 
         # 2. 回退到 Webhook（纯文本）
-        webhook_url = config.get("wecom_webhook", "")
-        body = f"{title}\n\n{price_detail}\n\n**关键信号：**\n{signal_rows}\n\n---\n\n{cycle_info}"
-        return cls.send_wecom_webhook_text(webhook_url, body)
+        if not success:
+            webhook_url = config.get("wecom_webhook", "")
+            if webhook_url:
+                app_logger.info(
+                    "企微应用推送未成功（可能是IP白名单限制），正在回退至 Webhook 渠道推送预警..."
+                )
+                body = f"{title}\n\n{price_detail}\n\n**关键信号：**\n{signal_rows}\n\n---\n\n{cycle_info}"
+                return cls.send_wecom_webhook_text(webhook_url, body)
+            else:
+                app_logger.warning(
+                    "企微应用推送失败，且未配置 Webhook URL，无法发送预警"
+                )
+                return False
+        return True
 
     @classmethod
     def dispatch_report(
@@ -264,31 +271,56 @@ class NotifierService:
             return False
 
         # 1. 企业应用通道 (每一个股一条 markdown 信息，防止信息过长被隐藏)
+        success = False
         if config.get("push_mode") == "app" or config.get("wecom_corpsecret"):
-            # 发送概览总卡片
-            header_desc = f"{footer}\n\n**报告时间**: {time.strftime('%Y-%m-%d %H:%M')}"
-            cls.send_wecom_app_message(config, f"📊 {title} (总览)", header_desc)
+            try:
+                # 发送概览总卡片
+                header_desc = (
+                    f"{footer}\n\n**报告时间**: {time.strftime('%Y-%m-%d %H:%M')}"
+                )
+                if cls.send_wecom_app_message(
+                    config, f"📊 {title} (总览)", header_desc
+                ):
+                    success = True
+                    # 循环发送每一个股详情卡片
+                    for item in content_items:
+                        card_title = "个股表现"
+                        first_line = item.split("\n")[0]
+                        if "**" in first_line:
+                            card_title = first_line.replace("**", "").strip()
 
-            # 循环发送每一个股详情卡片
-            for item in content_items:
-                # 尝试从 "**名称** (代码)" 格式中提取标题
-                card_title = "个股表现"
-                first_line = item.split("\n")[0]
-                if "**" in first_line:
-                    card_title = first_line.replace("**", "").strip()
-
-                # 去掉第一行作为标题后的剩余内容作为描述
-                card_desc = "\n".join(item.split("\n")[1:]) if "\n" in item else item
-                cls.send_wecom_app_message(config, f"📈 {card_title}", card_desc)
-
-                # 稍微停顿，防止触发过于频繁的限制
-                time.sleep(0.5)
-            return True
+                        card_desc = (
+                            "\n".join(item.split("\n")[1:]) if "\n" in item else item
+                        )
+                        cls.send_wecom_app_message(
+                            config, f"📈 {card_title}", card_desc
+                        )
+                        time.sleep(0.5)
+            except Exception as app_err:
+                app_logger.error(f"企业应用推送汇总报告异常: {app_err}")
+                success = False
 
         # 2. Webhook Markdown 通道
-        webhook_url = config.get("wecom_webhook", "")
-        if not webhook_url:
-            return False
+        if not success:
+            webhook_url = config.get("wecom_webhook", "")
+            if not webhook_url:
+                app_logger.warning(
+                    "企微应用发送未成功且未配置 Webhook URL，无法发送汇总报告"
+                )
+                return False
+
+            app_logger.info(
+                "企微应用发送未成功（可能是IP白名单限制），正在回退至 Webhook 渠道推送汇总报告..."
+            )
+            text_content = (
+                f"📊 {title}\n\n报告时间：{time.strftime('%Y-%m-%d %H:%M')}\n\n"
+            )
+            text_content += "\n\n".join(
+                [item.replace("**", "") for item in content_items]
+            )
+            if footer:
+                text_content += f"\n\n---\n{footer}"
+            return cls.send_wecom_webhook_text(webhook_url, text_content)
 
         text_content = f"📊 {title}\n\n报告时间：{time.strftime('%Y-%m-%d %H:%M')}\n\n"
         text_content += "\n\n".join([item.replace("**", "") for item in content_items])
@@ -324,15 +356,22 @@ class NotifierService:
         """
         try:
             # 1. 企业应用通道
+            success = False
             if config.get("push_mode") == "app" or config.get("wecom_corpsecret"):
-                cls.send_wecom_app_message(config, title, content)
-                return True
+                try:
+                    success = cls.send_wecom_app_message(config, title, content)
+                except Exception as app_err:
+                    app_logger.error(f"企业应用推送异常: {app_err}")
+                    success = False
 
             # 2. Webhook Markdown 通道
-            webhook_url = webhook_override or config.get("wecom_webhook", "")
-            if not webhook_url:
-                app_logger.warning("未配置 Webhook URL，无法发送消息")
-                return False
+            if not success:
+                webhook_url = webhook_override or config.get("wecom_webhook", "")
+                if not webhook_url:
+                    app_logger.warning(
+                        "企微应用发送未成功且未配置 Webhook URL，无法发送自定义消息"
+                    )
+                    return False
 
             # 如果内容包含 HTML 标签或 Markdown 符号，尝试进行简单的清理转换为纯文本
             import re
@@ -351,4 +390,126 @@ class NotifierService:
             )
         except Exception as e:
             app_logger.error(f"发送自定义消息失败：{e}")
+            return False
+
+    @classmethod
+    def dispatch_image(
+        cls,
+        config: dict,
+        image_path: str,
+        title: str = "",
+    ) -> bool:
+        """
+        推送图片消息（支持企业应用通道与 Webhook 通道）
+
+        Args:
+            config: 配置字典
+            image_path: 本地图片路径
+            title: 辅助标题文本（发送完图片后会以文本消息形式追加发送，作为说明）
+
+        Returns:
+            bool: 是否发送成功
+        """
+        if not image_path or not os.path.exists(image_path):
+            app_logger.warning(f"图片路径无效或不存在: {image_path}")
+            return False
+
+        try:
+            # 1. 企业微信应用通道 (App)
+            success = False
+            if config.get("push_mode") == "app" or config.get("wecom_corpsecret"):
+                corp_id = config.get("wecom_corpid", "")
+                corp_secret = config.get("wecom_corpsecret", "")
+                agent_id = config.get("wecom_agentid", "")
+
+                if all([corp_id, corp_secret, agent_id]):
+                    token = cls._get_app_token(corp_id, corp_secret)
+                    if token:
+                        # A. 上传临时素材获取 media_id
+                        upload_url = f"https://qyapi.weixin.qq.com/cgi-bin/media/upload?access_token={token}&type=image"
+                        try:
+                            with open(image_path, "rb") as f:
+                                files = {"media": f}
+                                upload_resp = requests.post(
+                                    upload_url, files=files, timeout=15
+                                ).json()
+
+                            media_id = upload_resp.get("media_id")
+                            if media_id:
+                                # B. 发送图片消息
+                                send_url = f"https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token={token}"
+                                payload = {
+                                    "touser": "@all",
+                                    "msgtype": "image",
+                                    "agentid": int(agent_id)
+                                    if str(agent_id).isdigit()
+                                    else agent_id,
+                                    "image": {"media_id": media_id},
+                                    "safe": 0,
+                                }
+                                resp = requests.post(
+                                    send_url, json=payload, timeout=10
+                                ).json()
+                                if resp.get("errcode") == 0:
+                                    app_logger.info("企微应用图片消息发送成功")
+                                    if title:
+                                        # 追加一条说明文本
+                                        cls.send_wecom_app_message(
+                                            config, "说明", title
+                                        )
+                                    success = True
+                                else:
+                                    app_logger.error(f"企微应用图片发送失败: {resp}")
+                            else:
+                                app_logger.error(
+                                    f"企微图片上传失败，响应: {upload_resp}"
+                                )
+                        except Exception as upload_err:
+                            app_logger.error(
+                                f"企微图片上传/发送过程发生异常: {upload_err}"
+                            )
+                    else:
+                        app_logger.error("获取企微 Token 失败，跳过应用通道图片发送")
+                else:
+                    app_logger.warning("企微应用配置不全，跳过图片应用通道。")
+
+            # 2. Webhook 通道 (图片 Base64 + MD5)
+            if not success:
+                webhook_url = config.get("wecom_webhook", "")
+                if not webhook_url:
+                    app_logger.warning("未配置 Webhook URL，无法发送图片消息")
+                    return False
+
+                import base64
+                import hashlib
+
+                # 读取图片字节，计算 MD5 和 Base64
+                with open(image_path, "rb") as f:
+                    image_bytes = f.read()
+                    md5_str = hashlib.md5(image_bytes).hexdigest()
+                    base64_str = base64.b64encode(image_bytes).decode("utf-8")
+
+                payload = {
+                    "msgtype": "image",
+                    "image": {"base64": base64_str, "md5": md5_str},
+                }
+
+                headers = {"Content-Type": "application/json"}
+                resp = requests.post(
+                    webhook_url, json=payload, headers=headers, timeout=15
+                ).json()
+
+                if resp.get("errcode") == 0:
+                    app_logger.info("Webhook 图片发送成功")
+                    if title:
+                        # 追加一条说明文本
+                        cls.send_wecom_webhook_text(webhook_url, title)
+                    return True
+                else:
+                    app_logger.error(f"Webhook 图片发送失败: {resp}")
+                    return False
+            return True
+
+        except Exception as e:
+            app_logger.error(f"发送图片消息异常: {e}", exc_info=True)
             return False

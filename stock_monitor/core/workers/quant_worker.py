@@ -14,6 +14,7 @@ from stock_monitor.utils.logger import app_logger
 from ...services.notifier import NotifierService
 from ..backtest_engine import BacktestEngine
 from ..cache_warmer import CacheWarmer, PerformanceMonitor
+from ..engine import WaveAnalyzer, WaveChart
 from ..quant_engine import QuantEngine
 
 # 缓存文件路径 (与应用日志同目录)
@@ -175,6 +176,7 @@ class QuantWorker(QtCore.QThread):
         Args:
             report_type: 报告类型 ("morning", "afternoon", "manual", "auto")
         """
+
         try:
             if not self.symbols:
                 app_logger.warning("无自选股，跳过报告生成")
@@ -207,6 +209,22 @@ class QuantWorker(QtCore.QThread):
                     obv_signals = self.engine.detect_obv_accumulation(symbol, daily_df)
                     signals.extend(obv_signals)
 
+                    # 波浪与斐波那契分析 (日线 + 60m)
+                    daily_wave = None
+                    h60_wave = None
+                    try:
+                        h60_df = self.engine.fetch_bars(symbol, category=3, offset=100)
+                        daily_res = WaveAnalyzer.analyze(daily_df)
+                        h60_res = WaveAnalyzer.analyze(h60_df)
+                        if daily_res:
+                            daily_wave = daily_res.current_wave
+                        if h60_res:
+                            h60_wave = h60_res.current_wave
+                    except Exception as wave_err:
+                        app_logger.warning(
+                            f"复盘报告分析波浪异常 ({symbol}): {wave_err}"
+                        )
+
                     if signals:
                         # 计算强度评分
                         score, audit = (
@@ -223,6 +241,8 @@ class QuantWorker(QtCore.QThread):
                             "audit": audit,
                             "price": p_info.get("price", 0),
                             "pct": p_info.get("pct", 0),
+                            "wave_daily": daily_wave,
+                            "wave_60m": h60_wave,
                         }
 
                         all_signals.append(signal_info)
@@ -243,6 +263,7 @@ class QuantWorker(QtCore.QThread):
 
             # 发送报告
             if report_content and self.config:
+                # A. 先发送文字版报告
                 NotifierService.dispatch_custom_message(
                     config=self.config,
                     title=report_title,
@@ -255,8 +276,174 @@ class QuantWorker(QtCore.QThread):
                     f"复盘报告已发送：{report_title}，共 {len(all_signals)} 个信号"
                 )
 
+                # B. 为前 5 个信号最佳的股票生成并推送详细的波浪与斐波那契文字分析
+                for sig in all_signals[:5]:
+                    symbol = sig["symbol"]
+                    stock_name = sig["name"]
+
+                    try:
+                        daily_df = self.engine.fetch_bars(
+                            symbol, category=9, offset=100
+                        )
+                        h60_df = self.engine.fetch_bars(symbol, category=3, offset=100)
+
+                        # 日线波浪分析与文字推送
+                        if daily_df is not None and not daily_df.empty:
+                            daily_text = self._format_wave_text_analysis(
+                                symbol, stock_name, "日线", daily_df
+                            )
+                            if daily_text:
+                                NotifierService.dispatch_custom_message(
+                                    config=self.config,
+                                    title=f"📊 波浪形态复盘: {stock_name} (日线)",
+                                    content=daily_text,
+                                    webhook_override=self.wecom_webhook
+                                    if report_type == "manual"
+                                    else None,
+                                )
+                                time.sleep(0.5)
+
+                        # 60m波浪分析与文字推送
+                        if h60_df is not None and not h60_df.empty:
+                            h60_text = self._format_wave_text_analysis(
+                                symbol, stock_name, "60分钟线", h60_df
+                            )
+                            if h60_text:
+                                NotifierService.dispatch_custom_message(
+                                    config=self.config,
+                                    title=f"📊 波浪形态复盘: {stock_name} (60m)",
+                                    content=h60_text,
+                                    webhook_override=self.wecom_webhook
+                                    if report_type == "manual"
+                                    else None,
+                                )
+                                time.sleep(0.5)
+                    except Exception as wave_err:
+                        app_logger.error(
+                            f"为复盘生成推送波浪文字分析失败 ({symbol}): {wave_err}"
+                        )
+
         except Exception as e:
             app_logger.error(f"生成复盘报告失败：{e}")
+
+    def _get_prev_next_wave(self, wave: str) -> tuple[str, str]:
+        """获取前一浪和预计下一浪"""
+        progression = ["1", "2", "3", "4", "5", "A", "B", "C"]
+        if wave not in progression:
+            return "未知", "未知"
+        idx = progression.index(wave)
+        prev_w = progression[(idx - 1) % len(progression)]
+        next_w = progression[(idx + 1) % len(progression)]
+        return prev_w, next_w
+
+    def _format_wave_text_analysis(
+        self, symbol: str, name: str, timeframe_name: str, df
+    ) -> str:
+        """将波浪与斐波那契分析结果格式化为易懂的纯文本卡片，包含主浪、子浪、周期阶段预测"""
+        if df is None or df.empty or len(df) < 30:
+            return ""
+
+        # 1. 大浪（主浪）分析
+        major_res = None
+        for t in [0.08, 0.06, 0.05]:
+            major_res = WaveAnalyzer.analyze(df, threshold=t)
+            if major_res:
+                break
+
+        # 2. 子浪分析
+        sub_res = WaveAnalyzer.analyze(df, threshold=0.03)
+
+        if not major_res or not major_res.current_wave:
+            return ""
+
+        # 主浪数据
+        major_wave = major_res.current_wave.get("wave", "未知")
+        major_trend = major_res.current_wave.get("trend")
+        major_desc = major_res.current_wave.get("desc", "常规波动")
+        major_conf = major_res.current_wave.get("confidence", 0.5) * 100
+        prev_major, next_major = self._get_prev_next_wave(major_wave)
+
+        # 子浪数据
+        if sub_res and sub_res.current_wave:
+            sub_wave = sub_res.current_wave.get("wave", "未知")
+            sub_desc = sub_res.current_wave.get("desc", "微幅波动")
+            prev_sub, next_sub = self._get_prev_next_wave(sub_wave)
+        else:
+            sub_wave = "未知"
+            sub_desc = "波幅过小未确立"
+            prev_sub, next_sub = "未知", "未知"
+
+        # 趋势采用红/绿标识：A股上涨用红(🔴)，下跌用绿(🟢)
+        if major_trend == "bullish":
+            trend_icon = "🔴"
+            trend_text = "看涨/上升"
+            wave_color_title = "🔴【波浪看涨形态分析】"
+        else:
+            trend_icon = "🟢"
+            trend_text = "看跌/调整"
+            wave_color_title = "🟢【波浪看跌形态分析】"
+
+        levels = major_res.fib_levels or {}
+        curr_price = float(major_res.df.iloc[-1]["close"])
+
+        # 识别支撑和阻力
+        supports = []
+        resistances = []
+
+        # 对 levels 按价格排序
+        sorted_levels = sorted(
+            [(k, v) for k, v in levels.items() if k not in ("start", "end")],
+            key=lambda x: x[1],
+        )
+
+        for k, v in sorted_levels:
+            if v < curr_price:
+                # 支撑位属于防线，显示红色
+                supports.append(f"{k}位 ({v:.2f}元)")
+            elif v > curr_price:
+                # 阻力位属于上方压制，显示绿色
+                resistances.append(f"{k}位 ({v:.2f}元)")
+
+        supports_str = (
+            " | ".join(supports[-3:]) if supports else "暂无"
+        )  # 取最近的3个支撑位
+        resistances_str = (
+            " | ".join(resistances[:3]) if resistances else "暂无"
+        )  # 取最近的3个阻力位
+
+        text = (
+            f"{wave_color_title}{name} ({symbol})\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"📅 **时间周期**：{timeframe_name}\n"
+            f"📈 **主浪结构 (大浪)**：第 **{major_wave}** 主浪 ({major_desc})\n"
+            f"  - ⏮️ 前一周期阶段：第 {prev_major} 主浪\n"
+            f"  - ⏭️ 预计下一周期阶段：第 {next_major} 主浪\n"
+            f"🌊 **子浪结构 (细分)**：第 **{sub_wave}** 子浪 ({sub_desc})\n"
+            f"  - ⏮️ 前一周期阶段：第 {prev_sub} 子浪\n"
+            f"  - ⏭️ 预计下一周期阶段：第 {next_sub} 子浪\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"📊 **当前趋势**：{trend_icon} {trend_text} (置信度: {major_conf:.0f}%)\n"
+            f"💰 **当前价格**：{curr_price:.2f} 元\n"
+            f"🛡️ **下行支撑**：{supports_str}\n"
+            f"💥 **上行阻力**：{resistances_str}\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"💡 **解读建议**：\n"
+        )
+
+        if major_wave == "3" and major_trend == "bullish":
+            text += "🔴 股价正处于极强势的第3主升浪中。主升段应当坚定持股。如逢日内回调，临近支撑位均是良好的加仓点。"
+        elif major_wave == "4" and major_trend == "bullish":
+            text += "🔴 股价处于第4浪调整。调整通常以宽幅震荡或阴跌为主，意在蓄势。若股价在支撑位获得强力支撑企稳，可择机低吸，博弈后续的第5浪拉升。"
+        elif major_wave == "5" and major_trend == "bullish":
+            text += "🔴 股价处于第5浪拉升，属于多头行情的尾声。不宜继续追高，随着股价冲高且越临近上行阻力位，建议逐步分批止盈锁定利润。"
+        elif major_wave == "B" and major_trend == "bearish":
+            text += "🟢 股价处于跌势中途的B浪反弹。本轮反弹高度通常有限，难以突破重重阻力，应视为出局减仓的良机，谨防后续C浪深度杀跌。"
+        elif major_wave == "C" and major_trend == "bearish":
+            text += "🟢 股价处于C浪杀跌中。寻底过程杀伤力极大，切忌盲目抄底，应以现金防守为主，耐心等待跌势止步并确立底分型后再行建仓。"
+        else:
+            text += "当前处于常规第1主浪筑底/震荡阶段，大级别方向尚不明确。建议轻仓滚动，关注支撑与阻力位之间的突破方向。"
+
+        return text
 
     def _get_report_title(self, report_type: str) -> str:
         """获取报告标题"""
@@ -295,11 +482,21 @@ class QuantWorker(QtCore.QThread):
             md.append("**🌟 重点关注：**\n")
             for sig in strong_signals[:5]:  # 最多显示 5 个
                 fin_label = sig["audit"].get("label", "")
+                wave_daily_desc = (
+                    f" | 🌊日线:{sig['wave_daily']['desc']}"
+                    if sig.get("wave_daily")
+                    else ""
+                )
+                wave_60m_desc = (
+                    f" | 🌊60m:{sig['wave_60m']['desc']}" if sig.get("wave_60m") else ""
+                )
                 md.append(
                     f"> **{sig['name']}** ({sig['symbol']}) "
                     f"[{sig['signals'][0]}] "
                     f"评分:{sig['score']:+} "
                     f"{fin_label}"
+                    f"{wave_daily_desc}"
+                    f"{wave_60m_desc}"
                 )
             md.append("")
 
@@ -312,10 +509,20 @@ class QuantWorker(QtCore.QThread):
                     if sig["price"] > 0
                     else "--"
                 )
+                wave_daily_desc = (
+                    f" (日线:{sig['wave_daily']['wave']}浪)"
+                    if sig.get("wave_daily")
+                    else ""
+                )
+                wave_60m_desc = (
+                    f" (60m:{sig['wave_60m']['wave']}浪)" if sig.get("wave_60m") else ""
+                )
                 md.append(
                     f"• {sig['name']} [{sig['signals'][0]}] "
                     f"+{sig['score']} "
                     f"{price_info}"
+                    f"{wave_daily_desc}"
+                    f"{wave_60m_desc}"
                 )
 
         return "\n".join(md)
@@ -338,7 +545,7 @@ class QuantWorker(QtCore.QThread):
                     continue
 
                 # 在第一次进入市场开盘时进行缓存预热
-                if MarketManager.is_market_open() and not cache_warming_attempted:
+                if MarketManager().is_market_open() and not cache_warming_attempted:
                     cache_warming_attempted = True
                     if self.symbols and not self._cache_warmed:
                         app_logger.info("触发缓存预热...")
@@ -352,7 +559,7 @@ class QuantWorker(QtCore.QThread):
                         except Exception as e:
                             app_logger.error(f"缓存预热失败：{e}")
 
-                if MarketManager.is_market_open():
+                if MarketManager().is_market_open():
                     current_interval = self.config.get(
                         "quant_scan_interval", self.scan_interval
                     )
@@ -699,11 +906,30 @@ class QuantWorker(QtCore.QThread):
         if not pending_signals:
             return None
 
+        # 1. 运行波浪定位分析
+        daily_wave_text = ""
+        h60_wave_text = ""
+        daily_res = None
+        h60_res = None
+        try:
+            daily_df = self.engine.fetch_bars(symbol, category=9, offset=100)
+            h60_df = self.engine.fetch_bars(symbol, category=3, offset=100)
+            daily_res = WaveAnalyzer.analyze(daily_df)
+            h60_res = WaveAnalyzer.analyze(h60_df)
+            if daily_res:
+                daily_wave_text = f"\n🌊 **波浪定位(日线)**：{daily_res.current_wave.get('desc', '判断中')} (第 {daily_res.current_wave.get('wave', '')} 浪)"
+            if h60_res:
+                h60_wave_text = f"\n🌊 **波浪定位(60m)**：{h60_res.current_wave.get('desc', '判断中')} (第 {h60_res.current_wave.get('wave', '')} 浪)"
+        except Exception as wave_err:
+            app_logger.warning(f"即时扫描分析波浪异常 ({symbol}): {wave_err}")
+
         # 【阶段2】根据配置决定是合并推送还是单独推送
         if merge_enabled and len(pending_signals) > 1:
             # 合并推送模式
             merged = self._merge_signals_for_symbol(symbol, stock_name, pending_signals)
             if merged:
+                # 注入波浪文本
+                merged["cycle_info"] += f"\n{daily_wave_text}{h60_wave_text}"
                 NotifierService.dispatch_alert(
                     config=self.config,
                     symbol=symbol,
@@ -762,6 +988,8 @@ class QuantWorker(QtCore.QThread):
                     f"🚀 **超值强度**：{ps['score']:+}分 (Alpha: {alpha:+.2f}%)\n\n"
                 )
                 cycle_info += f"🏥 **财务审计**：{fin_info}\n"
+                # 注入波浪文本
+                cycle_info += f"{daily_wave_text}\n{h60_wave_text}\n"
                 cycle_info += stats_text
 
                 history_list = self._signals_history.get(symbol, [])
@@ -788,6 +1016,41 @@ class QuantWorker(QtCore.QThread):
                 # 更新状态
                 self._update_signal_state(symbol, ps["sig_name"], ps["score"])
                 triggered.append(ps["sig_name"])
+
+        # 3. 统一生成并推送波浪分析 K 线图
+        try:
+            import os
+
+            if daily_res:
+                daily_img = WaveChart.generate(
+                    daily_res, symbol, stock_name, timeframe="daily"
+                )
+                if daily_img and os.path.exists(daily_img):
+                    NotifierService.dispatch_image(
+                        config=self.config,
+                        image_path=daily_img,
+                        title=f"【异动图表】{stock_name} ({symbol}) 日线波浪形态\n当前位置: {daily_res.current_wave.get('desc', '')}",
+                    )
+                    try:
+                        os.remove(daily_img)
+                    except Exception:  # noqa: E722
+                        pass
+            if h60_res:
+                h60_img = WaveChart.generate(
+                    h60_res, symbol, stock_name, timeframe="60m"
+                )
+                if h60_img and os.path.exists(h60_img):
+                    NotifierService.dispatch_image(
+                        config=self.config,
+                        image_path=h60_img,
+                        title=f"【异动图表】{stock_name} ({symbol}) 60分钟波浪形态\n当前位置: {h60_res.current_wave.get('desc', '')}",
+                    )
+                    try:
+                        os.remove(h60_img)
+                    except Exception:  # noqa: E722
+                        pass
+        except Exception as img_err:
+            app_logger.error(f"即时扫描推送波浪图表失败 ({symbol}): {img_err}")
 
         # 记录历史轨迹
         if symbol not in self._signals_history:

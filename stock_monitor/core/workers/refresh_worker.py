@@ -1,3 +1,4 @@
+import datetime
 import time
 
 from PyQt6 import QtCore
@@ -43,6 +44,7 @@ class RefreshWorker(QtCore.QThread):
         self._closing_data_fetched = False  # 当日收盘数据是否已获取
         self._closing_data_date = None  # 记录获取收盘数据的日期，用于次日重置
         self._last_market_open = None  # 追踪上次市场开闭状态，用于检测状态转换
+        self._initial_update_done = False  # 首次更新是否完成
 
         # 线程同步机制：用于支持立即触发刷新
         self._wait_condition = QtCore.QWaitCondition()
@@ -130,23 +132,29 @@ class RefreshWorker(QtCore.QThread):
                 self._lock.unlock()
 
                 # 检查市场状态（首次启动或手动触发跳过此检查，确保至少获取一次数据）
-                market_open = MarketManager.is_market_open()
+                market_open = MarketManager().is_market_open()
                 force_fetch = not first_fetch_done or is_manual
 
                 # 检测开市→闭市的状态转换，重置收盘数据获取标志
                 # 解决中午休市(11:30)消费掉下午收盘(15:00)唯一获取机会的问题
                 if self._last_market_open is True and not market_open:
-                    self._closing_data_fetched = False
+                    self._lock.lock()
+                    try:
+                        self._closing_data_fetched = False
+                    finally:
+                        self._lock.unlock()
                     app_logger.info("检测到市场从开市转为闭市，重置收盘数据获取标志")
                 self._last_market_open = market_open
 
                 # 每日重置收盘数据获取标记
-                import datetime
-
                 today = datetime.date.today()
-                if self._closing_data_date != today:
-                    self._closing_data_fetched = False
-                    self._closing_data_date = today
+                self._lock.lock()
+                try:
+                    if self._closing_data_date != today:
+                        self._closing_data_fetched = False
+                        self._closing_data_date = today
+                finally:
+                    self._lock.unlock()
 
                 # 如果市场关闭且不是首次/手动启动，则尝试获取收盘数据或休眠等待
                 if not market_open and not force_fetch:
@@ -170,15 +178,15 @@ class RefreshWorker(QtCore.QThread):
 
                 stocks, failed_count = stock_manager.fetch_and_process_stocks(
                     local_user_stocks,
-                    sync_quant_data=not first_fetch_done,
+                    wait_for_quant_data=False,  # 始终异步获取量化数据，避免阻塞UI
                 )
 
                 # 检查变化并更新
-                force_update = not hasattr(self, "_initial_update_done")
+                force_update = not self._initial_update_done
                 # 使用 stock_manager 进行变更检测
                 if force_update or stock_manager.has_stock_data_changed(stocks):
                     stock_manager.update_last_stock_data(stocks)
-                    if not hasattr(self, "_initial_update_done"):
+                    if not self._initial_update_done:
                         self._initial_update_done = True
                         app_logger.info("首次数据更新完成")
 
@@ -190,41 +198,24 @@ class RefreshWorker(QtCore.QThread):
                     )
                     self._last_successful_update = time.time()
 
-                self._consecutive_failures = 0
+                # 重置连续失败计数
+                self._lock.lock()
+                try:
+                    self._consecutive_failures = 0
+                finally:
+                    self._lock.unlock()
 
                 # 标记首次获取已完成（仅当成功获取到数据时）
                 # 如果全部失败，不标记完成，继续重试获取数据
                 if not first_fetch_done:
-                    # 检查是否全部获取失败
-                    all_failed = (
-                        failed_count == len(local_user_stocks)
-                        and len(local_user_stocks) > 0
-                    )
-
-                    if all_failed:
-                        startup_retry_count += 1
-
-                        if startup_retry_count < self._max_startup_retries:
-                            # 全部失败时，不标记完成，短暂休眠后重试
-                            # 这通常发生在开机启动时网络尚未就绪
-                            app_logger.warning(
-                                f"首次行情获取失败（共{failed_count}只股票），"
-                                f"第{startup_retry_count}/{self._max_startup_retries}次重试..."
-                            )
-                            self._smart_sleep(5)
-                            continue  # 跳过后续休眠，立即重试
-                        else:
-                            # 达到最大重试次数，放弃重试
-                            app_logger.error(
-                                f"首次行情获取失败，已达最大重试次数({self._max_startup_retries})，"
-                                "放弃重试，将等待下次刷新周期"
-                            )
-                            first_fetch_done = True
-                    else:
-                        first_fetch_done = True
-                        app_logger.info(
-                            "首次行情获取完成，后续将根据市场状态决定是否刷新"
+                    should_continue, startup_retry_count = (
+                        self._handle_first_fetch_result(
+                            failed_count, len(local_user_stocks), startup_retry_count
                         )
+                    )
+                    if not should_continue:
+                        continue  # 跳过后续休眠，立即重试
+                    first_fetch_done = True
 
                 # 休眠
                 sleep_time = local_refresh_interval
@@ -235,12 +226,21 @@ class RefreshWorker(QtCore.QThread):
 
             except Exception as e:
                 app_logger.error(f"行情刷新异常: {e}")
-                self._consecutive_failures += 1
+                self._lock.lock()
+                try:
+                    self._consecutive_failures += 1
+                    current_failures = self._consecutive_failures
+                finally:
+                    self._lock.unlock()
 
-                if self._consecutive_failures >= self._max_consecutive_failures:
+                if current_failures >= self._max_consecutive_failures:
                     self.refresh_error.emit()
-                    self._consecutive_failures = 0
-                    self._exponential_backoff_sleep(self._consecutive_failures)
+                    self._lock.lock()
+                    try:
+                        self._consecutive_failures = 0
+                    finally:
+                        self._lock.unlock()
+                    self._exponential_backoff_sleep(current_failures)
                 else:
                     self._smart_sleep(5)
 
@@ -263,26 +263,26 @@ class RefreshWorker(QtCore.QThread):
             if not self._is_running:
                 return
 
+            # 使用 try-finally 确保锁释放，避免死锁
             self._lock.lock()
-            # 使用 QWaitCondition 在锁上等待，支持超时唤醒
-            # wait 会在等待时释放锁，被唤醒或超时后重新获取锁
-            self._wait_condition.wait(self._lock, 500)
+            try:
+                # 使用 QWaitCondition 在锁上等待，支持超时唤醒
+                # wait 会在等待时释放锁，被唤醒或超时后重新获取锁
+                self._wait_condition.wait(self._lock, 500)
 
-            # 检查是否由于手动触发或停止而提前退出
-            if self._manual_trigger_flag or not self._is_running:
-                self._lock.unlock()
-                return
-
-            # 如果需要检查配置变更
-            if check_interval:
-                new_interval = self.refresh_interval
-                # 如果刷新间隔变小了，立即结束休眠以应用新配置
-                if new_interval < current_interval:
-                    self._lock.unlock()
+                # 检查是否由于手动触发或停止而提前退出
+                if self._manual_trigger_flag or not self._is_running:
                     return
-                current_interval = new_interval
 
-            self._lock.unlock()
+                # 如果需要检查配置变更
+                if check_interval:
+                    new_interval = self.refresh_interval
+                    # 如果刷新间隔变小了，立即结束休眠以应用新配置
+                    if new_interval < current_interval:
+                        return
+                    current_interval = new_interval
+            finally:
+                self._lock.unlock()
 
     def _exponential_backoff_sleep(
         self, attempt: int, base_delay: float = 1.0, max_delay: float = 60.0
@@ -355,7 +355,7 @@ class RefreshWorker(QtCore.QThread):
 
                 stocks, failed_count = stock_manager.fetch_and_process_stocks(
                     user_stocks,
-                    sync_quant_data=True,
+                    wait_for_quant_data=True,  # 收盘数据需要同步等待
                 )
                 all_failed = failed_count == len(user_stocks) and len(user_stocks) > 0
 
@@ -381,7 +381,47 @@ class RefreshWorker(QtCore.QThread):
             # 非最后一次获取时，等待后继续
             if attempt < total_attempts - 1:
                 # [OPTIMIZED] 使用智能休眠替代 msleep 循环，每 50ms 检查一次停止标志
-                self._smart_sleep(retry_interval)
+                # 失败后增加等待时间（指数退避）
+                backoff_time = retry_interval * (attempt + 1)
+                self._smart_sleep(backoff_time)
 
         self._closing_data_fetched = True
         app_logger.info("收盘数据获取流程结束")
+
+    def _handle_first_fetch_result(
+        self, failed_count: int, total_count: int, startup_retry_count: int
+    ) -> tuple[bool, int]:
+        """
+        处理首次获取结果
+
+        Args:
+            failed_count: 失败的股票数量
+            total_count: 总股票数量
+            startup_retry_count: 当前重试次数
+
+        Returns:
+            (是否应该继续主循环, 更新后的重试次数)
+        """
+        all_failed = failed_count == total_count and total_count > 0
+
+        if not all_failed:
+            app_logger.info("首次行情获取完成，后续将根据市场状态决定是否刷新")
+            return True, startup_retry_count
+
+        startup_retry_count += 1
+        if startup_retry_count < self._max_startup_retries:
+            # 全部失败时，不标记完成，短暂休眠后重试
+            # 这通常发生在开机启动时网络尚未就绪
+            app_logger.warning(
+                f"首次行情获取失败（共{failed_count}只股票），"
+                f"第{startup_retry_count}/{self._max_startup_retries}次重试..."
+            )
+            self._smart_sleep(5)
+            return False, startup_retry_count
+        else:
+            # 达到最大重试次数，放弃重试
+            app_logger.error(
+                f"首次行情获取失败，已达最大重试次数({self._max_startup_retries})，"
+                "放弃重试，将等待下次刷新周期"
+            )
+            return True, startup_retry_count

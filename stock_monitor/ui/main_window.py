@@ -420,6 +420,69 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
             )
         self.settings_dialog.show()
 
+    def handle_context_menu(self, event) -> bool:
+        """自定义右键菜单，支持选择特定股票查看波浪图"""
+        # 1. 映射点击位置到 table 的 viewport 坐标系
+        pos = self.table.viewport().mapFromGlobal(QtGui.QCursor.pos())
+        index = self.table.indexAt(pos)
+
+        selected_stock = None
+        if index.isValid():
+            row = index.row()
+            if row < len(self.table._model._data):
+                selected_stock = self.table._model._data[row]
+
+        # 2. 创建右键菜单
+        menu = AppContextMenu(self)
+
+        if selected_stock:
+            # 找到股票了，添加 "波浪图" 菜单项
+            action_wave = menu.addAction("📈 波浪图")
+            action_wave.triggered.connect(
+                lambda: self.show_wave_chart_dialog(
+                    selected_stock.code, selected_stock.name
+                )
+            )
+            menu.addSeparator()
+
+        action_settings = menu.addAction("设置")
+        menu.addSeparator()
+        action_quit = menu.addAction("退出")
+
+        action_settings.triggered.connect(self.open_settings)
+        action_quit.triggered.connect(self.quit_application)
+
+        # 设置 MenuRole (规避 Qt 菜单项的系统特殊劫持行为)
+        action_settings.setMenuRole(QtGui.QAction.MenuRole.ApplicationSpecificRole)
+        action_quit.setMenuRole(QtGui.QAction.MenuRole.ApplicationSpecificRole)
+
+        # 弹出菜单
+        menu.popup(QtGui.QCursor.pos())
+        event.accept()
+        return True
+
+    def show_wave_chart_dialog(self, symbol: str, name: str):
+        """显示波浪理论及斐波那契分析图弹窗"""
+        # 确保 symbol 格式正确
+        if not symbol.startswith(("sh", "sz", "bj", "hk")):
+            if symbol.startswith("6"):
+                symbol = "sh" + symbol
+            elif symbol.startswith(("0", "3")):
+                symbol = "sz" + symbol
+            elif symbol.startswith(("4", "8")):
+                symbol = "bj" + symbol
+
+        try:
+            from stock_monitor.ui.dialogs.wave_chart_dialog import WaveChartDialog
+
+            # 共享 quant_worker 中的 engine 实例
+            engine = self.viewModel._quant_worker.engine
+            dialog = WaveChartDialog(symbol, name, engine, self)
+            dialog.exec()
+        except Exception as e:
+            app_logger.error(f"打开波浪图弹窗失败: {e}", exc_info=True)
+            QtWidgets.QMessageBox.warning(self, "错误", f"打开波浪图弹窗失败: {e}")
+
     def on_manual_report_requested(self):
         """处理来自设置界面的手动复盘请求"""
         self.viewModel.trigger_manual_report()

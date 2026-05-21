@@ -67,3 +67,7 @@ MAX_PE_RATIO = 100  # 最大市盈率
 MAX_PB_RATIO = 10  # 最大市净率
 MIN_ROE = 0.05  # 最小 ROE
 MIN_OPERATING_PROFIT_GROWTH = -0.3  # 最小营业利润增长率
+
+# ====== 波浪与斐波那契相关常量 ======
+WAVE_ZIGZAG_THRESHOLD = 0.05  # ZigZag 摆动高低点检测阈值（默认5%）
+WAVE_MIN_K_COUNT = 50  # 波浪分析所需的最小 K 线数量

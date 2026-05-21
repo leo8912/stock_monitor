@@ -99,16 +99,23 @@ class StockManager:
                 app_logger.warning(f"获取 {code} 量化数据失败: {e}")
 
     def fetch_and_process_stocks(
-        self, stock_codes: list[str], sync_quant_data: bool = False
+        self, stock_codes: list[str], wait_for_quant_data: bool = False
     ) -> tuple[list[StockRowData], int]:
-        """获取并处理股票数据"""
+        """获取并处理股票数据
+
+        Args:
+            stock_codes: 股票代码列表
+            wait_for_quant_data: 是否等待量化数据完成（True=同步等待，False=异步派发）
+        """
         # 1. 批量获取基础行情数据
         data_dict = self._stock_data_service.get_multiple_stocks_data(stock_codes)
 
         # 2. 异步派发量化数据拉取任务 (大单+竞价)
-        if sync_quant_data:
+        if wait_for_quant_data:
+            # 同步等待量化数据完成
             self._async_fetch_quant_data(stock_codes)
         else:
+            # 异步派发，不阻塞当前线程
             self._executor.submit(self._async_fetch_quant_data, stock_codes)
 
         # 3. 处理并整合数据
