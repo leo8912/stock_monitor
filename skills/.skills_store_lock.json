@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "skills": {
+    "a-stock-kline-analyzer": {
+      "name": "A-Stock Kline Analyzer",
+      "zip_url": "https://api.skillhub.cn/api/v1/download?slug=a-stock-kline-analyzer",
+      "source": "community",
+      "version": "1.0.3",
+      "installedAt": "2026-05-28T07:10:18Z"
+    }
+  }
+}
