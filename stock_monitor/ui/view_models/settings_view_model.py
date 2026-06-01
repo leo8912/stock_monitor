@@ -138,6 +138,7 @@ class SettingsViewModel(QObject):
             "drag_sensitivity": self._config_manager.get("drag_sensitivity", 5),
             # Add missing quant settings for persistence
             "quant_enabled": self._config_manager.get("quant_enabled", False),
+            "auto_export_excel": self._config_manager.get("auto_export_excel", False),
             "wecom_webhook": self._config_manager.get("wecom_webhook", ""),
             "push_mode": self._config_manager.get("push_mode", "webhook"),
             "wecom_corpid": self._config_manager.get("wecom_corpid", ""),

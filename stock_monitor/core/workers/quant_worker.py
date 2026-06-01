@@ -323,6 +323,21 @@ class QuantWorker(QtCore.QThread):
                             f"为复盘生成推送波浪文字分析失败 ({symbol}): {wave_err}"
                         )
 
+            # 自动导出自选股数据到 Excel (在收盘/定时复盘时触发)
+            if self.config.get("auto_export_excel", False):
+                app_logger.info("自动导出配置已启用，正在生成自选股 Excel 报表...")
+                try:
+                    from scripts.reporting.export_stocks_to_excel import export_to_excel
+
+                    export_to_excel(
+                        output_path="analysis_reports/stock_export_report.xlsx",
+                        include_history=True,
+                        history_symbols=self.symbols,
+                    )
+                    app_logger.info("自选股 Excel 报表自动导出成功！")
+                except Exception as ex:
+                    app_logger.error(f"自选股 Excel 报表自动导出失败：{ex}")
+
         except Exception as e:
             app_logger.error(f"生成复盘报告失败：{e}")
 

@@ -234,6 +234,10 @@ class QuantSettingsPage(SettingsPageBase):
         self.quant_enabled_check = QCheckBox("启用量化监控")
         layout.addWidget(self.quant_enabled_check)
 
+        # 自动导出 Excel 开关
+        self.auto_export_excel_check = QCheckBox("收盘后自动导出自选股指标到 Excel")
+        layout.addWidget(self.auto_export_excel_check)
+
         # 扫描间隔
         interval_layout = QHBoxLayout()
         interval_layout.addWidget(QLabel("扫描间隔 (秒):"))
@@ -285,6 +289,9 @@ class QuantSettingsPage(SettingsPageBase):
         if "quant_enabled" in config:
             self.quant_enabled_check.setChecked(config["quant_enabled"])
 
+        if "auto_export_excel" in config:
+            self.auto_export_excel_check.setChecked(config["auto_export_excel"])
+
         if "quant_scan_interval" in config:
             self.scan_interval_spinbox.setValue(config["quant_scan_interval"])
 
@@ -298,6 +305,7 @@ class QuantSettingsPage(SettingsPageBase):
         """保存配置"""
         return {
             "quant_enabled": self.quant_enabled_check.isChecked(),
+            "auto_export_excel": self.auto_export_excel_check.isChecked(),
             "quant_scan_interval": self.scan_interval_spinbox.value(),
             "macd_threshold": self.macd_threshold_spinbox.value(),
             "rsrs_threshold": self.rsrs_threshold_spinbox.value(),

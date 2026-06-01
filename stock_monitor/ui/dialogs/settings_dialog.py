@@ -346,6 +346,9 @@ class NewSettingsDialog(QDialog):
         self.test_push_button.clicked.connect(self._on_test_push_clicked)
         self.test_app_button.clicked.connect(self._on_test_app_clicked)
         self.btn_manual_report.clicked.connect(self.manual_report_requested.emit)
+        self.btn_manual_export_excel.clicked.connect(
+            self._on_manual_export_excel_clicked
+        )
         self.push_mode_combo.currentIndexChanged.connect(self._on_push_mode_changed)
         self.viewModel.error_occurred.connect(self._on_vm_error)
 
@@ -652,6 +655,13 @@ class NewSettingsDialog(QDialog):
         )
         quant_layout.addWidget(self.quant_enabled_checkbox)
 
+        # 自动导出 Excel 开关
+        self.auto_export_excel_checkbox = QCheckBox("收盘后自动导出自选股指标到 Excel")
+        self.auto_export_excel_checkbox.setToolTip(
+            "启用后，在收盘复盘时将自动计算并导出所有自选股的技术指标（K线、BOLL、MACD、RSI等）到 Excel 文件。"
+        )
+        quant_layout.addWidget(self.auto_export_excel_checkbox)
+
         # --- 推送通道选择 ---
         channel_layout = QHBoxLayout()
         channel_layout.addWidget(QLabel("通知渠道:"))
@@ -733,6 +743,11 @@ class NewSettingsDialog(QDialog):
         app_sub_layout.addLayout(agent_layout)
         quant_layout.addWidget(self.app_container)
 
+        # 按钮行水平布局
+        btn_row_layout = QHBoxLayout()
+        btn_row_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        btn_row_layout.setSpacing(15)
+
         # 全量复盘按钮
         self.btn_manual_report = QPushButton("🧩 立即执行全量复盘")
         self.btn_manual_report.setObjectName("PrimaryButton")
@@ -740,7 +755,18 @@ class NewSettingsDialog(QDialog):
         self.btn_manual_report.setToolTip(
             "立即对所有自选股执行技术面分析并推送到企业微信"
         )
-        quant_layout.addWidget(self.btn_manual_report, 0, Qt.AlignmentFlag.AlignCenter)
+        btn_row_layout.addWidget(self.btn_manual_report)
+
+        # 手动导出 Excel 按钮
+        self.btn_manual_export_excel = QPushButton("📊 导出指标数据到 Excel")
+        self.btn_manual_export_excel.setObjectName("PrimaryButton")
+        self.btn_manual_export_excel.setFixedWidth(180)
+        self.btn_manual_export_excel.setToolTip(
+            "立即导出当前所有自选股的技术指标（K线、BOLL、MACD、RSI、成交量等）到 Excel 文件"
+        )
+        btn_row_layout.addWidget(self.btn_manual_export_excel)
+
+        quant_layout.addLayout(btn_row_layout)
 
         # [FIXED] 添加到父 widget 的 layout
         container_layout = QVBoxLayout()
@@ -1160,6 +1186,9 @@ class NewSettingsDialog(QDialog):
 
             # Quant settings
             self.quant_enabled_checkbox.setChecked(settings.get("quant_enabled", False))
+            self.auto_export_excel_checkbox.setChecked(
+                settings.get("auto_export_excel", False)
+            )
             self.wecom_webhook_input.setText(settings.get("wecom_webhook", ""))
 
             # 新增企微应用配置加载
@@ -1194,6 +1223,7 @@ class NewSettingsDialog(QDialog):
                 "font_family": self.font_family_combo.currentText(),
                 "transparency": self.transparency_slider.value(),
                 "quant_enabled": self.quant_enabled_checkbox.isChecked(),
+                "auto_export_excel": self.auto_export_excel_checkbox.isChecked(),
                 "wecom_webhook": self.wecom_webhook_input.text().strip(),
             }
 
@@ -1228,6 +1258,39 @@ class NewSettingsDialog(QDialog):
                 self.main_window.update()
             # 2. 保存成功，执行接受操作
             self.accept()
+
+    def _on_manual_export_excel_clicked(self):
+        """手动执行自选股指标导出到 Excel"""
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtWidgets import QApplication, QMessageBox
+
+        # 设置等待光标
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        self.btn_manual_export_excel.setEnabled(False)
+        self.btn_manual_export_excel.setText("正在导出...")
+        QApplication.processEvents()
+
+        try:
+            from scripts.reporting.export_stocks_to_excel import export_to_excel
+
+            # 导出自选股历史数据及指标
+            export_to_excel(
+                output_path="analysis_reports/stock_export_report.xlsx",
+                include_history=True,
+                history_symbols=self.get_stocks_from_list(self.watch_list),
+            )
+            QApplication.restoreOverrideCursor()
+            QMessageBox.information(
+                self,
+                "导出成功",
+                "自选股技术指标数据已成功导出至：\nanalysis_reports/stock_export_report.xlsx",
+            )
+        except Exception as e:
+            QApplication.restoreOverrideCursor()
+            QMessageBox.critical(self, "导出失败", f"导出过程中发生异常：\n{e}")
+        finally:
+            self.btn_manual_export_excel.setEnabled(True)
+            self.btn_manual_export_excel.setText("📊 导出指标数据到 Excel")
 
     def get_stocks_from_list(self, watch_list):
         """

@@ -124,13 +124,23 @@ def generate_report():
         for column in sheet.columns:
             max_length = 0
             column_letter = column[0].column_letter
+            header_value = str(column[0].value) if column[0].value is not None else ""
+            max_length = sum(
+                2 if "\u4e00" <= char <= "\u9fff" else 1 for char in header_value
+            )
             for cell in column:
-                try:
-                    if len(str(cell.value)) > max_length:
-                        max_length = len(str(cell.value))
-                except Exception:
-                    pass
-            sheet.column_dimensions[column_letter].width = max_length + 4
+                if cell.row == 1:
+                    continue
+                if cell.value is not None:
+                    val_str = str(cell.value)
+                    cell_len = sum(
+                        2 if "\u4e00" <= char <= "\u9fff" else 1 for char in val_str
+                    )
+                    if cell_len > max_length:
+                        max_length = cell_len
+            sheet.column_dimensions[column_letter].width = max(
+                12, min(45, max_length + 4)
+            )
 
     wb.save("analysis_reports/stock_quant_report.xlsx")
     print("Excel Quant Report Generated.")
