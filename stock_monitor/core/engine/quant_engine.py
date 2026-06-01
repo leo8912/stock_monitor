@@ -186,10 +186,17 @@ class QuantEngine:
             category,
         )
 
-        # 2. 检查 LRU 缓存（自动处理 TTL 和淘汰）
-        cached_df = self._bars_lru_cache.get(cache_key)
-        if cached_df is not None:
-            return cached_df
+        # 2. 检查 LRU 缓存（自动处理 TTL 和淘汰，且确保满足请求的数据量）
+        cache_entry = self._bars_lru_cache.get(cache_key)
+        if cache_entry is not None:
+            if isinstance(cache_entry, tuple) and len(cache_entry) == 2:
+                cached_df, cached_offset = cache_entry
+            else:
+                cached_df = cache_entry
+                cached_offset = len(cached_df)
+
+            if len(cached_df) >= offset or cached_offset >= offset:
+                return cached_df.tail(offset).copy().reset_index(drop=True)
 
         # 3. 核心抓取循环 (候选路径自动回退)
         # 候选集包含: [首选解析代码] + [解析器提供的备选代码]
@@ -232,8 +239,8 @@ class QuantEngine:
                     drop=True
                 )
 
-            # 使用 LRU 缓存（自动淘汰最久未使用的项）
-            self._bars_lru_cache.set(cache_key, final_df)
+            # 使用 LRU 缓存（自动淘汰最久未使用的项，记录数据与请求长度的映射元组）
+            self._bars_lru_cache.set(cache_key, (final_df, offset))
             return final_df
 
         return pd.DataFrame()
