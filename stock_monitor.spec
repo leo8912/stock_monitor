@@ -222,6 +222,15 @@ try:
 except Exception as e:
     print(f"Warning: Could not collect stock_monitor.ui submodules: {e}")
 
+# 强制收集 stock_monitor.services 的所有子模块（暗盘数据服务等）
+try:
+    print("Collecting stock_monitor.services submodules...")
+    services_subs = collect_submodules('stock_monitor.services')
+    hiddenimports += services_subs
+    print(f"Collected {len(services_subs)} services submodules")
+except Exception as e:
+    print(f"Warning: Could not collect stock_monitor.services submodules: {e}")
+
 # 强制包含 akshare 和 pandas_ta（物理注入双重保险）
 try:
     import akshare
