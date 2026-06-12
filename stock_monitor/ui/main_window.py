@@ -38,9 +38,6 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
     """
 
     update_table_signal = pyqtSignal(list)
-    # 添加用于跨线程更新UI的信号
-    refresh_data_signal = pyqtSignal(list, bool)
-    refresh_error_signal = pyqtSignal()
 
     def __init__(self):
         QtWidgets.QWidget.__init__(self)
@@ -112,15 +109,14 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
             QtWidgets.QApplication.instance().quit()
         except Exception as e:
             app_logger.error(f"退出程序时出错: {e}")
-            import os
+            import sys
 
-            os._exit(1)
+            sys.exit(1)
 
     def setup_ui(self):
         """设置主窗口UI"""
         self._setup_window_properties()
         self._setup_ui_components()
-        self._setup_event_handlers()
 
         # 初始化数据缓存，用于即时重排交互
         self._last_data = []
@@ -247,10 +243,6 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
 
         app_logger.info("主窗口初始化完成")
         app_logger.debug("主窗口UI组件初始化完成")
-
-    def _setup_event_handlers(self):
-        """设置事件处理器"""
-        pass
 
     def setup_refresh_worker(self):
         """设置刷新工作线程"""
@@ -384,18 +376,6 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
 
         return False
 
-    def _ensure_window_visible(self):
-        """确保窗口可见"""
-        try:
-            # 如果窗口仍然隐藏，则显示它
-            if not self.isVisible():
-                self.show()
-                self.load_position()
-                self.raise_()
-                app_logger.info("窗口已强制显示")
-        except Exception as e:
-            app_logger.error(f"强制显示窗口时出错: {e}")
-
     def save_position(self):
         """保存窗口位置到配置文件"""
         pos = self.pos()
@@ -475,8 +455,8 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         try:
             from stock_monitor.ui.dialogs.wave_chart_dialog import WaveChartDialog
 
-            # 共享 quant_worker 中的 engine 实例
-            engine = self.viewModel._quant_worker.engine
+            # 通过 ViewModel 获取 engine 实例
+            engine = self.viewModel.get_quant_engine()
             dialog = WaveChartDialog(symbol, name, engine, self)
             dialog.exec()
         except Exception as e:
@@ -613,10 +593,6 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
                     }
                     """
                     self.setStyleSheet(qss + corner_fix_qss)
-
-            # 更新加载标签字体
-            if hasattr(self, "loading_label") and self.loading_label:
-                pass
 
             # 调整主窗口高度
             self.adjust_window_height()
@@ -758,29 +734,6 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         self.request_update()  # 节流布局更新
         self.updateGeometry()
 
-    def load_theme_config(self):
-        """加载主题配置"""
-        import json
-
-        from stock_monitor.utils.helpers import resource_path
-
-        try:
-            with open(resource_path("theme_config.json"), encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return {}
-
-    def _format_stock_code(self, code):
-        """格式化股票代码"""
-        from stock_monitor.utils.stock_utils import StockCodeProcessor
-
-        processor = StockCodeProcessor()
-        return processor.format_stock_code(code)
-
-    def load_user_stocks(self):
-        """加载用户自选股列表"""
-        return self.viewModel.load_user_stocks()
-
     def closeEvent(self, event: QtGui.QCloseEvent):
         """
         窗口关闭事件处理
@@ -802,8 +755,6 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
 
             # 3. 清理自定义信号
             self.update_table_signal.disconnect()
-            self.refresh_data_signal.disconnect()
-            self.refresh_error_signal.disconnect()
 
             # 4. 保存会话缓存和位置
             try:
@@ -822,6 +773,10 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
             # 6. 停止 Workers
             if hasattr(self, "viewModel"):
                 self.viewModel.stop_workers()
+
+            # 7. 关闭数据库连接池
+            if hasattr(self, "viewModel"):
+                self.viewModel.close_database()
 
             app_logger.info("主窗口资源清理完成")
 

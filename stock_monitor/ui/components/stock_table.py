@@ -3,7 +3,7 @@
 用于显示股票行情数据的表格组件
 """
 
-from PyQt6 import QtCore, QtGui, QtWidgets
+from PyQt6 import QtCore, QtWidgets
 from PyQt6.QtCore import pyqtSlot
 
 # 导入数据模型
@@ -55,10 +55,6 @@ class StockTable(QtWidgets.QTableView):
         self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
-        # 优化性能显示
-        # self.setWordWrap(False) # 股票信息不需要换行
-        # self.cornerWidget().setVisible(False)
-
         # 设置大小策略
         self.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Preferred,
@@ -66,14 +62,9 @@ class StockTable(QtWidgets.QTableView):
         )
 
         self._model.set_font_size(self.font_family, self.font_size)
-        self._set_table_style(self.font_family, self.font_size)
 
         # 首次显示标记，用于确保窗口显示后重新计算列宽
         self._first_show_done = False
-
-    def _set_table_style(self, font_family: str, font_size: int) -> None:
-        """设置表格样式。现在依赖全局QSS，此方法可以为空或设置动态变化的样式"""
-        pass
 
     def _resize_columns(self) -> None:
         """调整列宽"""
@@ -94,22 +85,6 @@ class StockTable(QtWidgets.QTableView):
         """兼容性接口：获取列数"""
         return self._model.columnCount()
 
-    def get_data_at(self, row, col):
-        """获取指定位置的文本数据"""
-        index = self._model.index(row, col)
-        if index.isValid():
-            return self._model.data(index, QtCore.Qt.ItemDataRole.DisplayRole)
-        return ""
-
-    def get_foreground_color_at(self, row, col):
-        """获取指定位置的前景色"""
-        index = self._model.index(row, col)
-        if index.isValid():
-            color = self._model.data(index, QtCore.Qt.ItemDataRole.ForegroundRole)
-            if isinstance(color, QtGui.QColor):
-                return color.name()
-        return ""
-
     @pyqtSlot(list)
     def update_data(self, stocks: list[tuple]) -> None:
         """
@@ -122,12 +97,9 @@ class StockTable(QtWidgets.QTableView):
             # 委托给模型更新
             layout_changed = self._model.update_data(stocks)
 
-            # 每次数据更新都重新计算列宽，
-            # 避免涨跌幅文本变长时被截断（如 "-10.03%" 显示为 "-10.0..."）
-            self._resize_columns()
-
+            # 布局变化或行数变化时才重新计算列宽
             if layout_changed:
-                # 布局变化时通知父窗口调整大小
+                self._resize_columns()
                 self._notify_parent_window_height_adjustment()
 
         except Exception as e:
@@ -150,8 +122,6 @@ class StockTable(QtWidgets.QTableView):
     def _delayed_resize_columns(self):
         """延迟重新计算列宽"""
         try:
-            # 强制处理事件队列，确保布局完成
-            QtWidgets.QApplication.processEvents()
             self._resize_columns()
             self._notify_parent_window_height_adjustment()
             app_logger.debug("首次显示后列宽已重新计算")
@@ -164,6 +134,5 @@ class StockTable(QtWidgets.QTableView):
         self.font_family = font_family
         # 模型需要同步字体大小以便 FontRole 进行测量
         self._model.set_font_size(font_family, size)
-        self._set_table_style(font_family, size)
         self._resize_columns()
         self._notify_parent_window_height_adjustment()

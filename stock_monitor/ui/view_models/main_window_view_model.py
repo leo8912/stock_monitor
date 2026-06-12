@@ -6,7 +6,6 @@ from stock_monitor.core.data.stock_data_fetcher import StockDataFetcher
 from stock_monitor.core.market.stock_manager import StockManager
 from stock_monitor.core.workers import MarketStatsWorker, QuantWorker, RefreshWorker
 from stock_monitor.data.stock.stock_db import StockDatabase
-from stock_monitor.data.stock.stocks import load_stock_data
 from stock_monitor.services.dark_trade_service import get_dark_trade_service
 from stock_monitor.utils.config_helper import ConfigHelper, ConfigKeys
 from stock_monitor.utils.logger import app_logger
@@ -20,7 +19,6 @@ class MainWindowViewModel(QObject):
     """
 
     # Signals
-    stock_data_loaded = pyqtSignal(list)
     stock_data_updated = pyqtSignal(list, bool)
     market_stats_updated = pyqtSignal(int, int, int, float)
     refresh_error_occurred = pyqtSignal()
@@ -111,18 +109,17 @@ class MainWindowViewModel(QObject):
         """Manually set the latest stock data, e.g. from session cache"""
         self._latest_stock_data = data
 
-    def load_stock_data(self):
-        """Load stock data from database"""
+    def get_quant_engine(self):
+        """获取量化引擎实例"""
+        return self._quant_worker.engine
+
+    def close_database(self):
+        """关闭数据库连接池"""
         try:
-            stocks = load_stock_data()
-            self._stocks = stocks
-            self.stock_data_loaded.emit(stocks)
-            return stocks
+            self._stock_db.close()
+            app_logger.info("数据库连接池已关闭")
         except Exception as e:
-            msg = f"Failed to load stock data: {e}"
-            app_logger.error(msg)
-            self.error_occurred.emit(msg)
-            return []
+            app_logger.warning(f"关闭数据库连接池失败: {e}")
 
     def get_stock_count(self) -> int:
         """Get total number of stocks"""

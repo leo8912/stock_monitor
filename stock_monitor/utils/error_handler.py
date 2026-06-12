@@ -2,8 +2,7 @@
 错误处理和异常管理模块
 """
 
-import sys
-import traceback
+import time
 from typing import Any, Callable
 
 from .logger import app_logger
@@ -11,38 +10,6 @@ from .logger import app_logger
 # 定义常见的异常类型
 NETWORK_ERROR_TYPES = (ConnectionError, TimeoutError, IOError)
 VALIDATION_ERROR_TYPES = (ValueError, TypeError)
-
-
-class ErrorHandler:
-    """错误处理器"""
-
-    @staticmethod
-    def handle_exception(exc_type, exc_value, exc_traceback):
-        """
-        全局异常处理函数
-
-        Args:
-            exc_type: 异常类型
-            exc_value: 异常值
-            exc_traceback: 异常追踪信息
-        """
-        if issubclass(exc_type, KeyboardInterrupt):
-            # 允许键盘中断正常处理
-            sys.__excepthook__(exc_type, exc_value, exc_traceback)
-            return
-
-        # 记录详细的错误信息
-        error_msg = f"未捕获的异常: {exc_type.__name__}: {exc_value}"
-        app_logger.error(error_msg)
-
-        # 记录详细的堆栈追踪信息
-        tb_lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
-        tb_text = "".join(tb_lines)
-        app_logger.error(f"堆栈追踪:\n{tb_text}")
-
-        # 打印到控制台
-        app_logger.error(f"错误: {error_msg}")
-        app_logger.error(f"堆栈追踪:\n{tb_text}")
 
 
 def safe_call(
@@ -96,7 +63,6 @@ def retry_on_failure(max_attempts: int = 3, delay: float = 1.0):
         max_attempts: 最大尝试次数
         delay: 重试间隔（秒）
     """
-    import time
     from functools import wraps
 
     def decorator(func):

@@ -3,7 +3,6 @@ import os
 import time
 from typing import Any, Optional
 
-# Deleted:import akshare as ak
 from stock_monitor.config.manager import get_config_dir
 from stock_monitor.utils.logger import app_logger
 

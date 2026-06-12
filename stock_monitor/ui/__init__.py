@@ -4,6 +4,5 @@
 from .components.stock_table import StockTable
 from .dialogs.settings_dialog import NewSettingsDialog
 from .widgets.market_status import MarketStatusBar
-from .widgets.stock_search import StockSearchWidget
 
-__all__ = ["StockTable", "MarketStatusBar", "StockSearchWidget", "NewSettingsDialog"]
+__all__ = ["StockTable", "MarketStatusBar", "NewSettingsDialog"]

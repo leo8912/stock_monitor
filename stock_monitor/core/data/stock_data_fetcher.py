@@ -71,7 +71,7 @@ class StockDataFetcher:
 
         # 1. 停止线程池
         if hasattr(self, "_executor") and self._executor:
-            self._executor.shutdown(wait=False)
+            self._executor.shutdown(wait=True, cancel_futures=True)
 
     def _get_name_cache_file(self):
         # 已经转移到 MootdxNameRegistry
@@ -147,7 +147,9 @@ class StockDataFetcher:
         # 重试机制
         for retry_count in range(1, MAX_RETRY_ATTEMPTS + 1):
             app_logger.debug(f"获取 {code} 数据失败,第 {retry_count} 次重试")
-            time.sleep(RETRY_DELAY_SECONDS)
+            # 指数退避：0.5s, 1s, 2s, 4s, 8s
+            delay = min(0.5 * (2 ** (retry_count - 1)), 8.0)
+            time.sleep(delay)
 
             stock_data = self.fetch_single_stock(quotation_engine, code, query_code)
             if stock_data is not None:

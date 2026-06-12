@@ -197,11 +197,8 @@ class ConfigManager:
         return {
             "user_stocks": ["sh600460", "sh603986", "sh600030", "sh000001"],
             "refresh_interval": 5,
-            "github_token": "",
             "window_pos": [],
-            "settings_dialog_pos": [],
             "quant_enabled": False,
-            "quant_scan_interval": 60,
             "wecom_webhook": "",
             "push_mode": "webhook",
             "wecom_corpid": "",

@@ -35,10 +35,6 @@ class SystemTray(QtWidgets.QSystemTrayIcon):
         self.action_quit.triggered.connect(self.quit_application)
         self.activated.connect(self.on_activated)
 
-        # 添加一个状态消息，告知用户程序正在加载数据
-        # self.showMessage("A股行情监控", "程序正在后台加载数据，请稍候...",
-        #                  QtWidgets.QSystemTrayIcon.MessageIcon.Information, 3000)
-
     def show_main_window(self):
         """显示主窗口"""
         self.main_window.show()

@@ -31,15 +31,6 @@ class MarketStatsWorker(BaseWorker):
                     f"[市场统计] 市场状态检查：{'开市' if market_open else '闭市'}"
                 )
 
-                # 临时注释：即使闭市也获取数据，用于调试
-                # if not market_open:
-                #      # 闭市期间每 5 分钟检查一次，或者直接 sleep
-                #      # 为了响应停止信号，使用循环 sleep
-                #      for _ in range(60):
-                #          if not self._is_running: return
-                #          self.sleep(5)
-                #      continue
-
                 app_logger.info("[市场统计] 开始获取全市场数据...")
                 from stock_monitor.core.market.stock_manager import stock_manager
 
@@ -123,22 +114,3 @@ class MarketStatsWorker(BaseWorker):
             "flat_count": flat,
             "total_count": total,
         }
-
-    def _get_data_timestamp(self, data: dict[str, Any]) -> str:
-        """
-        获取市场数据的时间戳
-
-        Args:
-            data: 市场数据字典
-
-        Returns:
-            str: 时间戳字符串，格式为 "YYYY-MM-DD HH:MM:SS"
-        """
-        # 从任意一只股票获取时间
-        for _code, info in data.items():
-            if isinstance(info, dict):
-                date = info.get("date", "")
-                time = info.get("time", "")
-                if date and time:
-                    return f"{date} {time}"
-        return ""

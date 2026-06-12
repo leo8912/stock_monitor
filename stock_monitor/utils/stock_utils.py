@@ -3,7 +3,7 @@
 提供统一的股票代码处理功能
 """
 
-from typing import Any, Optional
+from typing import Optional
 
 
 class StockCodeProcessor:
@@ -147,48 +147,3 @@ class StockCodeProcessor:
             code = None
 
         return code, text
-
-
-def extract_stocks_from_list(items: list[Any]) -> list[str]:
-    """
-    从列表项中提取股票代码列表
-
-    Args:
-        items: 列表项对象列表
-
-    Returns:
-        股票代码列表
-    """
-    processor = StockCodeProcessor()
-    stocks = []
-
-    for item in items:
-        if item is not None:
-            # 检查对象是否有text方法（如QListWidgetItem）
-            if hasattr(item, "text") and callable(item.text):
-                text = item.text().strip()
-            else:
-                text = str(item).strip()
-
-            code, _ = processor.extract_code_from_text(text)
-
-            # 确保代码有效后再添加
-            if code:
-                formatted_code = processor.format_stock_code(code)
-                if formatted_code:
-                    stocks.append(formatted_code)
-            # 如果没有分离出code但text本身就是一个有效的股票代码，则直接使用text
-            elif text:
-                formatted_code = processor.format_stock_code(text)
-                if formatted_code:
-                    stocks.append(formatted_code)
-
-    # 去除重复项，保持原有顺序
-    seen = set()
-    unique_stocks = []
-    for stock in stocks:
-        if stock not in seen:
-            seen.add(stock)
-            unique_stocks.append(stock)
-
-    return unique_stocks

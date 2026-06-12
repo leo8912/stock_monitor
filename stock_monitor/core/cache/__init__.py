@@ -3,7 +3,6 @@
 
 职责:
 - K线数据缓存预热
-- 指标计算缓存
 - 性能监测和追踪
 - 缓存失效和更新
 
@@ -14,12 +13,10 @@
 
 from .cache_warmer import (
     CacheWarmer,
-    IndicatorComputationOptimizer,
     PerformanceMonitor,
 )
 
 __all__ = [
     "CacheWarmer",
-    "IndicatorComputationOptimizer",
     "PerformanceMonitor",
 ]

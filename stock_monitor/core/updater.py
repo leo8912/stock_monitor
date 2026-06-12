@@ -48,31 +48,6 @@ class AppUpdater:
         """应用更新 (BAT脚本方案)"""
         return self.installer.apply_update(update_file_path)
 
-    def _run_post_update_hooks(self):
-        """
-        运行更新后钩子
-        执行更新完成后需要的操作，如数据库迁移、配置升级等
-        """
-        try:
-            app_logger.info("执行更新后钩子...")
-
-            # 检查并初始化数据库
-            from stock_monitor.core.config.container import container
-            from stock_monitor.data.stock.stock_db import StockDatabase
-
-            stock_db = container.get(StockDatabase)
-
-            if stock_db.is_empty():
-                app_logger.info("检测到空数据库，正在初始化...")
-                stock_db._populate_base_data()
-            else:
-                stock_count = stock_db.get_stock_count()
-                app_logger.info(f"数据库检查完成，当前有 {stock_count} 只股票")
-
-            app_logger.info("更新后钩子执行完成")
-        except Exception as e:
-            app_logger.error(f"执行更新后钩子失败: {e}")
-
 
 # 创建全局更新器实例
 app_updater = AppUpdater()

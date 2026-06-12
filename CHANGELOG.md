@@ -1,5 +1,15 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.3.4] - 2026-06-12
+
+### 🐛 修复 (Fixes)
+- **[线程] 修复 _on_test_app_clicked 主线程阻塞**：提取为 TestAppThread 后台线程执行 HTTP 请求，避免 UI 卡死。
+- **[连接池] NotifierService 统一使用 requests.Session**：共享连接池复用，减少 TCP 握手开销。
+
+### ⚡ 优化 (Optimization)
+- **[UI] 移除 DraggableListWidget 重复拖拽配置**：`__init__` 和 `_setup_watchlist_ui` 中的 drag-drop 设置重复，删除后者。
+- **[生命周期] 应用关闭时关闭数据库连接池**：MainWindow.closeEvent 中调用 viewModel.close_database()，确保 SQLite 连接正确释放。
+
 ## [v4.3.3] - 2026-06-12
 
 ### 🐛 修复 (Fixes)

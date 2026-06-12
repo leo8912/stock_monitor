@@ -30,6 +30,7 @@ class StockTableModel(QtCore.QAbstractTableModel):
         self._font_size = 13
         self._font_family = "微软雅黑"
         self._show_seal_column = False
+        self._cached_font = None
 
     def rowCount(self, parent=None) -> int:
         if parent is None:
@@ -167,10 +168,11 @@ class StockTableModel(QtCore.QAbstractTableModel):
 
         # 恢复FontRole，以便QTableView.resizeColumnsToContents()能够正确计算实际文字宽度
         elif role == QtCore.Qt.ItemDataRole.FontRole:
-            font = QtGui.QFont(self._font_family)
-            font.setPixelSize(self._font_size)
-            font.setBold(True)
-            return font
+            if self._cached_font is None:
+                self._cached_font = QtGui.QFont(self._font_family)
+                self._cached_font.setPixelSize(self._font_size)
+                self._cached_font.setBold(True)
+            return self._cached_font
 
         return None
 
@@ -205,6 +207,10 @@ class StockTableModel(QtCore.QAbstractTableModel):
             self.dataChanged.emit(
                 self.index(0, 0),
                 self.index(len(self._data) - 1, self.columnCount() - 1),
+                [
+                    QtCore.Qt.ItemDataRole.DisplayRole,
+                    QtCore.Qt.ItemDataRole.ForegroundRole,
+                ],
             )
             return False
         else:
@@ -218,6 +224,7 @@ class StockTableModel(QtCore.QAbstractTableModel):
     def set_font_size(self, font_family: str, size: int):
         self._font_family = font_family
         self._font_size = size
+        self._cached_font = None  # 使缓存失效
         # 字体改变需要重绘
         self.force_refresh()
 

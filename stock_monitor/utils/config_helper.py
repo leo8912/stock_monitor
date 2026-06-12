@@ -136,68 +136,6 @@ class ConfigHelper:
         return str(default)
 
 
-def safe_get_config(config_manager, key: str, default: Any = None) -> Any:
-    """
-    便捷函数：安全地获取配置值
-
-    Args:
-        config_manager: ConfigManager 实例
-        key: 配置键
-        default: 默认值
-
-    Returns:
-        配置值或默认值
-
-    Example:
-        >>> stocks = safe_get_config(config_manager, "user_stocks", [])
-        >>> enabled = safe_get_config(config_manager, "quant_enabled", False)
-    """
-    return config_manager.get(key, default)
-
-
-def safe_get_bool(config_manager, key: str, default: bool = False) -> bool:
-    """
-    便捷函数：安全地将配置转换为布尔值
-
-    Args:
-        config_manager: ConfigManager 实例
-        key: 配置键
-        default: 默认布尔值
-
-    Returns:
-        布尔值
-    """
-    value = config_manager.get(key, default)
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        return value.lower() == "true"
-    return bool(default)
-
-
-def safe_get_int(config_manager, key: str, default: int = 0) -> int:
-    """
-    便捷函数：安全地将配置转换为整数
-
-    Args:
-        config_manager: ConfigManager 实例
-        key: 配置键
-        default: 默认整数值
-
-    Returns:
-        整数值
-    """
-    value = config_manager.get(key, default)
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str):
-        try:
-            return int(value)
-        except ValueError:
-            pass
-    return default
-
-
 # 预定义常用配置键常量
 class ConfigKeys:
     """配置键常量定义，避免硬编码字符串"""
@@ -210,14 +148,10 @@ class ConfigKeys:
 
     # 量化相关
     QUANT_ENABLED = "quant_enabled"
-    QUANT_SCAN_INTERVAL = "quant_scan_interval"
-    MACD_THRESHOLD = "macd_threshold"
-    RSRS_THRESHOLD = "rsrs_threshold"
 
     # 显示相关
     FONT_FAMILY = "font_family"
     FONT_SIZE = "font_size"
-    WINDOW_TRANSPARENCY = "window_transparency"
     TRANSPARENCY = "transparency"
 
     # 消息推送
@@ -226,11 +160,6 @@ class ConfigKeys:
 
     # 窗口位置
     WINDOW_POS = "window_pos"
-
-    # 基本面筛选
-    FILTER_PE = "filter_pe"
-    FILTER_ROE = "filter_roe"
-    FILTER_MARKET_CAP = "filter_market_cap"
 
     # 自动导出相关
     AUTO_EXPORT_EXCEL = "auto_export_excel"

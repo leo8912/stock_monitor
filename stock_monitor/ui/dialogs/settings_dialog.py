@@ -3,8 +3,10 @@
 """
 
 import os
+import re
 import time
 
+import requests
 from PyQt6 import QtGui
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QIcon
@@ -88,6 +90,49 @@ class UpdateCheckThread(QThread):
             self.finished_check.emit(result)
         except Exception as e:
             self.error_occurred.emit(str(e))
+
+
+class TestAppThread(QThread):
+    """企业应用推送测试线程"""
+
+    test_finished = pyqtSignal(dict)
+
+    def __init__(self, corp_id: str, secret: str, agent_id: str, parent=None):
+        super().__init__(parent)
+        self._corp_id = corp_id
+        self._secret = secret
+        self._agent_id = agent_id
+
+    def run(self):
+        result = {"success": False, "error": None, "response": None}
+        try:
+            token_url = f"https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid={self._corp_id}&corpsecret={self._secret}"
+            token_resp = requests.get(token_url, timeout=10).json()
+            access_token = token_resp.get("access_token")
+            if not access_token:
+                result["error"] = f"获取 Token 失败: {token_resp}"
+                self.test_finished.emit(result)
+                return
+
+            send_url = f"https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token={access_token}"
+            payload = {
+                "touser": "@all",
+                "msgtype": "text",
+                "agentid": int(self._agent_id)
+                if str(self._agent_id).isdigit()
+                else self._agent_id,
+                "text": {
+                    "content": f"🚀 企业应用测试成功\n\n您的股票监控系统已成功通过企业自建应用通道连接！\n当前时间: {time.strftime('%Y-%m-%d %H:%M:%S')}"
+                },
+                "safe": 0,
+            }
+            resp = requests.post(send_url, json=payload, timeout=10).json()
+            result["response"] = resp
+            result["success"] = resp.get("errcode") == 0
+        except Exception as e:
+            result["error"] = str(e)
+        finally:
+            self.test_finished.emit(result)
 
 
 class DarkTradeExportThread(QThread):
@@ -547,12 +592,6 @@ class NewSettingsDialog(QDialog):
         self.watch_list.setStyleSheet(
             "QListWidget::item { text-align: center; }"
         )  # 文本居中对齐
-        # ... 拖拽配置保持不变 ...
-        self.watch_list.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
-        self.watch_list.setDefaultDropAction(Qt.DropAction.MoveAction)
-        self.watch_list.setDragEnabled(True)
-        self.watch_list.setAcceptDrops(True)
-        self.watch_list.setDropIndicatorShown(True)
 
         list_layout.addWidget(self.watch_list)
         list_group.setLayout(list_layout)
@@ -1016,46 +1055,29 @@ class NewSettingsDialog(QDialog):
             QMessageBox.warning(self, "提示", "请完整填写企业 ID、Secret 和 AgentID")
             return
 
-        import re
-
-        import requests
-
         corp_id = config["wecom_corpid"]
         secret = config["wecom_corpsecret"]
         agent_id = config["wecom_agentid"]
 
-        try:
-            # 1. 尝试获取 Access Token
-            token_url = f"https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid={corp_id}&corpsecret={secret}"
-            token_resp = requests.get(token_url, timeout=10).json()
-            access_token = token_resp.get("access_token")
-            if not access_token:
-                QMessageBox.critical(
-                    self,
-                    "失败",
-                    f"获取企业微信 Access Token 失败，请检查企业 ID 和应用密钥是否正确。\n\n企微返回: {token_resp}",
-                )
-                return
+        # 使用后台线程执行 HTTP 请求，避免阻塞 UI
+        self._test_app_thread = TestAppThread(corp_id, secret, agent_id, self)
+        self._test_app_thread.test_finished.connect(self._on_test_app_finished)
+        self._test_app_thread.start()
 
-            # 2. 尝试发送测试消息
-            send_url = f"https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token={access_token}"
-            payload = {
-                "touser": "@all",
-                "msgtype": "text",
-                "agentid": int(agent_id) if str(agent_id).isdigit() else agent_id,
-                "text": {
-                    "content": f"🚀 企业应用测试成功\n\n您的股票监控系统已成功通过企业自建应用通道连接！\n当前时间: {time.strftime('%Y-%m-%d %H:%M:%S')}"
-                },
-                "safe": 0,
-            }
-            resp = requests.post(send_url, json=payload, timeout=10).json()
+    def _on_test_app_finished(self, result: dict):
+        """处理测试应用推送结果"""
+        if result["success"]:
+            QMessageBox.information(
+                self, "成功", "测试应用消息已发出，请检查手机企业微信"
+            )
+            return
+
+        error = result.get("error")
+        resp = result.get("response")
+
+        if resp:
             errcode = resp.get("errcode")
-
-            if errcode == 0:
-                QMessageBox.information(
-                    self, "成功", "测试应用消息已发出，请检查手机企业微信"
-                )
-            elif errcode == 60020:
+            if errcode == 60020:
                 errmsg = resp.get("errmsg", "")
                 ip_match = re.search(r"from ip:\s*([0-9.]+)", errmsg)
                 ip_str = ip_match.group(1) if ip_match else "您的公网IP"
@@ -1069,7 +1091,7 @@ class NewSettingsDialog(QDialog):
                     f"1. 登录企业微信管理后台 (work.weixin.qq.com)。\n"
                     f"2. 进入 [应用管理] -> 点击您所填写的 [自建应用]。\n"
                     f"3. 找到 [企业可信IP] 属性，点击配置，将上述IP {ip_str} 添加到白名单中。\n"
-                    f"4. 保存配置后，重新点击此处的“测试应用”。\n\n"
+                    f'4. 保存配置后，重新点击此处的"测试应用"。\n\n'
                     f"💡 友情提示：本系统已配备自动 Webhook 兜底。即使不配置白名单，在运行期间若应用通道发送失败，也会自动回退到 Webhook 群机器人渠道为您推送消息。",
                 )
             else:
@@ -1078,8 +1100,17 @@ class NewSettingsDialog(QDialog):
                     "失败",
                     f"发送失败，请检查配置参数及网络状态。\n\n企微错误码: {errcode}\n错误详情: {resp.get('errmsg')}",
                 )
-        except Exception as e:
-            QMessageBox.critical(self, "错误", f"测试推送过程中发生异常:\n{e}")
+        elif error:
+            if "Token 失败" in error:
+                QMessageBox.critical(
+                    self,
+                    "失败",
+                    f"获取企业微信 Access Token 失败，请检查企业 ID 和应用密钥是否正确。\n\n{error}",
+                )
+            else:
+                QMessageBox.critical(self, "错误", f"测试推送过程中发生异常:\n{error}")
+        else:
+            QMessageBox.critical(self, "失败", "测试推送失败，未知错误")
 
     def _on_push_mode_changed(self):
         """根据推送模式切换 UI 显示"""
@@ -1343,8 +1374,6 @@ class NewSettingsDialog(QDialog):
 
                 text = item.text()
                 # 提取括号中的股票代码
-                import re
-
                 match = re.search(r"\(([^)]+)\)", text)
                 if match:
                     stocks.append(match.group(1))
@@ -1360,51 +1389,7 @@ class NewSettingsDialog(QDialog):
 
     def _handle_stock_search_added(self, code: str, name: str):
         """处理来自搜索组件传来的添加订阅信号"""
-        # 1. 检查自选股是否已存在
-        for i in range(self.watch_list.count()):
-            item = self.watch_list.item(i)
-            if item:
-                # 优先从UserRole获取代码
-                user_data = item.data(Qt.ItemDataRole.UserRole)
-                if user_data == code:
-                    from PyQt6 import QtWidgets
-
-                    QtWidgets.QMessageBox.information(
-                        self, "提示", f"股票 {name} 已在自选股列表中"
-                    )
-                    return
-                # 如果UserRole没有，尝试从显示文本中解析
-                elif f"({code})" in item.text():
-                    from PyQt6 import QtWidgets
-
-                    QtWidgets.QMessageBox.information(
-                        self, "提示", f"股票 {name} 已在自选股列表中"
-                    )
-                    return
-
-        # 2. 从视图底层添加新的元素
-        from stock_monitor.utils.helpers import get_stock_emoji
-
-        emoji = get_stock_emoji(code, name)
-
-        display_text = f"{emoji} {name} ({code})"
-        if code.startswith("hk") and name:
-            if "-" in name:
-                name = name.split("-")[0].strip()
-            display_text = f"{emoji} {name} ({code})"
-        elif not name:
-            display_text = f"{emoji} {code}"
-
-        from PyQt6.QtWidgets import QListWidgetItem
-
-        new_item = QListWidgetItem(display_text)
-        new_item.setData(Qt.ItemDataRole.UserRole, code)
-        self.watch_list.addItem(new_item)
-
-        # 3. 触发与后端数据同步 (如果需要，这里可以调用保存配置的方法)
-        # self._save_config_via_vm() # 暂时不在这里保存，由accept统一保存
-        self.watch_list_manager.update_remove_button_state()
-        self.watch_list.clearSelection()  # 取消自选股列表的选中状态
+        self.add_stock_from_search((code, name))
 
     def add_stock_from_search(self, item=None):
         """将股票添加到自选股列表"""
@@ -1445,8 +1430,6 @@ class NewSettingsDialog(QDialog):
 
             app_logger.warning(f"无效的 item 类型：{type(item)}")
             return None, None
-
-        import re
 
         match = re.search(r"\(([^)]+)\)", item_text)
         if match:
@@ -1704,8 +1687,6 @@ class NewSettingsDialog(QDialog):
 
     def _map_refresh_text_to_value(self, text):
         """将刷新频率文本映射为数值"""
-        import re
-
         match = re.search(r"(\d+)", str(text))
         if not match:
             return 5

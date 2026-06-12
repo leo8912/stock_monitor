@@ -62,6 +62,16 @@ def retry(max_attempts: int = 3, backoff_factor: float = 0.5):
 class NotifierService:
     # 简单的应用 Token 缓存: {corp_id: (token, expiry_ts)}
     _token_cache = {}
+    # 共享 HTTP 会话（连接池复用）
+    _session = None
+
+    @classmethod
+    def _get_session(cls):
+        """获取共享的 requests.Session"""
+        if cls._session is None:
+            cls._session = requests.Session()
+            cls._session.headers.update({"Content-Type": "application/json"})
+        return cls._session
 
     @classmethod
     def _get_app_token(cls, corp_id: str, secret: str) -> Optional[str]:
@@ -79,7 +89,7 @@ class NotifierService:
         # 2. 从服务器获取
         try:
             url = f"https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid={corp_id}&corpsecret={secret}"
-            resp = requests.get(url, timeout=10).json()
+            resp = cls._get_session().get(url, timeout=10).json()
             if resp.get("errcode") == 0:
                 token = resp["access_token"]
                 expires_in = resp.get("expires_in", 7200)
@@ -126,7 +136,7 @@ class NotifierService:
         }
 
         try:
-            resp = requests.post(send_url, json=payload, timeout=10).json()
+            resp = cls._get_session().post(send_url, json=payload, timeout=10).json()
             if resp.get("errcode") == 0:
                 app_logger.info(f"企微应用消息发送成功: {title}")
                 return True

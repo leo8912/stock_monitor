@@ -89,7 +89,7 @@ class ConnectionPool:
                     try:
                         conn.close()
                     except Exception:
-                        pass
+                        app_logger.debug("关闭无效连接失败")
 
             # 创建新连接
             conn = self._create_connection(db_path)
@@ -129,10 +129,9 @@ class ConnectionPool:
         return conn
 
     def _is_connection_valid(self, conn: sqlite3.Connection) -> bool:
-        """检查连接是否有效"""
+        """检查连接是否有效（轻量级检查，不执行SQL）"""
         try:
-            conn.execute("SELECT 1")
-            return True
+            return not conn.closed
         except Exception:
             return False
 
@@ -282,6 +281,7 @@ class StockDatabase(StockDataSource):
 
     def _import_from_base_db(self, base_db_path: str):
         """从基础数据库导入数据"""
+        base_conn = None
         try:
             # 连接基础数据库
             base_conn = sqlite3.connect(base_db_path)
@@ -292,7 +292,6 @@ class StockDatabase(StockDataSource):
                 "SELECT code, name, pinyin, abbr, market_type, updated_at FROM stocks"
             )
             stocks = base_cursor.fetchall()
-            base_conn.close()
 
             if not stocks:
                 app_logger.warning("基础数据库为空")
@@ -315,6 +314,12 @@ class StockDatabase(StockDataSource):
         except Exception as e:
             app_logger.error(f"导入基础数据时出错: {e}")
             raise
+        finally:
+            if base_conn is not None:
+                try:
+                    base_conn.close()
+                except Exception:
+                    pass
 
     def _trigger_background_update(self):
         """触发后台数据库更新"""

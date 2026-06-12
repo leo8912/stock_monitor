@@ -33,11 +33,12 @@ except ImportError:
 
 
 class LRUCacheWithTTL:
-    """LRU + TTL 混合缓存，基于 dict 和 list 实现"""
+    """LRU + TTL 混合缓存，基于 OrderedDict 实现（线程安全）"""
 
     def __init__(self, max_size=128, default_ttl=60):
-        self.cache = {}
-        self.order = []
+        from collections import OrderedDict
+
+        self.cache = OrderedDict()
         self.max_size = max_size
         self.default_ttl = default_ttl
         self.hits = 0
@@ -47,42 +48,31 @@ class LRUCacheWithTTL:
         if key not in self.cache:
             self.misses += 1
             return None
-        entry = self.cache[key]
-        value, timestamp, count = entry
+        value, timestamp, count = self.cache[key]
         ttl = ttl_override or self.default_ttl
         if time.time() - timestamp > ttl:
-            self._remove(key)
+            del self.cache[key]
             self.misses += 1
             return None
-        entry[2] = count + 1
-        if key in self.order:
-            self.order.remove(key)
-        self.order.append(key)
+        self.cache[key] = [value, timestamp, count + 1]
+        self.cache.move_to_end(key)
         self.hits += 1
         return value
 
     def set(self, key, value, ttl_override=None):
         if key in self.cache:
-            self._remove(key)
-        while len(self.cache) >= self.max_size and self.order:
-            self._remove(self.order[0])
+            del self.cache[key]
+        while len(self.cache) >= self.max_size:
+            self.cache.popitem(last=False)
         self.cache[key] = [value, time.time(), 0]
-        self.order.append(key)
 
     def delete(self, key):
         """删除缓存中的指定key"""
-        self._remove(key)
-
-    def _remove(self, key):
-        if key in self.cache:
-            del self.cache[key]
-        if key in self.order:
-            self.order.remove(key)
+        self.cache.pop(key, None)
 
     def clear(self):
         """清空所有缓存条目"""
         self.cache.clear()
-        self.order.clear()
 
     def get_stats(self):
         total = self.hits + self.misses
@@ -147,6 +137,15 @@ class QuantEngine:
         stats["auction_cache"] = self._auction_cache.get_stats()
         stats["avg_vol_cache"] = self._avg_vol_cache.get_stats()
         return stats
+
+    def clear_all_caches(self):
+        """清空所有内部缓存"""
+        self._bars_lru_cache.clear()
+        self._avg_vol_cache.clear()
+        self._auction_cache.clear()
+        self._large_order_cache.clear()
+        self._rsrs_cache.clear()
+        self._market_benchmark_cache.clear()
 
     def _parse_symbol(
         self, symbol: str, market: int = None
@@ -265,58 +264,17 @@ class QuantEngine:
             df = df.copy()
             df["datetime"] = df["datetime"].astype(str)
 
-            # 验证日期有效性
-            def is_valid_date(date_str):
-                """验证日期字符串是否有效"""
-                import re
-
-                match = re.match(
-                    r"^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$", str(date_str)
-                )
-                if not match:
-                    return False
-                year, month, day, hour, minute = map(int, match.groups())
-                # 验证年份范围 (1990-2030)
-                if not (1990 <= year <= 2030):
-                    return False
-                # 验证月份 (1-12)
-                if not (1 <= month <= 12):
-                    return False
-                # 验证日期 (1-31)
-                if not (1 <= day <= 31):
-                    return False
-                # 验证小时 (0-23)
-                if not (0 <= hour <= 23):
-                    return False
-                # 验证分钟 (0-59)
-                if not (0 <= minute <= 59):
-                    return False
-                # 使用calendar验证日期有效性（处理2月30日等情况）
-                import calendar
-
-                try:
-                    calendar.monthrange(year, month)
-                except ValueError:
-                    return False
-                return True
-
-            # 应用验证过滤
-            mask = df["datetime"].apply(is_valid_date)
-            filtered_count = (~mask).sum()
+            # 使用向量化 pd.to_datetime 替代逐行验证
+            df["datetime"] = pd.to_datetime(
+                df["datetime"],
+                format="%Y-%m-%d %H:%M",
+                errors="coerce",  # 无法解析的变为 NaT
+            )
+            # 删除 NaT 行（无效日期）
+            filtered_count = df["datetime"].isna().sum()
             if filtered_count > 0:
                 app_logger.debug(f"过滤掉 {filtered_count} 条无效日期数据")
-
-            df = df[mask].copy()
-
-            # 现在安全地转换为 datetime
-            if not df.empty:
-                df["datetime"] = pd.to_datetime(
-                    df["datetime"],
-                    format="%Y-%m-%d %H:%M",
-                    errors="coerce",  # 无法解析的变为 NaT
-                )
-                # 删除 NaT 行
-                df = df.dropna(subset=["datetime"])
+            df = df.dropna(subset=["datetime"])
 
         except Exception as e:
             app_logger.warning(f"datetime 列清洗异常：{e}，将保留原始数据")

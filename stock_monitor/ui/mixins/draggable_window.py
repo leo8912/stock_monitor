@@ -74,11 +74,6 @@ class DraggableWindowMixin:
             # Install event filter on self and children
             self.install_event_filters(self)
 
-            # 弃用定时器周期性纠正，改为消息驱动 (nativeEvent) 和属性锁定
-            # self._topmost_timer = QtCore.QTimer(self)
-            # self._topmost_timer.timeout.connect(self._ensure_topmost)
-            # self._topmost_timer.start(1000)
-
     def install_event_filters(self, widget):
         """Recursively install event filters on widget and its children"""
         if isinstance(widget, QtWidgets.QWidget):

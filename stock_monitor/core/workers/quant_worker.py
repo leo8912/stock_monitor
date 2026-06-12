@@ -756,6 +756,7 @@ class QuantWorker(QtCore.QThread):
                     p_info,
                     is_priority,
                     is_confluence,
+                    daily_df,
                 )
 
         except Exception as e:
@@ -779,23 +780,24 @@ class QuantWorker(QtCore.QThread):
         cooldown = self.config.get("quant_alert_cooldown", 1800)  # 默认30分钟
         score_threshold = self.config.get("quant_alert_score_threshold", 2)
 
-        # 2. 首次出现或缓存缺失 → 允许推送
-        if state_key not in self._signal_states:
-            return True, "新信号"
+        with self._lock:
+            # 2. 首次出现或缓存缺失 → 允许推送
+            if state_key not in self._signal_states:
+                return True, "新信号"
 
-        state = self._signal_states[state_key]
-        last_push_ts = state.get("last_push_ts", 0)
-        last_score = state.get("last_score", -999)
+            state = self._signal_states[state_key]
+            last_push_ts = state.get("last_push_ts", 0)
+            last_score = state.get("last_score", -999)
 
-        # 3. 冷却时间检查
-        elapsed = now - last_push_ts
-        if elapsed < cooldown:
-            # 4. 冷却期内：只有评分显著变化才重新推送
-            score_diff = abs(current_score - last_score)
-            if score_diff >= score_threshold:
-                return True, f"评分显著变化 ({last_score:+}→{current_score:+})"
-            else:
-                return False, f"冷却中 (剩余{int(cooldown - elapsed)}s)"
+            # 3. 冷却时间检查
+            elapsed = now - last_push_ts
+            if elapsed < cooldown:
+                # 4. 冷却期内：只有评分显著变化才重新推送
+                score_diff = abs(current_score - last_score)
+                if score_diff >= score_threshold:
+                    return True, f"评分显著变化 ({last_score:+}→{current_score:+})"
+                else:
+                    return False, f"冷却中 (剩余{int(cooldown - elapsed)}s)"
 
         # 5. 超过冷却时间 → 允许推送
         return True, "冷却结束"
@@ -803,10 +805,11 @@ class QuantWorker(QtCore.QThread):
     def _update_signal_state(self, symbol: str, sig_name: str, score: int):
         """更新信号状态记录"""
         state_key = (symbol, sig_name)
-        self._signal_states[state_key] = {
-            "last_score": score,
-            "last_push_ts": time.time(),
-        }
+        with self._lock:
+            self._signal_states[state_key] = {
+                "last_score": score,
+                "last_push_ts": time.time(),
+            }
 
     def _merge_signals_for_symbol(
         self, symbol: str, stock_name: str, signals_data: list[dict]
@@ -902,6 +905,7 @@ class QuantWorker(QtCore.QThread):
         p_info,
         is_priority,
         is_confluence,
+        cached_daily_df=None,
     ) -> dict:
         """
         处理并发送信号（优化版：防抖动 + 信号合并 + 强度门槛）
@@ -954,7 +958,11 @@ class QuantWorker(QtCore.QThread):
         daily_res = None
         h60_res = None
         try:
-            daily_df = self.engine.fetch_bars(symbol, category=9, offset=100)
+            daily_df = (
+                cached_daily_df
+                if cached_daily_df is not None
+                else self.engine.fetch_bars(symbol, category=9, offset=100)
+            )
             h60_df = self.engine.fetch_bars(symbol, category=3, offset=100)
             daily_res = WaveAnalyzer.analyze(daily_df)
             h60_res = WaveAnalyzer.analyze(h60_df)
@@ -1075,8 +1083,8 @@ class QuantWorker(QtCore.QThread):
                     )
                     try:
                         os.remove(daily_img)
-                    except Exception:  # noqa: E722
-                        pass
+                    except OSError as e:
+                        app_logger.debug(f"删除临时图片失败: {e}")
             if h60_res:
                 h60_img = WaveChart.generate(
                     h60_res, symbol, stock_name, timeframe="60m"
@@ -1089,8 +1097,8 @@ class QuantWorker(QtCore.QThread):
                     )
                     try:
                         os.remove(h60_img)
-                    except Exception:  # noqa: E722
-                        pass
+                    except OSError as e:
+                        app_logger.debug(f"删除临时图片失败: {e}")
         except Exception as img_err:
             app_logger.error(f"即时扫描推送波浪图表失败 ({symbol}): {img_err}")
 

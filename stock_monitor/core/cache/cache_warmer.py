@@ -151,15 +151,8 @@ class CacheWarmer:
         用于测试或手动重置缓存
         """
         try:
-            # 清空引擎中的各个缓存
-            if hasattr(self.engine, "_avg_vol_cache"):
-                self.engine._avg_vol_cache.cache.clear()
-            if hasattr(self.engine, "_auction_cache"):
-                self.engine._auction_cache.cache.clear()
-            if hasattr(self.engine, "_large_order_cache"):
-                self.engine._large_order_cache.cache.clear()
-            if hasattr(self.engine, "_rsrs_cache"):
-                self.engine._rsrs_cache.clear()
+            # 清空引擎中的所有缓存（通过公开方法）
+            self.engine.clear_all_caches()
 
             app_logger.info("所有缓存已清空")
             return True
@@ -196,106 +189,6 @@ class CacheWarmer:
             app_logger.debug(f"获取缓存统计信息失败：{e}")
 
         return status
-
-
-class IndicatorComputationOptimizer:
-    """指标计算优化器 - 按需计算，缓存结果"""
-
-    def __init__(self, quant_engine):
-        """初始化指标计算优化器
-
-        Args:
-            quant_engine: QuantEngine 实例
-        """
-        self.engine = quant_engine
-        self.indicator_cache = {}  # symbol -> {indicator_name -> result}
-        self.cache_time = {}  # symbol -> last_update_time
-
-    def compute_indicator_set(
-        self, symbol: str, indicators: list[str], bars_df=None
-    ) -> dict:
-        """按需计算指定指标集合
-
-        Args:
-            symbol: 股票代码
-            indicators: 指标名称列表 (e.g., ['MACD', 'OBV', 'RSRS'])
-            bars_df: 可选的K线数据（如果不提供会自动获取）
-
-        Returns:
-            指标计算结果字典
-        """
-        results = {}
-
-        # 如果没有提供K线数据，自动获取
-        if bars_df is None:
-            try:
-                bars_df = self.engine.fetch_bars(symbol, category=9, offset=100)
-            except Exception as e:
-                app_logger.error(f"获取 {symbol} 的K线数据失败：{e}")
-                return results
-
-        for indicator_name in indicators:
-            try:
-                if indicator_name == "RSRS":
-                    z_score, slope = self.engine.calculate_rsrs(bars_df)
-                    results["RSRS"] = {"z_score": z_score, "slope": slope}
-
-                elif indicator_name == "OBV":
-                    obv_signals = self.engine.detect_obv_accumulation(symbol, bars_df)
-                    results["OBV"] = obv_signals
-
-                elif indicator_name == "MACD":
-                    signals = [
-                        s
-                        for s in self.engine.scan_all_timeframes(symbol)
-                        if "MACD" in s.get("name", "")
-                    ]
-                    results["MACD"] = signals
-
-                elif indicator_name == "BB":
-                    # Bollinger Bands检测
-                    signals = [
-                        s
-                        for s in self.engine.scan_all_timeframes(symbol)
-                        if "布林" in s.get("name", "")
-                    ]
-                    results["BB"] = signals
-
-                elif indicator_name == "RSI":
-                    # RSI检测
-                    signals = [
-                        s
-                        for s in self.engine.scan_all_timeframes(symbol)
-                        if "RSI" in s.get("name", "")
-                    ]
-                    results["RSI"] = signals
-
-                elif indicator_name == "VOLUME":
-                    # 成交量脉冲
-                    signals = [
-                        s
-                        for s in self.engine.scan_all_timeframes(symbol)
-                        if "成交量" in s.get("name", "")
-                    ]
-                    results["VOLUME"] = signals
-
-            except Exception as e:
-                app_logger.warning(f"计算 {symbol} 的 {indicator_name} 指标失败：{e}")
-
-        return results
-
-    def invalidate_cache(self, symbol: str = None):
-        """使缓存失效
-
-        Args:
-            symbol: 如果指定，只清空该股票的缓存；否则清空所有缓存
-        """
-        if symbol:
-            self.indicator_cache.pop(symbol, None)
-            self.cache_time.pop(symbol, None)
-        else:
-            self.indicator_cache.clear()
-            self.cache_time.clear()
 
 
 class PerformanceMonitor:
