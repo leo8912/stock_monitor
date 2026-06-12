@@ -1,5 +1,11 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.3.2] - 2026-06-12
+
+### 🐛 修复 (Fixes)
+- **[打包] 修复 close_export_scheduler 模块在 PyInstaller 打包后找不到的问题**：
+  - 将 `close_export_scheduler` 的 import 从顶层延迟到 `__init__` 方法内，避免 PyInstaller 分析阶段加载失败。
+
 ## [v4.3.1] - 2026-06-12
 
 ### 🐛 修复 (Fixes)
