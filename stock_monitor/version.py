@@ -1,7 +1,7 @@
 import os
 import sys
 
-# 注意：修改此文件中的版本号会触发 GitHub Actions 自动构建 Release。
+# 注意：修改此文件会触发 GitHub Actions 自动构建 Release。
 __version__ = "4.3.3"
 
 try:
