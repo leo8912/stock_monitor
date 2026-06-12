@@ -21,11 +21,12 @@ class StockTableModel(QtCore.QAbstractTableModel):
     COL_PRICE = 1
     COL_CHANGE = 2
     COL_SEAL = 3
+    COL_DARK_FLOW = 4  # 暗盘净流入（常显示）
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._data: list = []  # list of StockRowData
-        self._header_labels = ["名称", "价格", "涨跌幅", "封单"]
+        self._header_labels = ["名称", "价格", "涨跌幅", "封单", "暗盘流"]
         self._font_size = 13
         self._font_family = "微软雅黑"
         self._show_seal_column = False
@@ -41,6 +42,7 @@ class StockTableModel(QtCore.QAbstractTableModel):
         count = 3  # 名称, 价格, 涨跌幅
         if self._show_seal_column:
             count += 1
+        count += 1  # COL_DARK_FLOW 始终显示
         return count
 
     def data(
@@ -53,12 +55,15 @@ class StockTableModel(QtCore.QAbstractTableModel):
         col = index.column()
 
         # 根据当前显示的列（Section）映射到逻辑数据
-        # 逻辑列顺序：0:名称, 1:价格, 2:涨跌幅, 3:封单
-        current_col_index = col
-        if not self._show_seal_column and current_col_index >= self.COL_SEAL:
-            current_col_index += 1
-
-        logical_col = current_col_index
+        # 逻辑列顺序：0:名称, 1:价格, 2:涨跌幅, 3:封单, 4:暗盘流
+        # 封单列可隐藏，暗盘列始终展示
+        # 封单隐藏时: col 0−2对应逻辑 0−2；col 3 对应暗盘(4)
+        # 封单显示时: col 0−3对应逻辑 0−3；col 4 对应暗盘(4)
+        if not self._show_seal_column:
+            # col 3 = 暗盘列
+            logical_col = col if col < self.COL_SEAL else self.COL_DARK_FLOW
+        else:
+            logical_col = col
 
         # 文本显示
         if role == QtCore.Qt.ItemDataRole.DisplayRole:
@@ -89,8 +94,43 @@ class StockTableModel(QtCore.QAbstractTableModel):
                     else ""
                 )
 
+            elif logical_col == self.COL_DARK_FLOW:
+                if not row_data.dark_flow_valid:
+                    return " -- "
+                v = row_data.dark_flow_wan
+                sign = "+" if v >= 0 else ""
+                # 将小数按量级显示：>1万显整数，小数显1位
+                if abs(v) >= 10000:
+                    return f" {sign}{v/10000:.1f}亿 "
+                elif abs(v) >= 1000:
+                    return f" {sign}{v:.0f}万 "
+                else:
+                    return f" {sign}{v:.1f}万 "
+
         # 文本颜色
         elif role == QtCore.Qt.ItemDataRole.ForegroundRole:
+            # 暗盘列独立颜色逻辑
+            if logical_col == self.COL_DARK_FLOW:
+                if not row_data.dark_flow_valid:
+                    return QtGui.QColor("#888888")
+                v = row_data.dark_flow_wan
+                days = row_data.dark_flow_consecutive_days
+                if v > 0:
+                    # 连续3天流入 → 深红(#CC0000)，否则标准红(#e74c3f)
+                    return (
+                        QtGui.QColor("#CC0000")
+                        if days >= 3
+                        else QtGui.QColor("#e74c3f")
+                    )
+                elif v < 0:
+                    # 连续3天流出 → 深绿(#145a32)，否则标准绿(#27ae60)
+                    return (
+                        QtGui.QColor("#145a32")
+                        if days <= -3
+                        else QtGui.QColor("#27ae60")
+                    )
+                return QtGui.QColor("#888888")
+
             # 封单列特殊处理（使用逻辑列号，避免封单列隐藏时误判）
             if logical_col == self.COL_SEAL:
                 if row_data.seal_type == "up":

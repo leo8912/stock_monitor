@@ -90,6 +90,42 @@ class UpdateCheckThread(QThread):
             self.error_occurred.emit(str(e))
 
 
+class DarkTradeExportThread(QThread):
+    """暗盘数据导出后台线程"""
+
+    export_finished = pyqtSignal(bool, str)
+
+    def __init__(self, watchlist_codes: list, parent=None):
+        super().__init__(parent)
+        self._watchlist_codes = watchlist_codes
+
+    def run(self):
+        try:
+            from stock_monitor.services.dark_trade_exporter import (
+                export_dark_trade_excel,
+            )
+            from stock_monitor.utils.logger import app_logger
+
+            app_logger.info("[DarkExport] 手动触发暗盘数据导出...")
+            output_path = export_dark_trade_excel(
+                watchlist_codes=self._watchlist_codes,
+                history_days=5,
+            )
+            self.export_finished.emit(
+                True,
+                f"暗盘资金数据已成功导出！\n\n"
+                f"保存位置：\n{output_path}\n\n"
+                f"包含两个 Sheet：\n"
+                f"  1. 全市场暗盘 - 全A股暗盘+明盘行情\n"
+                f"  2. 自选股暗盘 - 自选股子集",
+            )
+        except Exception as e:
+            from stock_monitor.utils.logger import app_logger
+
+            app_logger.error(f"[DarkExport] 导出失败: {e}")
+            self.export_finished.emit(False, f"导出暗盘数据时发生异常：\n{e}")
+
+
 # StockSearchHandler and ConfigManagerHandler logic moved to ViewModel
 # Keep WatchListManager as it is UI logic
 class WatchListManager:
@@ -348,6 +384,9 @@ class NewSettingsDialog(QDialog):
         self.btn_manual_report.clicked.connect(self.manual_report_requested.emit)
         self.btn_manual_export_excel.clicked.connect(
             self._on_manual_export_excel_clicked
+        )
+        self.btn_manual_fetch_dark_trade.clicked.connect(
+            self._on_manual_fetch_dark_trade_clicked
         )
         self.push_mode_combo.currentIndexChanged.connect(self._on_push_mode_changed)
         self.viewModel.error_occurred.connect(self._on_vm_error)
@@ -662,6 +701,16 @@ class NewSettingsDialog(QDialog):
         )
         quant_layout.addWidget(self.auto_export_excel_checkbox)
 
+        # 收盘时自动抓取全网数据开关
+        self.auto_close_export_checkbox = QCheckBox("收盘时自动抓取全网数据并保存")
+        self.auto_close_export_checkbox.setToolTip(
+            "启用后，每天15:05将自动执行以下操作：\n"
+            "1. 抓取全市场暗盘资金数据并导出Excel\n"
+            "2. 抓取自选股详细技术指标并导出Excel\n"
+            "3. 保存全A股行情快照"
+        )
+        quant_layout.addWidget(self.auto_close_export_checkbox)
+
         # --- 推送通道选择 ---
         channel_layout = QHBoxLayout()
         channel_layout.addWidget(QLabel("通知渠道:"))
@@ -765,6 +814,16 @@ class NewSettingsDialog(QDialog):
             "立即导出当前所有自选股的技术指标（K线、BOLL、MACD、RSI、成交量等）到 Excel 文件"
         )
         btn_row_layout.addWidget(self.btn_manual_export_excel)
+
+        # 手动抓取暗盘数据按钮
+        self.btn_manual_fetch_dark_trade = QPushButton("🌙 刷新暗盘资金数据")
+        self.btn_manual_fetch_dark_trade.setObjectName("PrimaryButton")
+        self.btn_manual_fetch_dark_trade.setFixedWidth(180)
+        self.btn_manual_fetch_dark_trade.setToolTip(
+            "立即从东方财富网抓取全市场暗盘资金数据并更新缓存\n"
+            "包括主力净流入、超大单/大单/中单/小单资金流向"
+        )
+        btn_row_layout.addWidget(self.btn_manual_fetch_dark_trade)
 
         quant_layout.addLayout(btn_row_layout)
 
@@ -1189,6 +1248,9 @@ class NewSettingsDialog(QDialog):
             self.auto_export_excel_checkbox.setChecked(
                 settings.get("auto_export_excel", False)
             )
+            self.auto_close_export_checkbox.setChecked(
+                settings.get("auto_close_export", False)
+            )
             self.wecom_webhook_input.setText(settings.get("wecom_webhook", ""))
 
             # 新增企微应用配置加载
@@ -1224,6 +1286,7 @@ class NewSettingsDialog(QDialog):
                 "transparency": self.transparency_slider.value(),
                 "quant_enabled": self.quant_enabled_checkbox.isChecked(),
                 "auto_export_excel": self.auto_export_excel_checkbox.isChecked(),
+                "auto_close_export": self.auto_close_export_checkbox.isChecked(),
                 "wecom_webhook": self.wecom_webhook_input.text().strip(),
             }
 
@@ -1291,6 +1354,46 @@ class NewSettingsDialog(QDialog):
         finally:
             self.btn_manual_export_excel.setEnabled(True)
             self.btn_manual_export_excel.setText("📊 导出指标数据到 Excel")
+
+    def _on_manual_fetch_dark_trade_clicked(self):
+        """手动抓取并导出暗盘资金数据到 Excel"""
+        from PyQt6.QtCore import QTimer
+        from PyQt6.QtWidgets import QApplication, QMessageBox
+
+        user_stocks = self.get_stocks_from_list(self.watch_list)
+
+        # 禁用按钮，显示进度
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        self.btn_manual_fetch_dark_trade.setEnabled(False)
+        self.btn_manual_fetch_dark_trade.setText("⏳ 导出中...")
+        QApplication.processEvents()
+
+        def _restore_button():
+            self.btn_manual_fetch_dark_trade.setEnabled(True)
+            self.btn_manual_fetch_dark_trade.setText("🌙 刷新暗盘资金数据")
+
+        def _on_export_finished(success: bool, message: str):
+            """导出完成回调（在主线程中执行）"""
+            QApplication.restoreOverrideCursor()
+            if success:
+                QMessageBox.information(self, "导出成功", message)
+            else:
+                QMessageBox.critical(self, "导出失败", message)
+            # 同时刷新内存缓存，使主界面暗盘列更新
+            if self.main_window and hasattr(self.main_window, "viewModel"):
+                try:
+                    self.main_window.viewModel.trigger_manual_dark_trade_fetch()
+                except Exception:
+                    pass
+
+        # 在后台线程执行导出（避免阻塞UI）
+        self._dark_export_thread = DarkTradeExportThread(user_stocks)
+        self._dark_export_thread.export_finished.connect(_on_export_finished)
+        self._dark_export_thread.finished.connect(self._dark_export_thread.deleteLater)
+        self._dark_export_thread.start()
+
+        # 延迟恢复按钮（避免瞬间恢复）
+        QTimer.singleShot(3000, _restore_button)
 
     def get_stocks_from_list(self, watch_list):
         """

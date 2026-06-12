@@ -22,6 +22,10 @@ class StockRowData:
     auction_price: float = 0.0
     auction_vol: float = 0.0
     auction_intensity: float = 0.0
+    # 暗盘资金字段 [NEW]
+    dark_flow_wan: float = 0.0  # 暗盘净流入（万元）
+    dark_flow_valid: bool = False  # 是否有有效暗盘数据
+    dark_flow_consecutive_days: int = 0  # 连续流入(正)/流出(负)天数
 
     @property
     def hash_key(self) -> tuple:
@@ -83,6 +87,9 @@ class StockRowDataPool:
                 obj.auction_price = 0.0
                 obj.auction_vol = 0.0
                 obj.auction_intensity = 0.0
+                obj.dark_flow_wan = 0.0
+                obj.dark_flow_valid = False
+                obj.dark_flow_consecutive_days = 0
                 self._available.add(idx)
         except ValueError:
             # 对象不在池中，忽略

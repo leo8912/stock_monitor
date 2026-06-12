@@ -231,3 +231,7 @@ class ConfigKeys:
     FILTER_PE = "filter_pe"
     FILTER_ROE = "filter_roe"
     FILTER_MARKET_CAP = "filter_market_cap"
+
+    # 自动导出相关
+    AUTO_EXPORT_EXCEL = "auto_export_excel"
+    AUTO_CLOSE_EXPORT = "auto_close_export"  # 收盘时自动抓取全网数据

@@ -7,6 +7,8 @@ from stock_monitor.core.market.stock_manager import StockManager
 from stock_monitor.core.workers import MarketStatsWorker, QuantWorker, RefreshWorker
 from stock_monitor.data.stock.stock_db import StockDatabase
 from stock_monitor.data.stock.stocks import load_stock_data
+from stock_monitor.services.close_export_scheduler import get_close_export_scheduler
+from stock_monitor.services.dark_trade_service import get_dark_trade_service
 from stock_monitor.utils.config_helper import ConfigHelper, ConfigKeys
 from stock_monitor.utils.logger import app_logger
 from stock_monitor.utils.stock_utils import StockCodeProcessor
@@ -46,6 +48,20 @@ class MainWindowViewModel(QObject):
         # 注册到容器中，方便 SettingsViewModel 获取
         self._container.register_singleton(QuantWorker, self._quant_worker)
 
+        # Initialize Close Export Scheduler
+        self._close_export_scheduler = get_close_export_scheduler()
+
+        # Initialize Dark Trade Service and start it immediately
+        self._dark_trade_service = get_dark_trade_service()
+        if not self._dark_trade_service.isRunning():
+            self._dark_trade_service.start_service()
+            app_logger.info("[MainWindowViewModel] 暗盘资金服务已启动")
+
+        # Connect Dark Trade cache_updated signal → re-inject data into UI
+        self._dark_trade_service.cache_updated.connect(
+            self._on_dark_trade_cache_updated
+        )
+
         # Connect Worker Signals
         self._refresh_worker.data_updated.connect(self._on_data_updated)
         self._refresh_worker.refresh_error.connect(self.refresh_error_occurred.emit)
@@ -57,8 +73,32 @@ class MainWindowViewModel(QObject):
     def _on_data_updated(self, stocks, all_failed):
         """Intercept local data updates to cache the latest data"""
         if not all_failed:
+            # Inject dark trade data into stock rows
+            self._inject_dark_trade_data(stocks)
             self._latest_stock_data = stocks
         self.stock_data_updated.emit(stocks, all_failed)
+
+    def _inject_dark_trade_data(self, stocks):
+        """将暗盘资金数据注入到股票行数据中"""
+        try:
+            for stock in stocks:
+                # 从暗盘服务获取该股票的净流入数据
+                result = self._dark_trade_service.get_dark_flow(stock.code)
+                if result is not None:
+                    stock.dark_flow_wan, stock.dark_flow_consecutive_days = result
+                    stock.dark_flow_valid = True
+        except Exception as e:
+            # 静默失败，不影响主数据显示
+            app_logger.debug(f"注入暗盘数据失败: {e}")
+
+    def _on_dark_trade_cache_updated(self, update_time: str):
+        """暗盘缓存更新后，重新注入数据并刷新UI"""
+        if self._latest_stock_data:
+            self._inject_dark_trade_data(self._latest_stock_data)
+            self.stock_data_updated.emit(self._latest_stock_data, False)
+            app_logger.info(
+                f"[MainWindowViewModel] 暗盘数据已注入UI，时间={update_time}"
+            )
 
     def get_latest_stock_data(self) -> list:
         """Get the most recently fetched/cached stock data"""
@@ -145,6 +185,14 @@ class MainWindowViewModel(QObject):
         else:
             self._quant_worker.stop_worker()
 
+        # Start close export scheduler if enabled
+        auto_close_export = self._config_helper.get_bool(
+            ConfigKeys.AUTO_CLOSE_EXPORT, False
+        )
+        self._close_export_scheduler.set_enabled(auto_close_export)
+        if not self._close_export_scheduler.isRunning():
+            self._close_export_scheduler.start_scheduler()
+
     def request_immediate_refresh(self, user_stocks: list[str] = None):
         """
         请求立即刷新行情（异步）
@@ -173,6 +221,8 @@ class MainWindowViewModel(QObject):
             self._market_stats_worker.stop_worker()
         if self._quant_worker.isRunning():
             self._quant_worker.stop_worker()
+        if self._close_export_scheduler.isRunning():
+            self._close_export_scheduler.stop_scheduler()
 
     def update_workers_config(
         self, user_stocks: list[str] = None, refresh_interval: int = None
@@ -194,6 +244,12 @@ class MainWindowViewModel(QObject):
         else:
             if self._quant_worker.isRunning():
                 self._quant_worker.stop_worker()
+
+        # Update close export scheduler config
+        auto_close_export = self._config_helper.get_bool(
+            ConfigKeys.AUTO_CLOSE_EXPORT, False
+        )
+        self._close_export_scheduler.set_enabled(auto_close_export)
 
     def load_session(self) -> dict:
         """Load session cache"""
@@ -275,3 +331,11 @@ class MainWindowViewModel(QObject):
         if self._quant_worker:
             app_logger.info("触发手动复盘报告生成...")
             self._quant_worker.generate_daily_summary_report("manual")
+
+    def trigger_manual_dark_trade_fetch(self):
+        """手动触发暗盘数据抓取"""
+        try:
+            app_logger.info("[MainWindowViewModel] 手动触发暗盘数据抓取")
+            self._dark_trade_service.trigger_manual_fetch()
+        except Exception as e:
+            app_logger.error(f"手动触发暗盘数据抓取失败: {e}")
