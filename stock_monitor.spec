@@ -75,6 +75,10 @@ hiddenimports = [
     'pandas_ta.momentum',
     # scipy (pandas-ta 的核心隐式依赖)
     'scipy',
+    # 暗盘数据服务
+    'stock_monitor.services.dark_trade_service',
+    'stock_monitor.services.dark_trade_exporter',
+    'stock_monitor.services.close_export_scheduler',
     'scipy.signal',
     'scipy.stats',
     'scipy.special',
