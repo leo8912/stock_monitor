@@ -7,7 +7,6 @@ from stock_monitor.core.market.stock_manager import StockManager
 from stock_monitor.core.workers import MarketStatsWorker, QuantWorker, RefreshWorker
 from stock_monitor.data.stock.stock_db import StockDatabase
 from stock_monitor.data.stock.stocks import load_stock_data
-from stock_monitor.services.close_export_scheduler import get_close_export_scheduler
 from stock_monitor.services.dark_trade_service import get_dark_trade_service
 from stock_monitor.utils.config_helper import ConfigHelper, ConfigKeys
 from stock_monitor.utils.logger import app_logger
@@ -48,7 +47,11 @@ class MainWindowViewModel(QObject):
         # 注册到容器中，方便 SettingsViewModel 获取
         self._container.register_singleton(QuantWorker, self._quant_worker)
 
-        # Initialize Close Export Scheduler
+        # Initialize Close Export Scheduler (lazy import to avoid PyInstaller issues)
+        from stock_monitor.services.close_export_scheduler import (
+            get_close_export_scheduler,
+        )
+
         self._close_export_scheduler = get_close_export_scheduler()
 
         # Initialize Dark Trade Service and start it immediately
