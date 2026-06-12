@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from stock_monitor.core.cache_warmer import (
+from stock_monitor.core.cache.cache_warmer import (
     CacheWarmer,
     IndicatorComputationOptimizer,
     PerformanceMonitor,

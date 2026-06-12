@@ -10,7 +10,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 
 from stock_monitor.config.manager import ConfigManager
-from stock_monitor.core.startup import setup_auto_start
+from stock_monitor.core.config.startup import setup_auto_start
 
 
 def test_auto_start():

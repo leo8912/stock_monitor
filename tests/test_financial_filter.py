@@ -16,7 +16,7 @@ import time
 import unittest
 from unittest.mock import patch
 
-from stock_monitor.core.financial_filter import FinancialFilter
+from stock_monitor.core.engine.financial_filter import FinancialFilter
 
 
 class TestFinancialFilter(unittest.TestCase):

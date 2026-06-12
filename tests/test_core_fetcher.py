@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from stock_monitor.core.stock_data_fetcher import StockDataFetcher
+from stock_monitor.core.data.stock_data_fetcher import StockDataFetcher
 
 
 class TestStockDataFetcher(unittest.TestCase):

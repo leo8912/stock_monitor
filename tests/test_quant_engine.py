@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 
-from stock_monitor.core.quant_engine import QuantEngine
+from stock_monitor.core.engine.quant_engine import QuantEngine
 
 
 class TestQuantEngine(unittest.TestCase):
@@ -21,7 +21,7 @@ class TestQuantEngine(unittest.TestCase):
 
     def test_initialization(self):
         """测试初始化"""
-        from stock_monitor.core.quant_engine import LRUCacheWithTTL
+        from stock_monitor.core.engine.quant_engine import LRUCacheWithTTL
 
         # 验证 LRU 缓存已初始化
         self.assertIsNotNone(self.engine._bars_lru_cache)
@@ -43,7 +43,7 @@ class TestQuantEngine(unittest.TestCase):
 
     def test_parse_symbol(self):
         """测试符号解析功能"""
-        from stock_monitor.core.symbol_resolver import SymbolType
+        from stock_monitor.core.resolvers.symbol_resolver import SymbolType
 
         # 测试 A 股代码解析 - 纯数字默认按深圳市场处理
         code, market, stype = self.engine._parse_symbol("000001")
@@ -70,7 +70,7 @@ class TestQuantEngine(unittest.TestCase):
             }
         )
 
-        from stock_monitor.core.symbol_resolver import SymbolType
+        from stock_monitor.core.resolvers.symbol_resolver import SymbolType
 
         result = self.engine._validate_data(df, SymbolType.STOCK)
         self.assertTrue(result)
@@ -78,7 +78,7 @@ class TestQuantEngine(unittest.TestCase):
     def test_validate_data_with_empty_dataframe(self):
         """测试数据验证 - 空 DataFrame"""
         df = pd.DataFrame()
-        from stock_monitor.core.symbol_resolver import SymbolType
+        from stock_monitor.core.resolvers.symbol_resolver import SymbolType
 
         result = self.engine._validate_data(df, SymbolType.STOCK)
         self.assertFalse(result)

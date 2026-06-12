@@ -1,5 +1,30 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.3.3] - 2026-06-12
+
+### 🐛 修复 (Fixes)
+- **[安全] 修复 SQL LIKE 注入漏洞**：添加 `_escape_like_pattern()` 函数转义 `%`、`_`、`\` 特殊字符。
+- **[安全] 修复数据库连接池竞态条件**：添加双重检查锁定防止多线程复用同一连接。
+- **[线程] 修复 QuantWorker 线程安全问题**：使用 `threading.Event` 替代 bool 标志，使用 `threading.Lock` 保护共享资源。
+- **[线程] 修复 SQLite 跨线程访问**：在工作线程内创建数据库连接，避免跨线程使用。
+- **[内存] 修复 `_signals_history` 内存泄漏**：限制每个符号最多保留 100 条历史记录。
+- **[引擎] 修复 `self.logger` 不存在导致崩溃**：改为使用 `app_logger`。
+- **[引擎] 修复 RSRS 计算中的死代码**：删除不可达的 `return 0.0, 0.0`。
+- **[数据库] 修复 `log_quant_signal` 事务未回滚**：异常时添加回滚操作。
+- **[数据库] 修复 `_insert_stocks_slow` N+1 查询**：改用 `INSERT OR REPLACE` 批量操作。
+- **[缓存] 修复 `_get_adaptive_order_threshold` N+1 查询**：添加 24h TTL 缓存市值数据。
+- **[日期] 修复日期验证不严谨**：使用 `calendar.monthrange()` 验证日期有效性。
+
+### ⚡ 优化 (Optimization)
+- **[架构] 删除 15 个兼容旧路径的转发文件**：统一所有导入路径到新的分层结构。
+- **[架构] 清理 20 个测试文件的导入路径**：同步更新测试代码使用新路径。
+- **[代码] 删除 settings_dialog.py 中的死代码**：移除未被调用的 `_setup_system_settings_ui` 方法。
+- **[代码] 删除 settings_dialog.py 中的重复方法**：移除与 WatchListManager 重复的股票操作方法。
+- **[代码] 提取硬编码值为常量**：新增 `INDEX_MIN_PRICE`、`TRADING_MINUTES_PER_DAY` 等常量。
+- **[代码] 修复缓存目录路径**：使用 `get_config_dir()` 替代相对路径。
+- **[清理] 删除根目录临时文件**：移除 5 个 scratch_*.py、2 个 test_*.py、3 个 draw_kline*.py。
+- **[清理] 删除构建产物和缓存**：移除 build/、analysis_reports/、.coverage、.pytest_cache 等。
+
 ## [v4.3.2] - 2026-06-12
 
 ### 🐛 修复 (Fixes)

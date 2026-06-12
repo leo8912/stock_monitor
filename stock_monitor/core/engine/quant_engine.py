@@ -134,6 +134,9 @@ class QuantEngine:
         self._large_order_cache = LRUCacheWithTTL(
             max_size=512, default_ttl=600
         )  # 10分钟TTL
+        self._market_cap_cache = LRUCacheWithTTL(
+            max_size=256, default_ttl=86400
+        )  # 24小时TTL，市值数据变化缓慢
         self.fin_filter = FinancialFilter()
 
     def get_cache_stats(self) -> dict:
@@ -158,13 +161,15 @@ class QuantEngine:
         """
         数据契约验证器：基于标的类型执行相应的一致性检查
         """
+        from .quant_engine_constants import INDEX_MIN_PRICE
+
         if df is None or df.empty:
             return False
 
-        # 1. 指数类型校验：价格点位不应小于 100 (典型个股价格)
+        # 1. 指数类型校验：价格点位不应小于阈值 (典型个股价格)
         if stype == SymbolType.INDEX:
             last_price = df.iloc[-1]["close"]
-            if last_price < 100:
+            if last_price < INDEX_MIN_PRICE:
                 app_logger.warning(
                     f"数据契约冲突: 捕获到价格 {last_price}，不满足 INDEX 类型的基准点位要求。"
                 )
@@ -285,6 +290,13 @@ class QuantEngine:
                     return False
                 # 验证分钟 (0-59)
                 if not (0 <= minute <= 59):
+                    return False
+                # 使用calendar验证日期有效性（处理2月30日等情况）
+                import calendar
+
+                try:
+                    calendar.monthrange(year, month)
+                except ValueError:
                     return False
                 return True
 
@@ -407,7 +419,8 @@ class QuantEngine:
                 if ri >= curr.index[-5]:
                     return True
             return False
-        except Exception:
+        except Exception as e:
+            app_logger.debug(f"MACD底背离检测异常: {e}")
             return False
 
     def check_bbands_squeeze(self, df: pd.DataFrame, end_idx: int = None) -> bool:
@@ -420,7 +433,8 @@ class QuantEngine:
                 return False
             bw = curr[cols[0]].iloc[-1]
             return bw <= curr[cols[0]].iloc[-100:].min() * 1.05
-        except Exception:
+        except Exception as e:
+            app_logger.debug(f"布林带收窄检测异常: {e}")
             return False
 
     def calculate_rsrs(
@@ -444,8 +458,6 @@ class QuantEngine:
                 adjusted_m = min(m, data_len - n)
                 app_logger.info(f"RSRS 降级模式：m={m}->{adjusted_m}")
                 return self.calculate_rsrs(df, n=n, m=adjusted_m)
-
-                return 0.0, 0.0
 
             # 1. 计算斜率序列 (Slope)
             # 为了性能，只计算最近 M+1 个斜率用于标准化
@@ -494,7 +506,8 @@ class QuantEngine:
             if vty < 0.10:
                 return r20["OBV"].rolling(5).mean().iloc[-1] > r20["OBV"].mean() * 1.05
             return False
-        except Exception:
+        except Exception as e:
+            app_logger.debug(f"OBV累积检测异常: {e}")
             return False
 
     def get_bbands_position_desc(self, df: pd.DataFrame) -> str:
@@ -523,7 +536,8 @@ class QuantEngine:
                 return f" 🔴 上轨阻力{sq}"
             else:
                 return f" 🟡 中位震荡{sq}"
-        except Exception:
+        except Exception as e:
+            app_logger.debug(f"布林带位置描述异常: {e}")
             return ""
 
     def calculate_comprehensive_indicators(self, df: pd.DataFrame) -> dict:
@@ -840,15 +854,15 @@ class QuantEngine:
                     pd.api.extensions.register_dataframe_accessor("ta")(
                         AnalysisIndicators
                     )
-                self.logger.info("已通过代码手动激活 pandas-ta 访问器。")
+                app_logger.info("已通过代码手动激活 pandas-ta 访问器。")
                 return True
             except (ImportError, ModuleNotFoundError) as e:
-                self.logger.warning(f"无法激活 pandas-ta 访问器: {str(e)}")
+                app_logger.warning(f"无法激活 pandas-ta 访问器: {str(e)}")
                 return False
         except Exception as e:
             import traceback
 
-            self.logger.warning(
+            app_logger.warning(
                 f"激活 pandas-ta 时发生未知错误: {e}\n{traceback.format_exc()}"
             )
             return False
@@ -940,6 +954,20 @@ class QuantEngine:
         - 中盘股 (100-1000 亿): 50 万元
         - 大盘股 (>1000 亿): 100 万元
         """
+        from .quant_engine_constants import (
+            BIG_ORDER_THRESHOLD_AMOUNT,
+            BIG_ORDER_THRESHOLD_LARGE_CAP,
+            BIG_ORDER_THRESHOLD_MID_CAP,
+            BIG_ORDER_THRESHOLD_SMALL_CAP,
+            MARKET_CAP_MID_LIMIT,
+            MARKET_CAP_SMALL_LIMIT,
+        )
+
+        # 检查缓存
+        cached_threshold = self._market_cap_cache.get(symbol)
+        if cached_threshold is not None:
+            return cached_threshold
+
         try:
             import akshare as ak
 
@@ -951,25 +979,21 @@ class QuantEngine:
                         market_cap_str = str(row.get("value", "0")).replace(",", "")
                         try:
                             market_cap = float(market_cap_str)
-                            from .quant_engine_constants import (
-                                BIG_ORDER_THRESHOLD_LARGE_CAP,
-                                BIG_ORDER_THRESHOLD_MID_CAP,
-                                BIG_ORDER_THRESHOLD_SMALL_CAP,
-                                MARKET_CAP_MID_LIMIT,
-                                MARKET_CAP_SMALL_LIMIT,
-                            )
 
                             if market_cap < MARKET_CAP_SMALL_LIMIT:
-                                return BIG_ORDER_THRESHOLD_SMALL_CAP
+                                threshold = BIG_ORDER_THRESHOLD_SMALL_CAP
                             elif market_cap < MARKET_CAP_MID_LIMIT:
-                                return BIG_ORDER_THRESHOLD_MID_CAP
+                                threshold = BIG_ORDER_THRESHOLD_MID_CAP
                             else:
-                                return BIG_ORDER_THRESHOLD_LARGE_CAP
+                                threshold = BIG_ORDER_THRESHOLD_LARGE_CAP
+
+                            # 缓存结果
+                            self._market_cap_cache.put(symbol, threshold)
+                            return threshold
                         except (ValueError, TypeError):
                             pass
-        except Exception:
-            pass
-        from .quant_engine_constants import BIG_ORDER_THRESHOLD_AMOUNT
+        except Exception as e:
+            app_logger.debug(f"获取市值信息失败 ({symbol}): {e}")
 
         return BIG_ORDER_THRESHOLD_AMOUNT
 

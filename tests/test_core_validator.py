@@ -1,6 +1,6 @@
 import unittest
 
-from stock_monitor.core.stock_data_validator import StockDataValidator
+from stock_monitor.core.data.stock_data_validator import StockDataValidator
 
 
 class TestStockDataValidator(unittest.TestCase):

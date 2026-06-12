@@ -4,7 +4,7 @@ from stock_monitor.core.workers import MarketStatsWorker
 
 
 class TestMarketStatsWorker:
-    @patch("stock_monitor.core.stock_manager.stock_manager")
+    @patch("stock_monitor.core.market.stock_manager.stock_manager")
     @patch("stock_monitor.core.workers.market_worker.MarketManager.is_market_open")
     def test_calculate_stats(self, mock_is_market_open, mock_stock_manager):
         worker = MarketStatsWorker()
@@ -30,7 +30,7 @@ class TestMarketStatsWorker:
         assert stats["flat_count"] == 1
         assert stats["total_count"] == 3  # PT 金田 now=0 被跳过，无效数据也被跳过
 
-    @patch("stock_monitor.core.stock_manager.stock_manager")
+    @patch("stock_monitor.core.market.stock_manager.stock_manager")
     def test_worker_run_flow(self, mock_stock_manager):
         # 这是一个简单的流程测试，不实际运行多线程循环
         worker = MarketStatsWorker()

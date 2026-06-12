@@ -4,7 +4,7 @@ from stock_monitor.core.workers import RefreshWorker
 
 
 class TestRefreshWorker:
-    @patch("stock_monitor.core.stock_manager.stock_manager")
+    @patch("stock_monitor.core.market.stock_manager.stock_manager")
     def test_worker_uses_stock_manager(self, mock_stock_manager):
         """测试 RefreshWorker 使用 StockManager 获取和处理数据"""
         worker = RefreshWorker()
@@ -29,7 +29,7 @@ class TestRefreshWorker:
 
         pass
 
-    @patch("stock_monitor.core.stock_manager.stock_manager")
+    @patch("stock_monitor.core.market.stock_manager.stock_manager")
     @patch("stock_monitor.core.workers.refresh_worker.MarketManager.is_market_open")
     def test_worker_cycle(self, mock_is_market_open, mock_stock_manager):
         """测试工作线程的一个周期"""

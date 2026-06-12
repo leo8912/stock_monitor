@@ -131,7 +131,7 @@ class TestIndicatorAccuracyBenchmarks:
 
     def test_indicator_cache_consistency(self):
         """指标缓存一致性 - 同一输入应得到相同输出"""
-        from stock_monitor.core.cache_warmer import IndicatorComputationOptimizer
+        from stock_monitor.core.cache.cache_warmer import IndicatorComputationOptimizer
 
         mock_engine = MagicMock()
         bars_df = pd.DataFrame({"close": [100, 101, 102]})

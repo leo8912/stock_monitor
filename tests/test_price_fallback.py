@@ -1,6 +1,6 @@
 import unittest
 
-from stock_monitor.core.stock_data_processor import StockDataProcessor
+from stock_monitor.core.data.stock_data_processor import StockDataProcessor
 
 
 class TestPriceFallback(unittest.TestCase):

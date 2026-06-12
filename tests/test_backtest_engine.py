@@ -8,8 +8,8 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
-from stock_monitor.core.backtest_engine import BacktestEngine
-from stock_monitor.core.quant_engine import QuantEngine
+from stock_monitor.core.engine.backtest_engine import BacktestEngine
+from stock_monitor.core.engine.quant_engine import QuantEngine
 
 
 class TestBacktestEngine(unittest.TestCase):

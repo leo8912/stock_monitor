@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import pandas as pd
 
-from stock_monitor.core.quant_engine import QuantEngine
+from stock_monitor.core.engine.quant_engine import QuantEngine
 
 
 class TestMACDBullishDivergence(unittest.TestCase):

@@ -1,4 +1,4 @@
-from stock_monitor.core.container import container
+from stock_monitor.core.config.container import container
 from stock_monitor.data.stock.stock_db import StockDatabase
 from stock_monitor.ui.main_window import MainWindow
 

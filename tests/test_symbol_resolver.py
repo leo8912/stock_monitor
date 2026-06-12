@@ -11,7 +11,7 @@ SymbolResolver 单元测试模块
 
 import unittest
 
-from stock_monitor.core.symbol_resolver import (
+from stock_monitor.core.resolvers.symbol_resolver import (
     SymbolConfig,
     SymbolResolver,
     SymbolType,

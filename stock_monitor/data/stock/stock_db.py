@@ -19,6 +19,21 @@ from .stock_data_source import StockDataSource
 DB_FILE = "stocks.db"
 
 
+def _escape_like_pattern(keyword: str) -> str:
+    """
+    转义SQL LIKE模式中的特殊字符
+
+    Args:
+        keyword: 用户输入的搜索关键词
+
+    Returns:
+        转义后的安全搜索模式
+    """
+    # 转义%, _, \ 这三个LIKE特殊字符
+    escaped = keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
 class ConnectionPool:
     """SQLite 连接池（单例模式）"""
 
@@ -47,12 +62,21 @@ class ConnectionPool:
 
     def get_connection(self, db_path: str) -> sqlite3.Connection:
         """获取连接（优先复用线程本地连接）"""
+        # 先检查线程本地连接（无锁快速路径）
         if hasattr(self._local, "conn") and self._local.conn_path == db_path:
             if self._is_connection_valid(self._local.conn):
                 self._stats["reused"] += 1
                 return self._local.conn
 
+        # 获取锁后再次检查，防止竞态条件
         with self._lock:
+            # 双重检查：线程本地连接可能在等待锁期间被其他线程更新
+            if hasattr(self._local, "conn") and self._local.conn_path == db_path:
+                if self._is_connection_valid(self._local.conn):
+                    self._stats["reused"] += 1
+                    return self._local.conn
+
+            # 尝试从池中获取连接
             if db_path in self._pool and self._pool[db_path]:
                 conn = self._pool[db_path].pop(0)
                 if self._is_connection_valid(conn):
@@ -67,6 +91,7 @@ class ConnectionPool:
                     except Exception:
                         pass
 
+            # 创建新连接
             conn = self._create_connection(db_path)
             self._stats["created"] += 1
             self._local.conn = conn
@@ -383,14 +408,6 @@ class StockDatabase(StockDataSource):
         try:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
-                for stock in stocks:
-                    # ... (Simplified Logic for fallback) ...
-                    # 这里为了简洁，仅实现基本的 replace
-                    code = stock["code"]
-                    # ... logic similar to old implementation ...
-                    pass
-                # 由于这是fallback，这里我们暂时只记录错误，或者简单地逐条插入
-                # 为避免代码过于冗长，如果没有UPSERT支持，建议升级SQLite
                 app_logger.warning("正在使用慢速逐条插入模式...")
                 updated_count = 0
                 for stock in stocks:
@@ -406,25 +423,14 @@ class StockDatabase(StockDataSource):
                         elif code.startswith(("sh000", "sz399")):
                             market_type = "INDEX"
 
-                        # 简单 check exists
-                        cursor.execute("SELECT 1 FROM stocks WHERE code=?", (code,))
-                        exists = cursor.fetchone()
-                        if exists:
-                            cursor.execute(
-                                """
-                                UPDATE stocks SET name=?, pinyin=?, abbr=?, market_type=?, updated_at=CURRENT_TIMESTAMP
-                                WHERE code=?
-                            """,
-                                (name, pinyin, abbr, market_type, code),
-                            )
-                        else:
-                            cursor.execute(
-                                """
-                                INSERT INTO stocks (code, name, pinyin, abbr, market_type, updated_at)
-                                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                            """,
-                                (code, name, pinyin, abbr, market_type),
-                            )
+                        # 使用INSERT OR REPLACE避免N+1查询
+                        cursor.execute(
+                            """
+                            INSERT OR REPLACE INTO stocks (code, name, pinyin, abbr, market_type, updated_at)
+                            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                        """,
+                            (code, name, pinyin, abbr, market_type),
+                        )
                         updated_count += 1
                     except Exception as e:
                         app_logger.error(
@@ -482,19 +488,19 @@ class StockDatabase(StockDataSource):
             with self._get_connection() as conn:
                 cursor = conn.cursor()
 
-                # 构建搜索查询
-                search_pattern = f"%{keyword}%"
+                # 构建搜索查询（转义特殊字符防止LIKE注入）
+                search_pattern = _escape_like_pattern(keyword)
                 cursor.execute(
                     """
                     SELECT code, name, pinyin, abbr
                     FROM stocks
-                    WHERE code = ? OR name LIKE ? OR pinyin LIKE ? OR abbr LIKE ?
+                    WHERE code = ? OR name LIKE ? ESCAPE '\\' OR pinyin LIKE ? ESCAPE '\\' OR abbr LIKE ? ESCAPE '\\'
                     ORDER BY
                         CASE
                             WHEN code = ? THEN 1
-                            WHEN name LIKE ? THEN 2
-                            WHEN pinyin LIKE ? THEN 3
-                            WHEN abbr LIKE ? THEN 4
+                            WHEN name LIKE ? ESCAPE '\\' THEN 2
+                            WHEN pinyin LIKE ? ESCAPE '\\' THEN 3
+                            WHEN abbr LIKE ? ESCAPE '\\' THEN 4
                             ELSE 5
                         END,
                         code
@@ -610,14 +616,7 @@ class StockDatabase(StockDataSource):
         Returns:
             int: 股票数量
         """
-        try:
-            with self._get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT COUNT(*) FROM stocks")
-                return cursor.fetchone()[0]
-        except Exception as e:
-            app_logger.error(f"获取股票数量失败: {e}")
-            return 0
+        return self.get_all_stocks_count()
 
     def log_quant_signal(
         self,
@@ -644,3 +643,9 @@ class StockDatabase(StockDataSource):
                 conn.commit()
         except Exception as e:
             app_logger.error(f"记录量化信号日志失败: {e}")
+            # 尝试回滚事务
+            try:
+                with self._get_connection() as conn:
+                    conn.rollback()
+            except Exception:
+                pass

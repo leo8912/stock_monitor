@@ -1,6 +1,6 @@
 import unittest
 
-from stock_monitor.core.container import DIContainer
+from stock_monitor.core.config.container import DIContainer
 
 
 # Sample classes for testing

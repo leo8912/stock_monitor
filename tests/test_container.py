@@ -13,7 +13,7 @@ DIContainer 单元测试模块
 import unittest
 
 from stock_monitor.config.manager import ConfigManager
-from stock_monitor.core.container import DIContainer
+from stock_monitor.core.config.container import DIContainer
 from stock_monitor.data.stock.stock_db import StockDatabase
 
 

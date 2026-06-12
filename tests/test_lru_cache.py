@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from stock_monitor.core.stock_manager import StockManager
+from stock_monitor.core.market.stock_manager import StockManager
 
 
 @unittest.skip(
@@ -72,7 +72,7 @@ class TestLRUCacheMechanism(unittest.TestCase):
     def test_cache_size_limit_should_work(self):
         """测试缓存大小限制是否生效"""
         # 获取动态缓存大小
-        from stock_monitor.core.stock_manager import get_dynamic_lru_cache_size
+        from stock_monitor.core.market.stock_manager import get_dynamic_lru_cache_size
 
         maxsize = get_dynamic_lru_cache_size()
 

@@ -3,6 +3,7 @@
 """
 
 import json
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -11,15 +12,20 @@ from PyQt6 import QtCore
 
 from stock_monitor.utils.logger import app_logger
 
+# 缓存文件路径 (使用配置目录)
+from ...config.manager import get_config_dir
 from ...services.notifier import NotifierService
-from ..backtest_engine import BacktestEngine
-from ..cache_warmer import CacheWarmer, PerformanceMonitor
+from ..cache.cache_warmer import CacheWarmer, PerformanceMonitor
 from ..engine import WaveAnalyzer, WaveChart
-from ..quant_engine import QuantEngine
+from ..engine.backtest_engine import BacktestEngine
+from ..engine.quant_engine import QuantEngine
 
-# 缓存文件路径 (与应用日志同目录)
-CACHE_DIR = Path(__file__).parent.parent.parent / "cache"
+CACHE_DIR = Path(get_config_dir()) / "cache"
 SIGNAL_CACHE_FILE = CACHE_DIR / "signal_cache.json"
+
+# 常量定义
+SIGNAL_CACHE_EXPIRY_SECONDS = 86400  # 信号缓存过期时间（24小时）
+SIGNAL_CACHE_MAX_HISTORY_PER_SYMBOL = 100  # 每个符号最大历史记录数
 
 
 class QuantWorker(QtCore.QThread):
@@ -35,9 +41,12 @@ class QuantWorker(QtCore.QThread):
         self.wecom_webhook = wecom_webhook
         self.config = {}
         self.scan_interval = scan_interval
-        self._is_running = False
+        self._stop_event = threading.Event()  # 使用Event替代bool标志
         self.last_scan_time = 0
         self.symbols: list[str] = []
+
+        # 线程安全：使用锁保护共享资源
+        self._lock = threading.Lock()
         self._alert_cache: set[str] = set()
         self._signal_manager: dict[str, float] = {}
         self._active_signals: dict[str, dict[str, dict]] = {}
@@ -55,9 +64,8 @@ class QuantWorker(QtCore.QThread):
         self.perf_monitor = PerformanceMonitor()
         self._cache_warmed = False
 
-        from ...data.stock.stock_db import StockDatabase
-
-        self.db = StockDatabase()
+        # SQLite连接在run()中创建，确保线程安全
+        self.db = None
 
         # 启动时加载持久化的信号缓存
         self._load_signal_cache()
@@ -70,43 +78,47 @@ class QuantWorker(QtCore.QThread):
         try:
             if not SIGNAL_CACHE_FILE.exists():
                 app_logger.debug("信号缓存文件不存在，初始化新缓存")
-                self._last_signal_time = {}
-                self._signal_states = {}
+                with self._lock:
+                    self._last_signal_time = {}
+                    self._signal_states = {}
                 return
 
             with open(SIGNAL_CACHE_FILE, encoding="utf-8") as f:
                 data = json.load(f)
 
-            # 恢复_last_signal_time dict，需要转换key回tuple格式
-            self._last_signal_time = {}
-            self._signal_states = {}
+            with self._lock:
+                # 恢复_last_signal_time dict，需要转换key回tuple格式
+                self._last_signal_time = {}
+                self._signal_states = {}
 
-            for key_str, value in data.items():
-                # key_str 格式: "symbol::signal_name"
-                parts = key_str.split("::")
-                if len(parts) == 2:
-                    symbol, sig_name = parts
-                    key_tuple = (symbol, sig_name)
+                for key_str, value in data.items():
+                    # key_str 格式: "symbol::signal_name"
+                    parts = key_str.split("::")
+                    if len(parts) == 2:
+                        symbol, sig_name = parts
+                        key_tuple = (symbol, sig_name)
 
-                    # 兼容旧格式（仅时间戳）和新格式（状态对象）
-                    if isinstance(value, dict):
-                        # 新格式：{"last_score": int, "last_push_ts": float}
-                        self._signal_states[key_tuple] = value
-                        self._last_signal_time[key_tuple] = value.get("last_push_ts", 0)
-                    else:
-                        # 旧格式：直接是时间戳
-                        self._last_signal_time[key_tuple] = value
+                        # 兼容旧格式（仅时间戳）和新格式（状态对象）
+                        if isinstance(value, dict):
+                            # 新格式：{"last_score": int, "last_push_ts": float}
+                            self._signal_states[key_tuple] = value
+                            self._last_signal_time[key_tuple] = value.get(
+                                "last_push_ts", 0
+                            )
+                        else:
+                            # 旧格式：直接是时间戳
+                            self._last_signal_time[key_tuple] = value
 
-            # 清理过期缓存项（超过24小时）
-            now = time.time()
-            expired_keys = [
-                k
-                for k, v in self._last_signal_time.items()
-                if now - v > 86400  # 24小时
-            ]
-            for key in expired_keys:
-                del self._last_signal_time[key]
-                self._signal_states.pop(key, None)
+                # 清理过期缓存项
+                now = time.time()
+                expired_keys = [
+                    k
+                    for k, v in self._last_signal_time.items()
+                    if now - v > SIGNAL_CACHE_EXPIRY_SECONDS
+                ]
+                for key in expired_keys:
+                    del self._last_signal_time[key]
+                    self._signal_states.pop(key, None)
 
             app_logger.info(
                 f"加载信号缓存成功：{len(self._last_signal_time)} 个活跃信号，"
@@ -114,8 +126,9 @@ class QuantWorker(QtCore.QThread):
             )
         except Exception as e:
             app_logger.error(f"加载信号缓存失败：{e}，使用空缓存")
-            self._last_signal_time = {}
-            self._signal_states = {}
+            with self._lock:
+                self._last_signal_time = {}
+                self._signal_states = {}
 
     def _save_signal_cache(self):
         """保存信号缓存到磁盘"""
@@ -123,11 +136,12 @@ class QuantWorker(QtCore.QThread):
             # 确保缓存目录存在
             CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-            # 转换dict，将tuple key转换为字符串格式
-            data = {}
-            for (symbol, sig_name), state in self._signal_states.items():
-                key_str = f"{symbol}::{sig_name}"
-                data[key_str] = state
+            # 使用锁获取信号状态的快照
+            with self._lock:
+                data = {}
+                for (symbol, sig_name), state in self._signal_states.items():
+                    key_str = f"{symbol}::{sig_name}"
+                    data[key_str] = state
 
             with open(SIGNAL_CACHE_FILE, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
@@ -137,15 +151,23 @@ class QuantWorker(QtCore.QThread):
             app_logger.error(f"保存信号缓存失败：{e}")
 
     def start_worker(self):
-        if not self._is_running:
-            self._is_running = True
+        if not self._stop_event.is_set():
+            self._stop_event.clear()
             self.start()
 
     def stop_worker(self):
-        self._is_running = False
+        self._stop_event.set()
         # 在停止前保存信号缓存，防止重启后出现重复告警
         self._save_signal_cache()
-        self.wait(1000)
+        # 等待线程结束，最多等待5秒
+        self.wait(5000)
+        # 关闭数据库连接
+        if self.db:
+            try:
+                self.db.close()
+            except Exception:
+                pass
+            self.db = None
 
     def check_and_trigger_reports(self):
         """检查并触发定时报告生成（早盘/午盘复盘）"""
@@ -544,7 +566,12 @@ class QuantWorker(QtCore.QThread):
 
     def run(self):
         from ...config.manager import load_config
-        from ...core.market_manager import MarketManager
+
+        # 在工作线程中创建SQLite连接，确保线程安全
+        from ...data.stock.stock_db import StockDatabase
+        from ..market.market_manager import MarketManager
+
+        self.db = StockDatabase()
 
         app_logger.info("量化雷达侦测线程已启动...")
         save_cache_counter = 0  # 每10次循环保存一次缓存
@@ -552,7 +579,7 @@ class QuantWorker(QtCore.QThread):
         # 首次运行时进行缓存预热
         cache_warming_attempted = False
 
-        while self._is_running:
+        while not self._stop_event.is_set():
             try:
                 self.config = load_config()
                 if not self.config.get("quant_enabled", False):
@@ -1067,16 +1094,22 @@ class QuantWorker(QtCore.QThread):
         except Exception as img_err:
             app_logger.error(f"即时扫描推送波浪图表失败 ({symbol}): {img_err}")
 
-        # 记录历史轨迹
-        if symbol not in self._signals_history:
-            self._signals_history[symbol] = []
-        for ps in pending_signals:
-            self._signals_history[symbol].append(
-                {
-                    "time": current_time_str,
-                    "name": ps["sig_name"],
-                    "score": ps["score"],
-                }
-            )
+        # 记录历史轨迹（限制每个符号历史记录数量，防止内存泄漏）
+        with self._lock:
+            if symbol not in self._signals_history:
+                self._signals_history[symbol] = []
+            for ps in pending_signals:
+                self._signals_history[symbol].append(
+                    {
+                        "time": current_time_str,
+                        "name": ps["sig_name"],
+                        "score": ps["score"],
+                    }
+                )
+            # 限制历史记录数量
+            if len(self._signals_history[symbol]) > SIGNAL_CACHE_MAX_HISTORY_PER_SYMBOL:
+                self._signals_history[symbol] = self._signals_history[symbol][
+                    -SIGNAL_CACHE_MAX_HISTORY_PER_SYMBOL:
+                ]
 
         return {"symbol": symbol, "signals": triggered}

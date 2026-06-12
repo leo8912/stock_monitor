@@ -15,7 +15,7 @@ StockDataProcessor 单元测试模块
 
 import unittest
 
-from stock_monitor.core.stock_data_processor import StockDataProcessor
+from stock_monitor.core.data.stock_data_processor import StockDataProcessor
 
 
 class TestStockDataProcessorBasic(unittest.TestCase):
