@@ -1,5 +1,12 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.3.1] - 2026-06-12
+
+### 🐛 修复 (Fixes)
+- **[打包] 修复 PyInstaller 无法找到 services 模块的问题**：
+  - 添加 `stock_monitor/services/__init__.py`，使 services 成为合法 Python 包。
+  - 在 `stock_monitor.spec` 中添加 `collect_submodules('stock_monitor.services')` 确保所有服务模块被打包。
+
 ## [v4.3.0] - 2026-06-12
 
 ### 🐛 修复 (Fixes)
