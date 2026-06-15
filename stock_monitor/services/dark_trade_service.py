@@ -46,7 +46,7 @@ def _get_recent_trade_dates(n: int = 3) -> list[str]:
     return dates
 
 
-def fetch_all_dark_trade(date_str: str | None = None) -> list[dict]:
+def fetch_all_dark_trade(date_str=None) -> list:
     """
     抓取全市场暗盘数据（所有股票）
     date_str: 'YYYYMMDD'，默认今天
@@ -180,7 +180,7 @@ class DarkTradeService(QtCore.QThread):
     # 内部逻辑
     # ──────────────────────────────────────────────
 
-    def _do_fetch_and_update(self, date_str: str | None = None):
+    def _do_fetch_and_update(self, date_str=None):
         """执行一次全量抓取并更新缓存（仅今天数据，快速）"""
         if self._fetching:
             app_logger.debug("[DarkTrade] 上次抓取未完成，跳过本次")
@@ -338,7 +338,7 @@ class DarkTradeService(QtCore.QThread):
 
 
 # 全局单例（供 main_window 和其他模块使用）
-_dark_trade_service: DarkTradeService | None = None
+_dark_trade_service = None
 _dark_trade_service_lock = threading.Lock()
 
 

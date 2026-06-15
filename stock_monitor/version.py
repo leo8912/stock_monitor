@@ -7,7 +7,7 @@ import os
 import sys
 
 
-def _read_version_from_toml(toml_path: str) -> str | None:
+def _read_version_from_toml(toml_path: str):
     """从 pyproject.toml 读取 version 字段"""
     try:
         with open(toml_path, encoding="utf-8") as f:

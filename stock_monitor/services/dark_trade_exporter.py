@@ -115,7 +115,7 @@ def _auto_col_width(ws) -> None:
         ws.column_dimensions[col_letter].width = max(10, min(40, max_len + 3))
 
 
-def _apply_conditional_color(cell, value: float | None, field: str = "net") -> None:
+def _apply_conditional_color(cell, value, field: str = "net") -> None:
     """为资金数值格设置红/绿颜色"""
     if value is None:
         return
@@ -132,8 +132,8 @@ def _apply_conditional_color(cell, value: float | None, field: str = "net") -> N
 
 
 def export_dark_trade_excel(
-    watchlist_codes: list[str],
-    output_path: str | Path | None = None,
+    watchlist_codes: list,
+    output_path=None,
     history_days: int = 5,
 ) -> Path:
     """

@@ -38,9 +38,9 @@ class StockMonitorApp:
 
     def __init__(self):
         """初始化应用程序"""
-        self._app: QtWidgets.QApplication | None = None
-        self._window: MainWindow | None = None
-        self._tray_icon: SystemTray | None = None
+        self._app = None
+        self._window = None
+        self._tray_icon = None
 
         # 设置异常钩子
         self._setup_exception_hook()
