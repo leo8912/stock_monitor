@@ -6,7 +6,7 @@ from typing import Optional
 
 
 class Logger:
-    """日志记录器"""
+    """日志记录器（支持结构化字段）"""
 
     def __init__(
         self,
@@ -32,7 +32,7 @@ class Logger:
         # 清除现有的处理器以避免重复
         self.logger.handlers.clear()
 
-        # 创建格式化器
+        # 创建格式化器（文件日志包含结构化字段）
         formatter = logging.Formatter(
             "%(asctime)s | %(levelname)-8s | %(name)s | %(funcName)s:%(lineno)d | %(message)s"
         )
@@ -61,7 +61,6 @@ class Logger:
                 encoding="utf-8",
             )
             file_handler.setLevel(logging.DEBUG)  # 文件记录所有级别的日志
-            # 只有文件日志记录函数名和行号，控制台日志不记录以减少冗余
             file_handler.setFormatter(formatter)
             self.logger.addHandler(file_handler)
 
@@ -89,6 +88,38 @@ class Logger:
         """记录严重错误信息"""
         kwargs["stacklevel"] = 2
         self.logger.critical(message, *args, **kwargs)
+
+    # ── 结构化日志方法 ──────────────────────────────────────────────
+
+    def log_with_context(
+        self,
+        level: int,
+        message: str,
+        **context,
+    ) -> None:
+        """
+        带结构化上下文的日志记录
+
+        Args:
+            level: 日志级别
+            message: 日志消息
+            **context: 结构化字段（symbol, action, duration_ms 等）
+        """
+        if context:
+            ctx_str = " | ".join(f"{k}={v}" for k, v in context.items())
+            full_message = f"{message} [{ctx_str}]"
+        else:
+            full_message = message
+        self.logger.log(level, full_message, stacklevel=3)
+
+    def info_ctx(self, message: str, **context) -> None:
+        self.log_with_context(logging.INFO, message, **context)
+
+    def warning_ctx(self, message: str, **context) -> None:
+        self.log_with_context(logging.WARNING, message, **context)
+
+    def error_ctx(self, message: str, **context) -> None:
+        self.log_with_context(logging.ERROR, message, **context)
 
 
 def setup_logger(name: str = "stock_monitor", log_level: int = logging.INFO) -> Logger:

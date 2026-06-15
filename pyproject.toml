@@ -23,6 +23,7 @@ dependencies = [
     "pandas-ta-classic>=0.3.14",
     "mootdx>=0.1.7",
     "akshare>=1.15.58",
+    "tenacity>=8.0.0",
     "lxml>=4.9.0",
     "beautifulsoup4>=4.11.0",
     "html5lib>=1.1",

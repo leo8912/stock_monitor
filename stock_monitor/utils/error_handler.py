@@ -2,10 +2,10 @@
 错误处理和异常管理模块
 """
 
-import time
 from typing import Any, Callable
 
 from .logger import app_logger
+from .retry import retry_on_failure  # noqa: F401 - 向后兼容导出
 
 # 定义常见的异常类型
 NETWORK_ERROR_TYPES = (ConnectionError, TimeoutError, IOError)
@@ -53,42 +53,6 @@ def safe_call(
         return exception_handler(captured_exception, error_type)
 
     return default_return
-
-
-def retry_on_failure(max_attempts: int = 3, delay: float = 1.0):
-    """
-    重试装饰器，在函数失败时自动重试
-
-    Args:
-        max_attempts: 最大尝试次数
-        delay: 重试间隔（秒）
-    """
-    from functools import wraps
-
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            last_exception = Exception("未知错误")  # 默认异常
-
-            for attempt in range(max_attempts):
-                try:
-                    return func(*args, **kwargs)
-                except Exception as e:
-                    last_exception = e
-                    warning_msg = f"函数 {func.__name__} 第{attempt + 1}次尝试失败: {e}"
-                    app_logger.warning(warning_msg)
-                    if attempt < max_attempts - 1:  # 不是最后一次尝试
-                        app_logger.info(f"等待 {delay} 秒后重试...")
-                        time.sleep(delay)
-
-            # 所有尝试都失败了
-            error_msg = f"函数 {func.__name__} 在 {max_attempts} 次尝试后仍然失败"
-            app_logger.error(error_msg)
-            raise last_exception
-
-        return wrapper
-
-    return decorator
 
 
 # 注意：不再在模块级设置 sys.excepthook，
