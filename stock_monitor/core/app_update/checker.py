@@ -27,18 +27,8 @@ class UpdateChecker:
         try:
             app_logger.info("开始检查更新...")
 
-            # 首先尝试使用原始 GitHub 地址
             api_url = f"https://api.github.com/repos/{self.github_repo}/releases/latest"
             release_info = self.network_manager.github_api_request(api_url)
-
-            # 如果失败，尝试使用镜像源
-            if not release_info:
-                app_logger.warning(
-                    "使用 GitHub 原始地址检查更新失败，尝试使用镜像源..."
-                )
-                release_info = self.network_manager.github_api_request(
-                    api_url, use_mirror=True
-                )
 
             if not release_info:
                 app_logger.warning("无法获取最新的 release 信息")

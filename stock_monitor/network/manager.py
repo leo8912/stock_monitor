@@ -8,7 +8,7 @@ from ..utils.logger import app_logger
 class NetworkManager:
     """网络请求管理器"""
 
-    def __init__(self, timeout: int = 10):
+    def __init__(self, timeout: int = 15):
         """
         初始化网络管理器
 
@@ -20,7 +20,8 @@ class NetworkManager:
         # 设置默认请求头
         self.session.headers.update(
             {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                "User-Agent": "StockMonitor/4.4 (Windows; Python)",
+                "Accept": "application/vnd.github.v3+json",
             }
         )
 
@@ -90,26 +91,30 @@ class NetworkManager:
 
         Args:
             url: GitHub API URL
-            use_mirror: 是否使用镜像源
+            use_mirror: 已废弃，保留接口兼容
 
         Returns:
             JSON响应数据或None（如果失败）
         """
-        # 如果需要使用镜像源，则替换URL
-        if use_mirror:
-            mirror_url = f"https://mirror.ghproxy.com/{url}"
-            app_logger.info(f"使用镜像源: {mirror_url}")
-        else:
-            mirror_url = url
-
-        # GitHub API 请求使用更长超时
+        # GitHub API 请求使用更长超时 + 可选 Token
         old_timeout = self.timeout
-        if not use_mirror:
-            self.timeout = 20
+        self.timeout = 30
         try:
-            response = self.get(mirror_url)
+            # 如果配置了 GitHub Token，添加认证（提高限流到 5000次/小时）
+            try:
+                from stock_monitor.core.config_center import config_center
+
+                token = config_center.get_str("github_token", "")
+                if token:
+                    self.session.headers["Authorization"] = f"token {token}"
+            except Exception:
+                pass
+
+            response = self.get(url)
         finally:
             self.timeout = old_timeout
+            # 清理认证头
+            self.session.headers.pop("Authorization", None)
 
         if response:
             try:
