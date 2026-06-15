@@ -184,140 +184,159 @@ class WaveAnalyzer:
     ) -> dict[str, Any]:
         """
         根据摆动点序列，识别当前的浪型位置。
+        应用 Elliott 波浪三大铁律进行验证：
+          1. 浪3不能是最短的推动浪
+          2. 浪4不能与浪1有价格重叠
+          3. 浪2回调不能低于浪1的起点
         返回格式: {
-            "wave": "3" | "4" | "5" | "A" | "B" | "C" | "unknown",
+            "wave": "1"~"5" | "A"~"C" | "unknown",
             "trend": "bullish" | "bearish",
             "desc": str,
-            "confidence": float
+            "confidence": float,
+            "rule_check": str  # 规则验证结果
         }
         """
-        # 只保留真正的极值点（排除最后的 current 标志）
         extremes = [s for s in swings if s.type in ("peak", "trough")]
         if len(extremes) < 3:
             return {
                 "wave": "unknown",
                 "trend": "bullish",
-                "desc": "数据不足以确立波浪结构",
+                "desc": "数据不足，无法判断走势结构",
                 "confidence": 0.3,
+                "rule_check": "",
             }
 
-        # 我们主要从最近的 3~5 个极值点来做结构拟合
-        # 设最近的五个端点为 P4, P3, P2, P1, P0 (P0是最近的，P4是较早的)
-        # 为方便理解，我们倒数：e_last[-1] 为最近的极值点
         e_last = extremes[-5:] if len(extremes) >= 5 else extremes
-
         n = len(e_last)
 
-        # 1. 尝试判断是否是上升五浪（牛市推动浪）
-        # 五个点：e[-5](低点) -> e[-4](高点) -> e[-3](低点) -> e[-2](高点) -> e[-1](低点)
-        # 或者 e[-5](高) -> ...
+        # ── 4点结构分析 ──────────────────────────────────────────
         if n >= 4:
-            # 判断最近4个点的走势
             p3, p2, p1, p0 = e_last[-4:]
 
-            # 情况 A：p3(低) -> p2(高) -> p1(低) -> p0(高) —— 上升浪结构
+            # 情况 A：低→高→低→高（上升结构）
             if (
                 p3.type == "trough"
                 and p2.type == "peak"
                 and p1.type == "trough"
                 and p0.type == "peak"
             ):
-                w1_len = p2.price - p3.price
-                # w2_len = p2.price - p1.price  # noqa: F841
-                # w3_len = p0.price - p1.price  # noqa: F841
+                w1 = p2.price - p3.price  # 浪1幅度
+                w3 = p0.price - p1.price  # 浪3幅度
 
-                # 规则验证：
-                # 浪1为正，浪2回调不破浪1起点，浪3高点超过浪1高点
-                if w1_len > 0 and p1.price > p3.price and p0.price > p2.price:
-                    # 如果当前价格在 p0.price 以下，说明可能处于 浪4 回调中
-                    if current_price < p0.price:
-                        # 浪4 低点通常不应低于浪1高点(p2.price)
-                        overlap_viol = current_price < p2.price
-                        conf = 0.6 if overlap_viol else 0.85
-                        desc = (
-                            "可能处于第4浪调整中"
-                            if not overlap_viol
-                            else "可能处于第4浪调整（有重叠警告）"
-                        )
-                        return {
-                            "wave": "4",
-                            "trend": "bullish",
-                            "desc": desc,
-                            "confidence": conf,
-                        }
-                    else:
-                        # 当前价格创出新高，可能处于 浪3 的延伸或者已开启 浪5
-                        return {
-                            "wave": "5",
-                            "trend": "bullish",
-                            "desc": "可能处于第5浪上升拉升中",
-                            "confidence": 0.8,
-                        }
+                if w1 <= 0:
+                    pass  # 无效结构
+                else:
+                    # Elliott 铁律验证
+                    rules_ok = True
+                    rule_notes = []
 
-            # 情况 B：p3(高) -> p2(低) -> p1(high) -> p0(low) —— 下跌浪结构 / A-B-C 结构
+                    # 规则2：浪2不破浪1起点
+                    if p1.price < p3.price:
+                        rules_ok = False
+                        rule_notes.append("浪2跌破浪1起点")
+
+                    # 规则1：浪3不能最短
+                    if w3 < w1 and w3 < (
+                        p2.price - p0.price if p0.price < p2.price else 0
+                    ):
+                        rules_ok = False
+                        rule_notes.append("浪3为最短浪")
+
+                    # 规则3：浪4不与浪1重叠
+                    if current_price < p2.price and current_price < p0.price:
+                        rule_notes.append("浪4与浪1有重叠")
+
+                    rule_check = (
+                        "；".join(rule_notes) if rule_notes else "符合Elliott规则"
+                    )
+
+                    if p0.price > p2.price:
+                        # 高点抬高，确认上升推动浪
+                        if current_price < p0.price:
+                            # 价格从浪5高点回落
+                            conf = 0.85 if rules_ok else 0.55
+                            return {
+                                "wave": "4",
+                                "trend": "bullish",
+                                "desc": "上涨趋势中的回调阶段",
+                                "confidence": conf,
+                                "rule_check": rule_check,
+                            }
+                        else:
+                            return {
+                                "wave": "5",
+                                "trend": "bullish",
+                                "desc": "上涨趋势的最后拉升阶段",
+                                "confidence": 0.8 if rules_ok else 0.5,
+                                "rule_check": rule_check,
+                            }
+
+            # 情况 B：高→低→高→低（下跌结构）
             elif (
                 p3.type == "peak"
                 and p2.type == "trough"
                 and p1.type == "peak"
                 and p0.type == "trough"
             ):
-                # 下跌五浪或者 ABC 调整浪
-                # 如果 p1.price < p3.price (高点降低) 并且 p0.price < p2.price (低点降低)
                 if p1.price < p3.price and p0.price < p2.price:
-                    # 偏熊市或ABC中的C浪
+                    # 高点降低 + 低点降低 = 确认下跌趋势
                     if current_price > p0.price:
                         return {
                             "wave": "B",
                             "trend": "bearish",
-                            "desc": "可能处于ABC调整的B浪反弹中",
+                            "desc": "下跌趋势中的反弹阶段",
                             "confidence": 0.7,
+                            "rule_check": "高点降低，低点降低，下跌趋势确认",
                         }
                     else:
                         return {
                             "wave": "C",
                             "trend": "bearish",
-                            "desc": "可能处于C浪杀跌或下跌第5浪中",
+                            "desc": "下跌趋势的加速杀跌阶段",
                             "confidence": 0.8,
+                            "rule_check": "高点降低，低点降低，下跌趋势确认",
                         }
 
-        # 兜底分析：如果仅有3个极值点
+        # ── 3点结构分析（信息较少，置信度降低）────────────────────
         if n >= 3:
             p2, p1, p0 = e_last[-3:]
-            # p2(低) -> p1(高) -> p0(低)
+
             if p2.type == "trough" and p1.type == "peak" and p0.type == "trough":
                 if p0.price > p2.price:
-                    # 确立了底比底高，当前如果向上，极有可能是第3浪启动
+                    # 底比底高 + 价格在最近低点之上 = 可能启动上涨
                     if current_price > p0.price:
                         return {
                             "wave": "3",
                             "trend": "bullish",
-                            "desc": "双底确立，可能正处于主升第3浪中",
-                            "confidence": 0.75,
+                            "desc": "底部抬高，可能进入上涨阶段",
+                            "confidence": 0.7,
+                            "rule_check": "底比底高，趋势转多",
                         }
                     else:
                         return {
                             "wave": "2",
                             "trend": "bullish",
-                            "desc": "可能处于第2浪底部筑底中",
-                            "confidence": 0.6,
+                            "desc": "上涨后的回踩确认阶段",
+                            "confidence": 0.55,
+                            "rule_check": "底比底高但价格仍弱",
                         }
-            # p2(高) -> p1(低) -> p0(高)
             elif p2.type == "peak" and p1.type == "trough" and p0.type == "peak":
                 if p0.price < p2.price:
-                    # 高点降低，进入调整
                     if current_price < p0.price:
                         return {
                             "wave": "A",
                             "trend": "bearish",
-                            "desc": "可能正处于A浪杀跌中",
-                            "confidence": 0.7,
+                            "desc": "上涨趋势结束，进入调整",
+                            "confidence": 0.65,
+                            "rule_check": "高点降低，上涨趋势可能结束",
                         }
 
         return {
             "wave": "1",
             "trend": "bullish",
-            "desc": "当前处于常规行情的第1浪筑底/震荡中",
-            "confidence": 0.5,
+            "desc": "震荡筑底阶段，方向待确认",
+            "confidence": 0.45,
+            "rule_check": "结构不明确",
         }
 
     @staticmethod

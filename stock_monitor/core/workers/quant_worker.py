@@ -379,111 +379,116 @@ class QuantWorker(QtCore.QThread):
     def _format_wave_text_analysis(
         self, symbol: str, name: str, timeframe_name: str, df
     ) -> str:
-        """将波浪与斐波那契分析结果格式化为易懂的纯文本卡片，包含主浪、子浪、周期阶段预测"""
+        """将波浪分析结果格式化为简洁易懂的文本卡片"""
         if df is None or df.empty or len(df) < 30:
             return ""
 
-        # 1. 大浪（主浪）分析
+        # 大浪分析
         major_res = None
         for t in [0.08, 0.06, 0.05]:
             major_res = WaveAnalyzer.analyze(df, threshold=t)
             if major_res:
                 break
 
-        # 2. 子浪分析
+        # 子浪分析
         sub_res = WaveAnalyzer.analyze(df, threshold=0.03)
 
         if not major_res or not major_res.current_wave:
             return ""
 
-        # 主浪数据
-        major_wave = major_res.current_wave.get("wave", "未知")
-        major_trend = major_res.current_wave.get("trend")
-        major_desc = major_res.current_wave.get("desc", "常规波动")
-        major_conf = major_res.current_wave.get("confidence", 0.5) * 100
-        prev_major, next_major = self._get_prev_next_wave(major_wave)
+        mw = major_res.current_wave
+        wave = mw.get("wave", "未知")
+        trend = mw.get("trend")
+        conf = mw.get("confidence", 0.5) * 100
+        rule_check = mw.get("rule_check", "")
 
-        # 子浪数据
         if sub_res and sub_res.current_wave:
             sub_wave = sub_res.current_wave.get("wave", "未知")
-            sub_desc = sub_res.current_wave.get("desc", "微幅波动")
-            prev_sub, next_sub = self._get_prev_next_wave(sub_wave)
+            sub_desc = sub_res.current_wave.get("desc", "")
         else:
-            sub_wave = "未知"
-            sub_desc = "波幅过小未确立"
-            prev_sub, next_sub = "未知", "未知"
+            sub_wave, sub_desc = "", ""
 
-        # 趋势采用红/绿标识：A股上涨用红(🔴)，下跌用绿(🟢)
-        if major_trend == "bullish":
-            trend_icon = "🔴"
-            trend_text = "看涨/上升"
-            wave_color_title = "🔴【波浪看涨形态分析】"
-        else:
-            trend_icon = "🟢"
-            trend_text = "看跌/调整"
-            wave_color_title = "🟢【波浪看跌形态分析】"
-
-        levels = major_res.fib_levels or {}
         curr_price = float(major_res.df.iloc[-1]["close"])
 
-        # 识别支撑和阻力
-        supports = []
-        resistances = []
-
-        # 对 levels 按价格排序
+        levels = major_res.fib_levels or {}
+        supports, resistances = [], []
         sorted_levels = sorted(
             [(k, v) for k, v in levels.items() if k not in ("start", "end")],
             key=lambda x: x[1],
         )
-
         for k, v in sorted_levels:
             if v < curr_price:
-                # 支撑位属于防线，显示红色
-                supports.append(f"{k}位 ({v:.2f}元)")
+                supports.append(f"{v:.2f}")
             elif v > curr_price:
-                # 阻力位属于上方压制，显示绿色
-                resistances.append(f"{k}位 ({v:.2f}元)")
+                resistances.append(f"{v:.2f}")
 
-        supports_str = (
-            " | ".join(supports[-3:]) if supports else "暂无"
-        )  # 取最近的3个支撑位
-        resistances_str = (
-            " | ".join(resistances[:3]) if resistances else "暂无"
-        )  # 取最近的3个阻力位
+        support_str = " / ".join(supports[-3:]) if supports else "无"
+        resistance_str = " / ".join(resistances[:3]) if resistances else "无"
 
-        text = (
-            f"{wave_color_title}{name} ({symbol})\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
-            f"📅 **时间周期**：{timeframe_name}\n"
-            f"📈 **主浪结构 (大浪)**：第 **{major_wave}** 主浪 ({major_desc})\n"
-            f"  - ⏮️ 前一周期阶段：第 {prev_major} 主浪\n"
-            f"  - ⏭️ 预计下一周期阶段：第 {next_major} 主浪\n"
-            f"🌊 **子浪结构 (细分)**：第 **{sub_wave}** 子浪 ({sub_desc})\n"
-            f"  - ⏮️ 前一周期阶段：第 {prev_sub} 子浪\n"
-            f"  - ⏭️ 预计下一周期阶段：第 {next_sub} 子浪\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
-            f"📊 **当前趋势**：{trend_icon} {trend_text} (置信度: {major_conf:.0f}%)\n"
-            f"💰 **当前价格**：{curr_price:.2f} 元\n"
-            f"🛡️ **下行支撑**：{supports_str}\n"
-            f"💥 **上行阻力**：{resistances_str}\n"
-            f"━━━━━━━━━━━━━━━━━━\n"
-            f"💡 **解读建议**：\n"
+        # 趋势判断
+        if trend == "bullish":
+            trend_tag = "看涨"
+        else:
+            trend_tag = "看跌"
+
+        # ── 构建简洁文案 ──────────────────────────────────────
+        lines = [
+            f"[波浪分析] {name} ({symbol})  {timeframe_name}",
+            f"趋势: {trend_tag} | 当前: 第{wave}浪 | 置信度: {conf:.0f}%",
+        ]
+
+        # 浪型通俗说明
+        wave_explain = self._explain_wave(wave, trend)
+        if wave_explain:
+            lines.append(f"状态: {wave_explain}")
+
+        if sub_wave:
+            lines.append(f"细分: 第{sub_wave}浪 ({sub_desc})")
+
+        if rule_check:
+            lines.append(f"规则: {rule_check}")
+
+        lines.extend(
+            [
+                f"价格: {curr_price:.2f}",
+                f"支撑: {support_str}",
+                f"阻力: {resistance_str}",
+                "",
+                self._wave_action_hint(wave, trend),
+            ]
         )
 
-        if major_wave == "3" and major_trend == "bullish":
-            text += "🔴 股价正处于极强势的第3主升浪中。主升段应当坚定持股。如逢日内回调，临近支撑位均是良好的加仓点。"
-        elif major_wave == "4" and major_trend == "bullish":
-            text += "🔴 股价处于第4浪调整。调整通常以宽幅震荡或阴跌为主，意在蓄势。若股价在支撑位获得强力支撑企稳，可择机低吸，博弈后续的第5浪拉升。"
-        elif major_wave == "5" and major_trend == "bullish":
-            text += "🔴 股价处于第5浪拉升，属于多头行情的尾声。不宜继续追高，随着股价冲高且越临近上行阻力位，建议逐步分批止盈锁定利润。"
-        elif major_wave == "B" and major_trend == "bearish":
-            text += "🟢 股价处于跌势中途的B浪反弹。本轮反弹高度通常有限，难以突破重重阻力，应视为出局减仓的良机，谨防后续C浪深度杀跌。"
-        elif major_wave == "C" and major_trend == "bearish":
-            text += "🟢 股价处于C浪杀跌中。寻底过程杀伤力极大，切忌盲目抄底，应以现金防守为主，耐心等待跌势止步并确立底分型后再行建仓。"
-        else:
-            text += "当前处于常规第1主浪筑底/震荡阶段，大级别方向尚不明确。建议轻仓滚动，关注支撑与阻力位之间的突破方向。"
+        return "\n".join(lines)
 
-        return text
+    @staticmethod
+    def _explain_wave(wave: str, trend: str | None) -> str:
+        """用通俗语言解释当前浪型含义"""
+        explanations = {
+            ("1", "bullish"): "筑底完成，刚刚启动上涨",
+            ("2", "bullish"): "上涨后回踩确认，正常调整",
+            ("3", "bullish"): "主升浪，涨幅最大、速度最快的阶段",
+            ("4", "bullish"): "上涨途中休整，蓄力后有望再冲高",
+            ("5", "bullish"): "上涨末期，动能衰减，追高风险大",
+            ("A", "bearish"): "上涨结束，开始下跌调整",
+            ("B", "bearish"): "下跌途中的反弹，空间有限",
+            ("C", "bearish"): "加速下跌阶段，杀伤力最大",
+        }
+        return explanations.get((wave, trend), "")
+
+    @staticmethod
+    def _wave_action_hint(wave: str, trend: str | None) -> str:
+        """给出简洁的操作建议"""
+        hints = {
+            ("1", "bullish"): "建议: 底部确认后可小仓试探",
+            ("2", "bullish"): "建议: 回调企稳是加仓机会",
+            ("3", "bullish"): "建议: 持股待涨，不轻易下车",
+            ("4", "bullish"): "建议: 耐心持有，等调整结束再加仓",
+            ("5", "bullish"): "建议: 逢高减仓，锁定利润",
+            ("A", "bearish"): "建议: 止损离场，不要死扛",
+            ("B", "bearish"): "建议: 反弹是逃命机会，别追",
+            ("C", "bearish"): "建议: 等企稳再考虑入场",
+        }
+        return hints.get((wave, trend), "建议: 观望为主，等方向明确")
 
     def _get_report_title(self, report_type: str) -> str:
         """获取报告标题"""
