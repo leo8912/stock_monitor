@@ -218,18 +218,19 @@ class WaveChartDialog(QtWidgets.QDialog):
                 f"🎯 **算法置信水平**: {cw.get('confidence', 0.0) * 100:.0f}%"
             )
 
-            # 历史波段（时间+空间）
+            # 历史波段（时间+空间）— 只显示最近几段
             if result.all_waves:
-                desc_text += "\n\n📈 **历史波段**:"
+                desc_text += "\n\n📈 **近期走势**:"
                 for wd in result.all_waves:
                     duration = (
                         f"{wd['duration_days']}天" if wd["duration_days"] > 0 else "?"
                     )
                     sign = "+" if wd["pct_change"] >= 0 else ""
-                    wave_num = cw.get("wave", "")
-                    marker = " <-当前" if wd["label"] == f"浪{wave_num}" else ""
+                    arrow = "↓" if wd["direction"] == "down" else "↑"
+                    marker = " ←当前位置" if wd["is_current"] else ""
                     desc_text += (
-                        f"\n  {wd['label']}: {wd['from_date'][5:]}->{wd['to_date'][5:]} "
+                        f"\n  {arrow} {wd['label']}: "
+                        f"{wd['from_date'][5:]}->{wd['to_date'][5:]} "
                         f"({duration}) {sign}{wd['pct_change']:.1f}%{marker}"
                     )
 

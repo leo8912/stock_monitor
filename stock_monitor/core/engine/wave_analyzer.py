@@ -408,10 +408,11 @@ class WaveAnalyzer:
     @staticmethod
     def _calculate_wave_details(swings: list[SwingPoint]) -> list[dict[str, Any]]:
         """
-        计算每段浪的时间和空间信息。
+        计算最近几段浪的时间和空间信息。
+        只返回最近 max_segments 段，避免数据过多。
         返回: [
             {
-                "label": "浪1",
+                "label": "升",  or "降"
                 "from_date": "2026-03-10",
                 "to_date": "2026-04-15",
                 "duration_days": 26,
@@ -420,39 +421,47 @@ class WaveAnalyzer:
                 "price_change": 150.0,
                 "pct_change": 8.33,
                 "direction": "up",
+                "is_current": False,
             },
             ...
         ]
         """
+        max_segments = 6
+
         extremes = [s for s in swings if s.type in ("peak", "trough")]
         if len(extremes) < 2:
             return []
 
+        # 只取最近的 max_segments+1 个极值点（产生 max_segments 段）
+        recent = (
+            extremes[-(max_segments + 1) :]
+            if len(extremes) > max_segments + 1
+            else extremes
+        )
+
         details = []
-        wave_labels = ["浪1", "浪2", "浪3", "浪4", "浪5", "浪A", "浪B", "浪C"]
-        label_idx = 0
+        up_count = 0
+        down_count = 0
 
-        for i in range(len(extremes) - 1):
-            p_from = extremes[i]
-            p_to = extremes[i + 1]
+        for i in range(len(recent) - 1):
+            p_from = recent[i]
+            p_to = recent[i + 1]
 
-            # 计算持续天数
             duration_days = 0
             if not pd.isna(p_from.datetime) and not pd.isna(p_to.datetime):
                 delta = p_to.datetime - p_from.datetime
                 duration_days = max(int(delta.days), 1)
 
-            # 计算价格变化
             price_change = p_to.price - p_from.price
             pct_change = (price_change / p_from.price * 100) if p_from.price != 0 else 0
             direction = "up" if price_change >= 0 else "down"
 
-            label = (
-                wave_labels[label_idx]
-                if label_idx < len(wave_labels)
-                else f"浪{label_idx + 1}"
-            )
-            label_idx += 1
+            if direction == "up":
+                up_count += 1
+                label = f"升{up_count}"
+            else:
+                down_count += 1
+                label = f"降{down_count}"
 
             details.append(
                 {
@@ -465,8 +474,13 @@ class WaveAnalyzer:
                     "price_change": price_change,
                     "pct_change": pct_change,
                     "direction": direction,
+                    "is_current": False,
                 }
             )
+
+        # 最后一段标记为"当前"
+        if details:
+            details[-1]["is_current"] = True
 
         return details
 

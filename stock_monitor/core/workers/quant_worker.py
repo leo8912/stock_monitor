@@ -448,18 +448,20 @@ class QuantWorker(QtCore.QThread):
         if rule_check:
             lines.append(f"规则: {rule_check}")
 
-        # 历史波段（时间 + 空间）
+        # 历史波段（时间 + 空间）— 只显示最近几段
         if major_res.all_waves:
             lines.append("")
-            lines.append("历史波段:")
+            lines.append("近期走势:")
             for wd in major_res.all_waves:
                 duration = (
                     f"{wd['duration_days']}天" if wd["duration_days"] > 0 else "?"
                 )
                 sign = "+" if wd["pct_change"] >= 0 else ""
-                marker = " <-当前" if wd["label"] == f"浪{wave}" else ""
+                arrow = "↓" if wd["direction"] == "down" else "↑"
+                marker = " ←当前位置" if wd["is_current"] else ""
                 lines.append(
-                    f"  {wd['label']}: {wd['from_date'][5:]}->{wd['to_date'][5:]} "
+                    f"  {arrow} {wd['label']}: "
+                    f"{wd['from_date'][5:]}->{wd['to_date'][5:]} "
                     f"({duration}) {sign}{wd['pct_change']:.1f}%{marker}"
                 )
 

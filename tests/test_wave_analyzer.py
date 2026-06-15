@@ -116,11 +116,12 @@ class TestCalculateWaveDetails:
         sp2 = SwingPoint(index=10, type="peak", price=100.0, date_str="2026-01-11")
         details = WaveAnalyzer._calculate_wave_details([sp1, sp2])
         assert len(details) == 1
-        assert details[0]["label"] == "浪1"
+        assert details[0]["label"] == "升1"
         assert details[0]["duration_days"] == 10
         assert details[0]["price_change"] == 20.0
         assert details[0]["pct_change"] == pytest.approx(25.0, abs=0.1)
         assert details[0]["direction"] == "up"
+        assert details[0]["is_current"] is True
 
     def test_multiple_extremes(self):
         sp1 = SwingPoint(index=0, type="trough", price=80.0, date_str="2026-01-01")
@@ -132,7 +133,18 @@ class TestCalculateWaveDetails:
         assert details[0]["direction"] == "up"
         assert details[1]["direction"] == "down"
         assert details[2]["direction"] == "up"
-        assert details[2]["label"] == "浪3"
+        assert details[2]["is_current"] is True
+        assert details[0]["is_current"] is False
+
+    def test_limits_to_max_segments(self):
+        # 生成10个极值点（9段），应该只返回6段
+        swings = []
+        for i in range(10):
+            t = "trough" if i % 2 == 0 else "peak"
+            p = 80.0 + (10.0 if t == "peak" else 0.0) + i * 2
+            swings.append(SwingPoint(i * 5, t, p, f"2026-01-{i * 5 + 1:02d}"))
+        details = WaveAnalyzer._calculate_wave_details(swings)
+        assert len(details) <= 6
 
 
 class TestEstimateRemainingSpace:
