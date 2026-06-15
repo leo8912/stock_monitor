@@ -1,5 +1,32 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.4.0] - 2026-06-15
+
+### 🏗️ 架构重构 (Architecture)
+- **新增 EventBus**：线程安全发布/订阅事件总线，支持通配符、异常隔离
+- **新增 ConfigCenter**：统一配置中心，替代分散的 `container.get(ConfigManager)` 调用
+- **新增 StockAppService**：应用服务层，隔离 UI 与核心业务逻辑
+- **新增 TwoLevelCache**：L1（内存 LRU）+ L2（SQLite）两级缓存抽象
+- **新增统一重试机制**：基于 tenacity 的 `network_retry`/`safe_retry`，指数退避
+- **新增健康检查**：启动时自检配置、数据库、网络、依赖、磁盘空间
+- **新增结构化日志**：`Logger.info_ctx`/`warning_ctx`/`error_ctx` 支持上下文字段
+- **版本管理统一**：`pyproject.toml` 为唯一版本来源
+
+### 🧪 测试 (Tests)
+- 新增 57 个单元测试（retry、event_bus、cache_manager、health_check、logging）
+- 新增 6 个集成测试（事件→缓存联动、并发发布、L1→L2 回填）
+
+### 🔄 迁移 (Migration)
+- `quant_worker`、`main_window_view_model`、`settings_view_model`、`startup`、`stock_updater`、`close_export_scheduler` 迁移到 `ConfigCenter`
+- `notifier.py` 自定义重试 → `tenacity network_retry`
+- `application.py` 启动序列集成健康检查
+- 关键操作添加结构化日志（refresh_worker、quant_worker、dark_trade_service、notifier）
+- 移除死代码 `get_config_manager()`
+
+### 🐛 修复 (Fixes)
+- `_ensure_ta_active` 参数 `df` 改为可选（修复 scan_all_timeframes 调用报错）
+- 暗盘列最小宽度 80px（修复文本截断）
+
 ## [v4.3.6] - 2026-06-12
 
 ### 🐛 修复 (Fixes)
