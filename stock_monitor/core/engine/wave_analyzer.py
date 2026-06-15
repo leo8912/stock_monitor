@@ -16,6 +16,10 @@ class SwingPoint:
         self.type = type  # 'peak' (高点) or 'trough' (低点) or 'current' (最新点)
         self.price = price
         self.date_str = date_str
+        try:
+            self.datetime = pd.Timestamp(date_str)
+        except Exception:
+            self.datetime = pd.NaT
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -34,12 +38,14 @@ class WaveAnalysisResult:
         current_wave: dict[str, Any],
         fib_levels: dict[str, float],
         all_waves: list[dict[str, Any]],
+        remaining_space: dict[str, Any] | None = None,
     ):
         self.df = df
         self.swings = swings
         self.current_wave = current_wave
         self.fib_levels = fib_levels
         self.all_waves = all_waves
+        self.remaining_space = remaining_space
 
 
 class WaveAnalyzer:
@@ -170,12 +176,21 @@ class WaveAnalyzer:
         # 3. 计算最近波段的斐波那契回撤与延伸位
         fib_levels = WaveAnalyzer._calculate_fibonacci(swings)
 
+        # 4. 计算每段浪的时间和空间
+        all_waves = WaveAnalyzer._calculate_wave_details(swings)
+
+        # 5. 预估当前浪的剩余空间
+        remaining_space = WaveAnalyzer._estimate_remaining_space(
+            swings, current_wave, fib_levels
+        )
+
         return WaveAnalysisResult(
             df=df,
             swings=swings,
             current_wave=current_wave,
             fib_levels=fib_levels,
-            all_waves=[],
+            all_waves=all_waves,
+            remaining_space=remaining_space,
         )
 
     @staticmethod
@@ -389,3 +404,180 @@ class WaveAnalyzer:
         )
 
         return levels
+
+    @staticmethod
+    def _calculate_wave_details(swings: list[SwingPoint]) -> list[dict[str, Any]]:
+        """
+        计算每段浪的时间和空间信息。
+        返回: [
+            {
+                "label": "浪1",
+                "from_date": "2026-03-10",
+                "to_date": "2026-04-15",
+                "duration_days": 26,
+                "from_price": 1800.0,
+                "to_price": 1950.0,
+                "price_change": 150.0,
+                "pct_change": 8.33,
+                "direction": "up",
+            },
+            ...
+        ]
+        """
+        extremes = [s for s in swings if s.type in ("peak", "trough")]
+        if len(extremes) < 2:
+            return []
+
+        details = []
+        wave_labels = ["浪1", "浪2", "浪3", "浪4", "浪5", "浪A", "浪B", "浪C"]
+        label_idx = 0
+
+        for i in range(len(extremes) - 1):
+            p_from = extremes[i]
+            p_to = extremes[i + 1]
+
+            # 计算持续天数
+            duration_days = 0
+            if not pd.isna(p_from.datetime) and not pd.isna(p_to.datetime):
+                delta = p_to.datetime - p_from.datetime
+                duration_days = max(int(delta.days), 1)
+
+            # 计算价格变化
+            price_change = p_to.price - p_from.price
+            pct_change = (price_change / p_from.price * 100) if p_from.price != 0 else 0
+            direction = "up" if price_change >= 0 else "down"
+
+            label = (
+                wave_labels[label_idx]
+                if label_idx < len(wave_labels)
+                else f"浪{label_idx + 1}"
+            )
+            label_idx += 1
+
+            details.append(
+                {
+                    "label": label,
+                    "from_date": p_from.date_str[:10],
+                    "to_date": p_to.date_str[:10],
+                    "duration_days": duration_days,
+                    "from_price": p_from.price,
+                    "to_price": p_to.price,
+                    "price_change": price_change,
+                    "pct_change": pct_change,
+                    "direction": direction,
+                }
+            )
+
+        return details
+
+    @staticmethod
+    def _estimate_remaining_space(
+        swings: list[SwingPoint],
+        current_wave: dict[str, Any],
+        fib_levels: dict[str, float],
+    ) -> dict[str, Any] | None:
+        """
+        预估当前浪的剩余空间。
+        基于 Elliott 波浪比例关系和 Fibonacci 延伸位。
+        返回: {
+            "target_price": float,
+            "remaining_pct": float,
+            "remaining_days_est": int,
+            "basis": str,  # 计算依据
+        } 或 None
+        """
+        wave = current_wave.get("wave", "")
+        trend = current_wave.get("trend", "")
+        if not wave or wave in ("unknown", "1"):
+            return None
+
+        extremes = [s for s in swings if s.type in ("peak", "trough")]
+        if len(extremes) < 2:
+            return None
+
+        curr_price = swings[-1].price if swings else 0
+        if curr_price <= 0:
+            return None
+
+        target_price = None
+        basis = ""
+
+        # 上涨趋势中的浪
+        if trend == "bullish" and wave in ("3", "4", "5"):
+            # 找浪1的幅度（第一对 trough→peak）
+            up_segments = []
+            for i in range(len(extremes) - 1):
+                if extremes[i].type == "trough" and extremes[i + 1].type == "peak":
+                    up_segments.append(extremes[i + 1].price - extremes[i].price)
+
+            if wave == "3" and len(up_segments) >= 1:
+                # 浪3目标 = 浪1幅度 × 1.618 + 浪3起点
+                w1_amp = up_segments[0]
+                # 浪3起点是最近的 trough
+                last_troughs = [s for s in extremes if s.type == "trough"]
+                if last_troughs:
+                    w3_start = last_troughs[-1].price
+                    target_price = w3_start + w1_amp * 1.618
+                    basis = "浪1幅度×1.618"
+
+            elif wave == "5" and len(up_segments) >= 2:
+                # 浪5目标 = 浪1幅度 × 0.618 + 浪4低点（衰减）
+                w1_amp = up_segments[0]
+                last_troughs = [s for s in extremes if s.type == "trough"]
+                if len(last_troughs) >= 1:
+                    w5_start = last_troughs[-1].price
+                    target_price = w5_start + w1_amp * 0.618
+                    basis = "浪1幅度×0.618（衰减）"
+
+            elif wave == "4":
+                # 浪4回调目标 = 浪3幅度 × 0.382
+                if len(up_segments) >= 1:
+                    w3_amp = up_segments[-1]
+                    target_price = curr_price - w3_amp * 0.382
+                    basis = "浪3幅度×0.382回调"
+
+        # 下跌趋势中的浪
+        elif trend == "bearish" and wave in ("A", "B", "C"):
+            down_segments = []
+            for i in range(len(extremes) - 1):
+                if extremes[i].type == "peak" and extremes[i + 1].type == "trough":
+                    down_segments.append(extremes[i].price - extremes[i + 1].price)
+
+            if wave == "C" and len(down_segments) >= 1:
+                # C浪目标 = 浪A幅度 + 浪B高点
+                w_a_amp = down_segments[0]
+                last_peaks = [s for s in extremes if s.type == "peak"]
+                if last_peaks:
+                    w_b_end = last_peaks[-1].price
+                    target_price = w_b_end - w_a_amp
+                    basis = "浪A幅度等长"
+
+            elif wave == "B":
+                # B浪反弹通常回撤 A浪的 0.382~0.618
+                if down_segments:
+                    w_a_amp = down_segments[0]
+                    last_peaks = [s for s in extremes if s.type == "peak"]
+                    if last_peaks:
+                        w_b_start = last_peaks[-1].price
+                        target_price = w_b_start + w_a_amp * 0.5
+                        basis = "浪A幅度×0.5反弹"
+
+        if target_price is None or target_price <= 0:
+            return None
+
+        remaining_pct = (target_price - curr_price) / curr_price * 100
+
+        # 预估剩余天数：取历史浪的平均持续天数
+        avg_days = 20  # 默认
+        details = WaveAnalyzer._calculate_wave_details(swings)
+        if details:
+            durations = [d["duration_days"] for d in details if d["duration_days"] > 0]
+            if durations:
+                avg_days = int(sum(durations) / len(durations))
+
+        return {
+            "target_price": target_price,
+            "remaining_pct": remaining_pct,
+            "remaining_days_est": avg_days,
+            "basis": basis,
+        }

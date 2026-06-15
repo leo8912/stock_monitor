@@ -448,15 +448,42 @@ class QuantWorker(QtCore.QThread):
         if rule_check:
             lines.append(f"规则: {rule_check}")
 
+        # 历史波段（时间 + 空间）
+        if major_res.all_waves:
+            lines.append("")
+            lines.append("历史波段:")
+            for wd in major_res.all_waves:
+                duration = (
+                    f"{wd['duration_days']}天" if wd["duration_days"] > 0 else "?"
+                )
+                sign = "+" if wd["pct_change"] >= 0 else ""
+                marker = " <-当前" if wd["label"] == f"浪{wave}" else ""
+                lines.append(
+                    f"  {wd['label']}: {wd['from_date'][5:]}->{wd['to_date'][5:]} "
+                    f"({duration}) {sign}{wd['pct_change']:.1f}%{marker}"
+                )
+
         lines.extend(
             [
+                "",
                 f"价格: {curr_price:.2f}",
                 f"支撑: {support_str}",
                 f"阻力: {resistance_str}",
-                "",
-                self._wave_action_hint(wave, trend),
             ]
         )
+
+        # 剩余空间预估
+        rs = major_res.remaining_space
+        if rs:
+            lines.append("")
+            lines.append("剩余空间预估:")
+            sign = "+" if rs["remaining_pct"] >= 0 else ""
+            lines.append(f"  目标位: {rs['target_price']:.2f} ({rs['basis']})")
+            lines.append(f"  当前->目标: {sign}{rs['remaining_pct']:.1f}%")
+            lines.append(f"  预计完成: 约{rs['remaining_days_est']}个交易日")
+
+        lines.append("")
+        lines.append(self._wave_action_hint(wave, trend))
 
         return "\n".join(lines)
 
@@ -625,7 +652,7 @@ class QuantWorker(QtCore.QThread):
                         app_logger.info_ctx(
                             "量化扫描完成",
                             symbols=len(self.symbols),
-                            duration_ms=f"{scan_duration*1000:.0f}",
+                            duration_ms=f"{scan_duration * 1000:.0f}",
                         )
 
                 self.check_and_trigger_reports()

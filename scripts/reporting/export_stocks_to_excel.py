@@ -269,6 +269,49 @@ def export_to_excel(
                     df_final.to_excel(writer, sheet_name=sheet_title, index=False)
                     all_history_records.append(df_final)
 
+                    # 60分钟线数据导出
+                    try:
+                        df_60m_raw = quant_engine.fetch_bars(
+                            code, category=3, offset=offset
+                        )
+                        if not df_60m_raw.empty and len(df_60m_raw) >= 30:
+                            df_60m_ind = compute_indicators(df_60m_raw)
+                            if not df_60m_ind.empty:
+                                df_60m_ind.insert(0, "股票代码", code)
+                                df_60m_ind.insert(1, "股票名称", stock_name)
+                                if "datetime" in df_60m_ind.columns:
+                                    df_60m_ind["日期"] = pd.to_datetime(
+                                        df_60m_ind["datetime"]
+                                    ).dt.strftime("%Y-%m-%d %H:%M")
+                                    df_60m_ind = df_60m_ind.drop(columns=["datetime"])
+                                else:
+                                    df_60m_ind["日期"] = "未知"
+                                cols_60m = [
+                                    c for c in column_order if c in df_60m_ind.columns
+                                ]
+                                df_60m_final = df_60m_ind[cols_60m].copy()
+                                df_60m_final = df_60m_final.rename(
+                                    columns={
+                                        "open": "开盘价",
+                                        "close": "收盘价",
+                                        "high": "最高价",
+                                        "low": "最低价",
+                                        "volume": "成交量",
+                                        "amount": "成交额",
+                                    }
+                                )
+                                df_60m_final = df_60m_final.sort_values(
+                                    by="日期", ascending=False
+                                )
+                                sheet_60m = f"{code}_{stock_name}_60m"
+                                if len(sheet_60m) > 30:
+                                    sheet_60m = sheet_60m[:30]
+                                df_60m_final.to_excel(
+                                    writer, sheet_name=sheet_60m, index=False
+                                )
+                    except Exception as e_60m:
+                        print(f"警告：{code} 60分钟线导出失败: {e_60m}")
+
                     # 提取最新一天数据做汇总
                     latest_row = df_final.iloc[0]
                     prev_row = df_final.iloc[1] if len(df_final) > 1 else latest_row

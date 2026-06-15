@@ -174,9 +174,9 @@ class WaveChartDialog(QtWidgets.QDialog):
             # 这里在弹窗中同步拉取，因为弹窗是模态的，且是在获取数据后才显示，或者用Qt线程池
             # 为保证体验，我们直接通过已有 client 快速拉取（Mootdx极快）
             app_logger.info(
-                f"[波浪图弹窗] 准备拉取K线数据: symbol={self.symbol}, category={category}, offset=100"
+                f"[波浪图弹窗] 准备拉取K线数据: symbol={self.symbol}, category={category}, offset=350"
             )
-            df = self.engine.fetch_bars(self.symbol, category=category, offset=100)
+            df = self.engine.fetch_bars(self.symbol, category=category, offset=350)
             app_logger.info(
                 f"[波浪图弹窗] K线数据拉取完成: symbol={self.symbol}, len={len(df) if df is not None else 'None'}"
             )
@@ -217,6 +217,33 @@ class WaveChartDialog(QtWidgets.QDialog):
                 f"🏷️ **所处阶段**: 第 {cw.get('wave', '1')} 浪 ({'上升多头' if cw.get('trend') == 'bullish' else '回调调整'})\n"
                 f"🎯 **算法置信水平**: {cw.get('confidence', 0.0) * 100:.0f}%"
             )
+
+            # 历史波段（时间+空间）
+            if result.all_waves:
+                desc_text += "\n\n📈 **历史波段**:"
+                for wd in result.all_waves:
+                    duration = (
+                        f"{wd['duration_days']}天" if wd["duration_days"] > 0 else "?"
+                    )
+                    sign = "+" if wd["pct_change"] >= 0 else ""
+                    wave_num = cw.get("wave", "")
+                    marker = " <-当前" if wd["label"] == f"浪{wave_num}" else ""
+                    desc_text += (
+                        f"\n  {wd['label']}: {wd['from_date'][5:]}->{wd['to_date'][5:]} "
+                        f"({duration}) {sign}{wd['pct_change']:.1f}%{marker}"
+                    )
+
+            # 剩余空间预估
+            rs = result.remaining_space
+            if rs:
+                sign = "+" if rs["remaining_pct"] >= 0 else ""
+                desc_text += (
+                    f"\n\n💰 **剩余空间预估**:"
+                    f"\n  目标位: {rs['target_price']:.2f} ({rs['basis']})"
+                    f"\n  当前->目标: {sign}{rs['remaining_pct']:.1f}%"
+                    f"\n  预计完成: 约{rs['remaining_days_est']}个交易日"
+                )
+
             self.wave_desc_label.setText(desc_text)
 
             # 格式化斐波那契位
