@@ -791,7 +791,7 @@ class QuantEngine:
             app_logger.error(f"[价格获取] {symbol} 未知异常：{type(e).__name__}: {e}")
             return {}
 
-    def _ensure_ta_active(self, df: pd.DataFrame):
+    def _ensure_ta_active(self, df: pd.DataFrame = None):
         """确保 pandas-ta 访问器已激活 (针对打包环境的自愈逻辑)"""
         # 如果已经激活，直接返回
         if hasattr(pd.DataFrame, "ta"):
