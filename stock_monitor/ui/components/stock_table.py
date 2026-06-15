@@ -72,6 +72,12 @@ class StockTable(QtWidgets.QTableView):
         h_header = self.horizontalHeader()
         if h_header is not None:
             h_header.setStretchLastSection(False)
+            # 暗盘列始终是最后一列，确保最小宽度防止文本截断
+            last_col = self._model.columnCount() - 1
+            if last_col >= 0:
+                current_width = h_header.sectionSize(last_col)
+                if current_width < 80:
+                    h_header.resizeSection(last_col, 80)
 
     def _notify_parent_window_height_adjustment(self) -> None:
         """触发布局调整请求信号以通知父窗口调整高度"""
