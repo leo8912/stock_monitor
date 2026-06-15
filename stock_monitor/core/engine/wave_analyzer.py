@@ -179,9 +179,10 @@ class WaveAnalyzer:
         # 4. 计算每段浪的时间和空间
         all_waves = WaveAnalyzer._calculate_wave_details(swings)
 
-        # 5. 预估当前浪的剩余空间
+        # 5. 预估当前浪的剩余空间（传入实际当前收盘价）
+        actual_price = float(df.iloc[-1]["close"])
         remaining_space = WaveAnalyzer._estimate_remaining_space(
-            swings, current_wave, fib_levels
+            swings, current_wave, fib_levels, actual_current_price=actual_price
         )
 
         return WaveAnalysisResult(
@@ -220,6 +221,37 @@ class WaveAnalyzer:
                 "confidence": 0.3,
                 "rule_check": "",
             }
+
+        # ── 全局趋势判断 ──────────────────────────────────────────
+        # 检查是否存在大级别顶部/底部，避免只看局部而忽略全局
+        all_peaks = [s for s in extremes if s.type == "peak"]
+        all_troughs = [s for s in extremes if s.type == "trough"]
+
+        is_global_downtrend = False
+
+        # 高点降低 → 下跌趋势
+        if len(all_peaks) >= 2:
+            recent_high = all_peaks[-1].price
+            prev_high = all_peaks[-2].price
+            if recent_high < prev_high * 0.92:  # 近期高点比前高点低 8% 以上
+                is_global_downtrend = True
+
+        # 低点降低 → 下跌趋势
+        if len(all_troughs) >= 2:
+            recent_low = all_troughs[-1].price
+            prev_low = all_troughs[-2].price
+            if recent_low < prev_low:
+                is_global_downtrend = True
+
+        # 高点抬高 → 上涨趋势（暂未使用，保留供后续扩展）
+        # if len(all_peaks) >= 2:
+        #     if all_peaks[-1].price > all_peaks[-2].price * 1.08:
+        #         is_global_uptrend = True
+
+        # 低点抬高 → 上涨趋势（用于后续分析参考）
+        # if len(all_troughs) >= 2:
+        #     if all_troughs[-1].price > all_troughs[-2].price:
+        #         is_global_uptrend = True
 
         e_last = extremes[-5:] if len(extremes) >= 5 else extremes
         n = len(e_last)
@@ -318,33 +350,95 @@ class WaveAnalyzer:
 
             if p2.type == "trough" and p1.type == "peak" and p0.type == "trough":
                 if p0.price > p2.price:
-                    # 底比底高 + 价格在最近低点之上 = 可能启动上涨
-                    if current_price > p0.price:
-                        return {
-                            "wave": "3",
-                            "trend": "bullish",
-                            "desc": "底部抬高，可能进入上涨阶段",
-                            "confidence": 0.7,
-                            "rule_check": "底比底高，趋势转多",
-                        }
+                    # 底比底高 — 但需要结合全局趋势判断
+                    if is_global_downtrend:
+                        # 全局下跌 + 局部底比底高 = B浪反弹，不是第3浪
+                        if current_price > p0.price:
+                            return {
+                                "wave": "B",
+                                "trend": "bearish",
+                                "desc": "下跌趋势中的反弹，高度有限",
+                                "confidence": 0.65,
+                                "rule_check": "全局高点降低，局部反弹非新升浪",
+                            }
+                        else:
+                            return {
+                                "wave": "A",
+                                "trend": "bearish",
+                                "desc": "反弹结束，继续调整",
+                                "confidence": 0.6,
+                                "rule_check": "全局下跌趋势，反弹后回落",
+                            }
                     else:
-                        return {
-                            "wave": "2",
-                            "trend": "bullish",
-                            "desc": "上涨后的回踩确认阶段",
-                            "confidence": 0.55,
-                            "rule_check": "底比底高但价格仍弱",
-                        }
+                        # 全局偏多 + 底比底高 = 可能是第3浪
+                        if current_price > p0.price:
+                            return {
+                                "wave": "3",
+                                "trend": "bullish",
+                                "desc": "底部抬高，可能进入上涨阶段",
+                                "confidence": 0.7,
+                                "rule_check": "底比底高，趋势转多",
+                            }
+                        else:
+                            return {
+                                "wave": "2",
+                                "trend": "bullish",
+                                "desc": "上涨后的回踩确认阶段",
+                                "confidence": 0.55,
+                                "rule_check": "底比底高但价格仍弱",
+                            }
+
             elif p2.type == "peak" and p1.type == "trough" and p0.type == "peak":
                 if p0.price < p2.price:
-                    if current_price < p0.price:
-                        return {
-                            "wave": "A",
-                            "trend": "bearish",
-                            "desc": "上涨趋势结束，进入调整",
-                            "confidence": 0.65,
-                            "rule_check": "高点降低，上涨趋势可能结束",
-                        }
+                    # 高点降低 — 结合全局趋势
+                    if is_global_downtrend or p0.price < p2.price * 0.92:
+                        # 明确的下跌趋势
+                        if current_price < p0.price:
+                            return {
+                                "wave": "C",
+                                "trend": "bearish",
+                                "desc": "下跌趋势的加速杀跌阶段",
+                                "confidence": 0.75,
+                                "rule_check": "高点降低，下跌趋势确认",
+                            }
+                        else:
+                            return {
+                                "wave": "B",
+                                "trend": "bearish",
+                                "desc": "下跌趋势中的反弹阶段",
+                                "confidence": 0.65,
+                                "rule_check": "高点降低，下跌趋势中的反弹",
+                            }
+                    else:
+                        # 只是正常回调
+                        if current_price < p0.price:
+                            return {
+                                "wave": "4",
+                                "trend": "bullish",
+                                "desc": "上涨趋势中的回调阶段",
+                                "confidence": 0.6,
+                                "rule_check": "高点略降，正常回调",
+                            }
+
+        # ── 兜底：用全局趋势做最终判断 ──────────────────────────
+        if is_global_downtrend:
+            # 如果价格在最近低点附近或以下 → C浪杀跌
+            if all_troughs and current_price <= all_troughs[-1].price * 1.02:
+                return {
+                    "wave": "C",
+                    "trend": "bearish",
+                    "desc": "下跌趋势中，持续探底",
+                    "confidence": 0.55,
+                    "rule_check": "全局下跌趋势",
+                }
+            else:
+                return {
+                    "wave": "B",
+                    "trend": "bearish",
+                    "desc": "下跌趋势中的反弹阶段",
+                    "confidence": 0.5,
+                    "rule_check": "全局下跌趋势，当前为反弹",
+                }
 
         return {
             "wave": "1",
@@ -489,6 +583,7 @@ class WaveAnalyzer:
         swings: list[SwingPoint],
         current_wave: dict[str, Any],
         fib_levels: dict[str, float],
+        actual_current_price: float | None = None,
     ) -> dict[str, Any] | None:
         """
         预估当前浪的剩余空间。
@@ -509,7 +604,12 @@ class WaveAnalyzer:
         if len(extremes) < 2:
             return None
 
-        curr_price = swings[-1].price if swings else 0
+        # 使用实际当前价（收盘价），而非最后一个摆动点价格
+        curr_price = (
+            actual_current_price
+            if actual_current_price
+            else (swings[-1].price if swings else 0)
+        )
         if curr_price <= 0:
             return None
 

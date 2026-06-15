@@ -390,34 +390,32 @@ class WaveChartDialog(QtWidgets.QDialog):
                 zorder=3,
             )
 
-        # 精简浪号标注（最近4个极值点，圈号）
-        wave_labels_circle = ["①", "②", "③", "④", "⑤", "Ⓐ", "Ⓑ", "Ⓒ"]
+        # 精简浪号标注（最近4个极值点，只标价格不标浪号避免混淆）
         extreme_swings = [s for s in valid_swings if s[1].type in ("peak", "trough")]
         recent = extreme_swings[-4:] if len(extreme_swings) > 4 else extreme_swings
         y_off = plot_df["high"].max() * 0.015
 
         for idx, (sub_idx, swing) in enumerate(recent):
-            label = wave_labels_circle[idx % len(wave_labels_circle)]
             if swing.type == "peak":
                 ax.text(
                     sub_idx,
                     swing.price + y_off,
-                    f"{label}\n{swing.price:.2f}",
+                    f"{swing.price:.2f}",
                     color=RED,
                     ha="center",
                     va="bottom",
-                    fontsize=9,
+                    fontsize=8,
                     fontweight="bold",
                 )
             else:
                 ax.text(
                     sub_idx,
                     swing.price - y_off * 1.5,
-                    f"{label}\n{swing.price:.2f}",
+                    f"{swing.price:.2f}",
                     color=GREEN,
                     ha="center",
                     va="top",
-                    fontsize=9,
+                    fontsize=8,
                     fontweight="bold",
                 )
 
@@ -470,6 +468,10 @@ class WaveChartDialog(QtWidgets.QDialog):
         ax2.axis("off")
         ax2.set_facecolor("#121212")
 
+        y_min, y_max = ax_main.get_ylim()
+        price_range = y_max - y_min
+        min_gap = price_range * 0.04  # 标签间最小间距（4%价格范围）
+
         # 收集价位，按趋势分组
         supports = []
         resistances = []
@@ -493,6 +495,28 @@ class WaveChartDialog(QtWidgets.QDialog):
 
         resistances.sort(key=lambda x: x[1])
         supports.sort(key=lambda x: -x[1])
+
+        # 碰撞检测：过滤距离太近的标签
+        def _filter_close(items, min_gap_val):
+            filtered = []
+            for name, price in items:
+                if not filtered or abs(price - filtered[-1][1]) >= min_gap_val:
+                    filtered.append((name, price))
+            return filtered
+
+        # 只保留最重要的 Fibonacci 位（0.382 / 0.5 / 0.618）+ 目标位
+        important_fib = {"0.382", "0.500", "0.618"}
+        resistances = [
+            (n, p) for n, p in resistances if "目标" in n or n in important_fib
+        ]
+        supports = [(n, p) for n, p in supports if "目标" in n or n in important_fib]
+
+        resistances = _filter_close(resistances, min_gap)
+        supports = _filter_close(supports, min_gap)
+
+        # 限制显示数量
+        resistances = resistances[:3]
+        supports = supports[:3]
 
         def _draw_tag(ax, x, y, text, color, bg, fontsize=9, va="center"):
             ax.text(
@@ -536,7 +560,7 @@ class WaveChartDialog(QtWidgets.QDialog):
             f" {curr_price:.2f} ",
             transform=ax2.get_yaxis_transform(),
             color=WHITE,
-            fontsize=11,
+            fontsize=12,
             fontweight="bold",
             ha="left",
             va="center",
