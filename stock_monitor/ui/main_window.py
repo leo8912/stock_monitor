@@ -5,7 +5,6 @@ from PyQt6.QtCore import (
     pyqtSignal,
 )
 
-from stock_monitor.config.manager import ConfigManager
 from stock_monitor.core.config.container import container
 from stock_monitor.models.stock_data import StockRowData
 
@@ -19,7 +18,7 @@ from stock_monitor.ui.mixins.draggable_window import DraggableWindowMixin
 from stock_monitor.ui.view_models.main_window_view_model import MainWindowViewModel
 from stock_monitor.ui.widgets.context_menu import AppContextMenu
 from stock_monitor.ui.widgets.market_status import MarketStatusBar
-from stock_monitor.utils.config_helper import ConfigHelper, ConfigKeys
+from stock_monitor.utils.config_helper import ConfigKeys
 from stock_monitor.utils.helpers import resource_path
 from stock_monitor.utils.log_cleaner import schedule_log_cleanup
 from stock_monitor.utils.logger import app_logger
@@ -169,9 +168,10 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         )  # type: ignore
 
         # 初始化透明度缓存，避免 paintEvent 高频读取配置
-        config_manager = self._container.get(ConfigManager)
-        self._config_helper = ConfigHelper(config_manager)
-        self._transparency = self._config_helper.get_int(ConfigKeys.TRANSPARENCY, 80)
+        from stock_monitor.core.config_center import config_center
+
+        self._config_helper = config_center._helper
+        self._transparency = config_center.get_int(ConfigKeys.TRANSPARENCY, 80)
 
         # 从配置中读取字体大小和字体族并更新表格
         self.update_font_size()

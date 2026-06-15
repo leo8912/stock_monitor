@@ -617,6 +617,11 @@ class QuantWorker(QtCore.QThread):
                         scan_duration = time.time() - scan_start
                         self.perf_monitor.record_scan_time(scan_duration)
                         self.last_scan_time = time.time()
+                        app_logger.info_ctx(
+                            "量化扫描完成",
+                            symbols=len(self.symbols),
+                            duration_ms=f"{scan_duration*1000:.0f}",
+                        )
 
                 self.check_and_trigger_reports()
 

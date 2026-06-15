@@ -116,10 +116,9 @@ class CloseExportScheduler(QtCore.QThread):
                 from scripts.reporting.export_stocks_to_excel import export_to_excel
 
                 # 从配置读取自选股列表
-                from stock_monitor.config.manager import ConfigManager
+                from stock_monitor.core.config_center import config_center
 
-                config = ConfigManager()
-                user_stocks = config.get("user_stocks", [])
+                user_stocks = config_center.user_stocks
 
                 output_path = (
                     Path("analysis_reports")

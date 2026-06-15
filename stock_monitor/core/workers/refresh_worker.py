@@ -67,8 +67,7 @@ class RefreshWorker(QtCore.QThread):
             self._is_running = True
             self.start()
 
-        app_logger.info("后台刷新线程已启动")
-        app_logger.debug(f"刷新间隔: {self.refresh_interval}秒")
+        app_logger.info_ctx("后台刷新线程已启动", interval=self.refresh_interval)
 
     def stop_refresh(self):
         """停止刷新线程"""

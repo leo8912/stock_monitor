@@ -65,11 +65,10 @@ def incremental_update_stock_database() -> bool:
         try:
             import time
 
-            from stock_monitor.config.manager import ConfigManager
+            from stock_monitor.core.config_center import config_center
 
-            config_manager = container.get(ConfigManager)
-            config_manager.set("last_db_update", time.time())
-            app_logger.info("数据库更新时间戳已保存")
+            config_center.set("last_db_update", time.time(), publish_event=False)
+            app_logger.info_ctx("数据库更新时间戳已保存", action="update_timestamp")
         except Exception as e:
             app_logger.warning(f"保存数据库更新时间戳失败: {e}")
 

@@ -25,39 +25,8 @@ WEBHOOK_TIMEOUT_SECONDS = 5  # Webhook 超时时间 (秒)
 TOKEN_EXPIRY_BUFFER_SECONDS = 60  # Token 提前过期缓冲 (秒)
 
 
-# ====== 重试装饰器 ======
-def retry(max_attempts: int = 3, backoff_factor: float = 0.5):
-    """
-    指数退避重试装饰器
-    - max_attempts: 最大重试次数 (默认3次)
-    - backoff_factor: 退避因子 (默认0.5秒)
-      重试延迟: 0.5s, 1s, 2s, 4s...
-    """
-
-    def decorator(func):
-        def wrapper(*args, **kwargs):
-            for attempt in range(max_attempts):
-                try:
-                    return func(*args, **kwargs)
-                except Exception as e:
-                    if attempt < max_attempts - 1:
-                        wait_time = backoff_factor * (2**attempt)
-                        app_logger.warning(
-                            f"[重试] {func.__name__} 失败 (第{attempt+1}次), "
-                            f"{wait_time:.1f}秒后重试... 原因: {e}"
-                        )
-                        time.sleep(wait_time)
-                    else:
-                        app_logger.error(
-                            f"[重试失败] {func.__name__} 已达最大重试次数({max_attempts}次), "
-                            f"最后异常: {e}"
-                        )
-            # 全部重试失败，返回False
-            return False
-
-        return wrapper
-
-    return decorator
+# ====== 重试装饰器（使用统一重试模块）======
+from stock_monitor.utils.retry import network_retry as retry
 
 
 class NotifierService:
@@ -144,7 +113,7 @@ class NotifierService:
         try:
             resp = cls._get_session().post(send_url, json=payload, timeout=10).json()
             if resp.get("errcode") == 0:
-                app_logger.info(f"企微应用消息发送成功: {title}")
+                app_logger.info_ctx("企微应用消息发送成功", title=title, channel="app")
                 return True
             else:
                 app_logger.error(f"企微应用消息发送失败: {resp}")

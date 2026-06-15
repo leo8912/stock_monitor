@@ -305,7 +305,7 @@ class DarkTradeService(QtCore.QThread):
 
     def run(self):
         """线程主循环"""
-        app_logger.info("[DarkTrade] 服务启动，开始首次全量抓取...")
+        app_logger.info_ctx("[DarkTrade] 服务启动", action="start")
         # 启动时立即抓取一次（不限交易时段，确保有数据）
         self._do_fetch_and_update()
 

@@ -11,7 +11,6 @@ from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import QMessageBox
 
-from stock_monitor.config.manager import ConfigManager
 from stock_monitor.core.config.container import container
 from stock_monitor.core.config.startup import (
     apply_pending_updates,
@@ -113,9 +112,10 @@ class StockMonitorApp:
 
     def _log_config_info(self):
         """记录配置信息"""
-        config_manager = container.get(ConfigManager)
-        font_size = config_manager.get("font_size", 13)
-        app_logger.info(f"当前配置字体大小: {font_size}")
+        from stock_monitor.core.config_center import config_center
+
+        font_size = config_center.get_int("font_size", 13)
+        app_logger.info_ctx("当前配置信息", font_size=font_size)
 
     def _create_main_window(self) -> MainWindow:
         """创建主窗口"""
@@ -126,6 +126,18 @@ class StockMonitorApp:
         tray_icon = SystemTray(window)
         tray_icon.show()
         return tray_icon
+
+    def _run_health_check(self):
+        """启动时执行健康检查"""
+        try:
+            from stock_monitor.utils.health_check import HealthStatus, run_health_check
+
+            report = run_health_check()
+            app_logger.info(report.summary())
+            if report.status == HealthStatus.UNHEALTHY:
+                app_logger.warning("健康检查发现严重问题，部分功能可能不可用")
+        except Exception as e:
+            app_logger.warning(f"健康检查执行失败: {e}")
 
     def _show_update_status_notification(self):
         """检查更新状态并显示相应提示"""
@@ -182,6 +194,9 @@ class StockMonitorApp:
             # 初始化数据库
             self._init_database()
 
+            # 健康检查
+            self._run_health_check()
+
             # 创建 Qt 应用
             self._app = self._create_qt_app()
 
@@ -194,6 +209,11 @@ class StockMonitorApp:
             # 创建系统托盘
             self._tray_icon = self._create_system_tray(self._window)
             self._window.tray_icon = self._tray_icon
+
+            # 发布启动完成事件
+            from stock_monitor.core.event_bus import Topics, event_bus
+
+            event_bus.publish(Topics.APP_STARTUP, source="Application")
 
             # 检查更新状态并显示提示
             self._show_update_status_notification()

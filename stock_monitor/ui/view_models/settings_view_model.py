@@ -3,8 +3,6 @@ import re
 from PyQt6 import QtCore
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
-from stock_monitor.config.manager import ConfigManager
-from stock_monitor.core.config.container import container
 from stock_monitor.data.stock.stocks import load_stock_data
 from stock_monitor.utils.helpers import get_stock_emoji
 from stock_monitor.utils.logger import app_logger
@@ -46,8 +44,9 @@ class SettingsViewModel(QObject):
 
     def __init__(self):
         super().__init__()
-        self._container = container
-        self._config_manager = self._container.get(ConfigManager)
+        from stock_monitor.core.config_center import config_center
+
+        self._config_manager = config_center.raw
         self._processor = StockCodeProcessor()
 
         # 搜索防抖定时器

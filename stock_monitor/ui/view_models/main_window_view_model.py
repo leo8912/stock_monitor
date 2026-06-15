@@ -77,6 +77,14 @@ class MainWindowViewModel(QObject):
             # Inject dark trade data into stock rows
             self._inject_dark_trade_data(stocks)
             self._latest_stock_data = stocks
+            # 发布数据刷新事件
+            from stock_monitor.core.event_bus import Topics, event_bus
+
+            event_bus.publish(
+                Topics.DATA_REFRESHED,
+                data={"count": len(stocks), "all_failed": all_failed},
+                source="RefreshWorker",
+            )
         self.stock_data_updated.emit(stocks, all_failed)
 
     def _inject_dark_trade_data(self, stocks):
