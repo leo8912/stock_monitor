@@ -13,7 +13,7 @@ from requests.exceptions import (
 from stock_monitor.utils.logger import app_logger
 
 # 镜像源配置：国内环境优先使用镜像加速下载
-GITHUB_MIRROR_PREFIX = "https://ghfast.top/"
+GITHUB_MIRROR_PREFIX = "https://mirror.ghproxy.com/"
 
 # 网络超时配置（秒）
 CONNECT_TIMEOUT = 15  # 建立连接超时

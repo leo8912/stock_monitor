@@ -97,12 +97,20 @@ class NetworkManager:
         """
         # 如果需要使用镜像源，则替换URL
         if use_mirror:
-            mirror_url = f"https://ghfast.top/{url}"
+            mirror_url = f"https://mirror.ghproxy.com/{url}"
             app_logger.info(f"使用镜像源: {mirror_url}")
         else:
             mirror_url = url
 
-        response = self.get(mirror_url)
+        # GitHub API 请求使用更长超时
+        old_timeout = self.timeout
+        if not use_mirror:
+            self.timeout = 20
+        try:
+            response = self.get(mirror_url)
+        finally:
+            self.timeout = old_timeout
+
         if response:
             try:
                 return response.json()
