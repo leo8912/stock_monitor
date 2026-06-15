@@ -114,20 +114,3 @@ def load_session_cache(max_age: int = 86400) -> Optional[dict[str, Any]]:  # 默
         except Exception:
             pass
         return None
-
-
-def clear_session_cache() -> bool:
-    """
-    清除会话缓存文件
-
-    Returns:
-        bool: 清除成功返回True，否则返回False
-    """
-    try:
-        if CACHE_FILE.exists():
-            CACHE_FILE.unlink()
-            app_logger.info("会话缓存已清除")
-        return True
-    except Exception as e:
-        app_logger.error(f"清除会话缓存失败: {e}")
-        return False

@@ -1,6 +1,6 @@
 """
 股票数据处理模块
-用于加载和处理股票基础数据，包括拼音处理等功能
+用于加载和处理股票基础数据
 """
 
 from typing import Any, Optional
@@ -31,41 +31,6 @@ def load_stock_data() -> list[dict[str, Any]]:
     all_stocks = a_stocks + index_stocks + hk_stocks
     app_logger.debug(f"从SQLite数据库加载股票基础数据成功，共{len(all_stocks)}条记录")
     return all_stocks
-
-
-def enrich_pinyin(stock_list: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """
-    丰富股票的拼音信息
-
-    为股票列表中的每只股票添加拼音信息，包括全拼和首字母缩写，
-    用于支持拼音搜索功能。
-
-    Args:
-        stock_list (List[Dict[str, Any]]): 股票列表，每个元素应包含 'name' 字段
-
-    Returns:
-        List[Dict[str, Any]]: 添加了拼音信息的股票列表，每个元素增加 'pinyin' 和 'abbr' 字段
-    """
-    from stock_monitor.utils.helpers import handle_exception
-
-    def _enrich_pinyin():
-        # 延迟导入pypinyin，减少启动时间
-        from pypinyin import Style, lazy_pinyin
-
-        for s in stock_list:
-            name = s["name"]
-            # 去除*ST、ST等前缀，避免影响拼音识别
-            base = name.replace("*", "").replace("ST", "").replace(" ", "")
-            # 生成全拼
-            full_pinyin = "".join(lazy_pinyin(base))
-            # 生成首字母缩写
-            abbr = "".join(lazy_pinyin(base, style=Style.FIRST_LETTER))
-            s["pinyin"] = full_pinyin.lower()
-            s["abbr"] = abbr.lower()
-        app_logger.debug(f"股票拼音信息处理完成，共处理{len(stock_list)}条记录")
-        return stock_list
-
-    return handle_exception("处理股票拼音信息", _enrich_pinyin, stock_list, app_logger)
 
 
 def format_stock_code(code: str) -> Optional[str]:

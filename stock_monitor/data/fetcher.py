@@ -142,62 +142,6 @@ class StockFetcher:
 
         return results
 
-    def _fetch_a_stocks(self) -> list[dict[str, str]]:
-        """获取 A 股数据（串行兼容版本，保留向后兼容）"""
-        quotation = easyquotation.use("sina")
-        stock_codes_str = quotation.stock_list  # type: ignore
-        all_stock_codes = []
-        for item in stock_codes_str:
-            all_stock_codes.extend(item.split(","))
-
-        if len(all_stock_codes) > MAX_STOCKS_LIMIT:
-            app_logger.info(
-                f"股票数量过多 ({len(all_stock_codes)})，限制处理前 {MAX_STOCKS_LIMIT} 只"
-            )
-            all_stock_codes = all_stock_codes[:MAX_STOCKS_LIMIT]
-
-        results = []
-        for i in range(0, len(all_stock_codes), BATCH_SIZE):
-            batch_codes = all_stock_codes[i : i + BATCH_SIZE]
-            [c[2:] if c.startswith(("sh", "sz")) else c for c in batch_codes]
-
-            try:
-                special_codes = [
-                    c for c in batch_codes if c in ["sh000001", "sz000001"]
-                ]
-                normal_map = {
-                    c[2:] if c.startswith(("sh", "sz")) else c: c
-                    for c in batch_codes
-                    if c not in special_codes
-                }
-
-                data = {}
-                if special_codes:
-                    spec_data = quotation.stocks(special_codes, prefix=True)  # type: ignore
-                    if isinstance(spec_data, dict):
-                        data.update(spec_data)
-
-                if normal_map:
-                    norm_data = quotation.stocks(list(normal_map.keys()))  # type: ignore
-                    if isinstance(norm_data, dict):
-                        for p_code, info in norm_data.items():
-                            if p_code in normal_map:
-                                data[normal_map[p_code]] = info
-
-                for code, info in data.items():
-                    if info and "name" in info:
-                        name = info["name"]
-                        if code == "sh000001":
-                            name = "上证指数"
-                        elif code == "sz000001":
-                            name = "平安银行"
-                        results.append({"code": code, "name": name})
-
-            except Exception as e:
-                app_logger.warning(f"获取批次股票数据失败：{e}")
-
-        return results
-
     def _fetch_indices(self) -> list[dict[str, str]]:
         """获取主要指数"""
         indices = ["sh000001", "sh000002", "sh000300", "sz399001", "sz399006"]

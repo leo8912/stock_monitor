@@ -45,23 +45,3 @@ def get_name_by_code(code: str) -> str:
     except Exception as e:
         app_logger.warning(f"从 SQLite 数据库获取股票 {code} 名称失败：{e}")
     return ""
-
-
-def get_stock_info_by_code(code: str) -> Optional[dict[str, str]]:
-    """根据股票代码获取股票完整信息"""
-    # 从 SQLite 数据库获取股票信息
-    try:
-        from stock_monitor.core.config.container import container
-        from stock_monitor.data.stock.stock_db import StockDatabase
-
-        stock_db = container.get(StockDatabase)
-
-        stock_info = stock_db.get_stock_by_code(code)
-        if stock_info:
-            # 对于港股，只保留中文部分
-            if code.startswith("hk") and "-" in stock_info["name"]:
-                stock_info["name"] = stock_info["name"].split("-")[0].strip()
-            return stock_info
-    except Exception as e:
-        app_logger.warning(f"从 SQLite 数据库获取股票 {code} 信息失败：{e}")
-    return None

@@ -60,16 +60,6 @@ class MarketManager:
             datetime.time(13, 0) <= t <= datetime.time(15, 0)
         )
 
-    @staticmethod
-    def is_market_open_static() -> bool:
-        """
-        静态方法版本的开市检查（向后兼容）
-
-        Returns:
-            bool: 是否开市
-        """
-        return MarketManager().is_market_open()
-
     def update_sentiment(self, up, down, flat, total):
         """更新全市场情绪数据"""
         self.sentiment.update(up, down, flat, total)
@@ -77,35 +67,6 @@ class MarketManager:
     def get_sentiment(self) -> MarketSentiment:
         """获取当前情绪数据"""
         return self.sentiment
-
-    @staticmethod
-    def get_market_status() -> str:
-        """
-        获取市场状态描述
-
-        Returns:
-            str: 市场状态描述
-        """
-        if MarketManager().is_market_open():
-            return "开市"
-        else:
-            return "闭市"
-
-    @staticmethod
-    def get_refresh_interval(base_interval: int) -> int:
-        """
-        根据市场状态获取刷新间隔
-
-        Args:
-            base_interval (int): 基础刷新间隔（秒）
-
-        Returns:
-            int: 实际刷新间隔（秒）
-        """
-        if MarketManager().is_market_open():
-            return base_interval
-        else:
-            return 30  # 闭市期间固定30秒刷新一次
 
 
 # 创建全局市场管理器实例
