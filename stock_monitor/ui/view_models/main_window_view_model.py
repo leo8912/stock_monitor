@@ -1,13 +1,13 @@
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from stock_monitor.config.manager import ConfigManager
 from stock_monitor.core.config.container import container
+from stock_monitor.core.config_center import config_center
 from stock_monitor.core.data.stock_data_fetcher import StockDataFetcher
 from stock_monitor.core.market.stock_manager import StockManager
 from stock_monitor.core.workers import MarketStatsWorker, QuantWorker, RefreshWorker
 from stock_monitor.data.stock.stock_db import StockDatabase
 from stock_monitor.services.dark_trade_service import get_dark_trade_service
-from stock_monitor.utils.config_helper import ConfigHelper, ConfigKeys
+from stock_monitor.utils.config_helper import ConfigKeys
 from stock_monitor.utils.logger import app_logger
 from stock_monitor.utils.stock_utils import StockCodeProcessor
 
@@ -28,10 +28,7 @@ class MainWindowViewModel(QObject):
         super().__init__()
         self._container = container
         self._stock_db = self._container.get(StockDatabase)
-        self._config_manager = self._container.get(
-            ConfigManager
-        )  # [FIX] 保存为实例变量
-        self._config_helper = ConfigHelper(self._config_manager)
+        self._config_helper = config_center._helper
         self._stock_manager = self._container.get(StockManager)
         self._fetcher = self._container.get(StockDataFetcher)
 
@@ -39,7 +36,7 @@ class MainWindowViewModel(QObject):
         self._refresh_worker = RefreshWorker()
         self._market_stats_worker = MarketStatsWorker()
 
-        wecom_webhook = self._config_helper.get_str(ConfigKeys.WECOM_WEBHOOK, "")
+        wecom_webhook = config_center.wecom_webhook
         self._quant_worker = QuantWorker(self._fetcher, wecom_webhook)
 
         # 注册到容器中，方便 SettingsViewModel 获取

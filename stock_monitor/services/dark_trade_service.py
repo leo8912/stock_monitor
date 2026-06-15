@@ -75,7 +75,7 @@ def fetch_all_dark_trade(date_str: str | None = None) -> list[dict]:
             )
             records: list[dict] = resp.json().get("data", [])
         except Exception as e:
-            app_logger.warning(f"[DarkTrade] 抓取第{page}页失败: {e}")
+            app_logger.warning_ctx("[DarkTrade] 抓取失败", page=page, error=str(e))
             break
 
         if not records:
@@ -87,7 +87,7 @@ def fetch_all_dark_trade(date_str: str | None = None) -> list[dict]:
         if page > 60:
             break
 
-    app_logger.info(f"[DarkTrade] {date_str} 抓取完成，共 {len(all_records)} 条")
+    app_logger.info_ctx("[DarkTrade] 抓取完成", date=date_str, records=len(all_records))
     return all_records
 
 

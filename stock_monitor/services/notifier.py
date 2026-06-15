@@ -71,9 +71,9 @@ class NotifierService:
                     cls._token_cache[corp_id] = (token, now + expires_in)
                 return token
             else:
-                app_logger.error(f"获取企微 App Token 失败: {resp}")
+                app_logger.error_ctx("获取企微 App Token 失败", resp=resp)
         except Exception as e:
-            app_logger.error(f"获取企微 App Token 异常: {e}")
+            app_logger.error_ctx("获取企微 App Token 异常", error=str(e))
         return None
 
     @classmethod

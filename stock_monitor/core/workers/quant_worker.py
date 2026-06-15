@@ -568,7 +568,7 @@ class QuantWorker(QtCore.QThread):
         return "\n".join(md)
 
     def run(self):
-        from ...config.manager import load_config
+        from stock_monitor.core.config_center import config_center
 
         # 在工作线程中创建SQLite连接，确保线程安全
         from ...data.stock.stock_db import StockDatabase
@@ -576,7 +576,7 @@ class QuantWorker(QtCore.QThread):
 
         self.db = StockDatabase()
 
-        app_logger.info("量化雷达侦测线程已启动...")
+        app_logger.info_ctx("量化雷达侦测线程已启动", action="start")
         save_cache_counter = 0  # 每10次循环保存一次缓存
 
         # 首次运行时进行缓存预热
@@ -584,7 +584,7 @@ class QuantWorker(QtCore.QThread):
 
         while not self._stop_event.is_set():
             try:
-                self.config = load_config()
+                self.config = config_center.snapshot()
                 if not self.config.get("quant_enabled", False):
                     self.msleep(5000)
                     continue
