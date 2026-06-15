@@ -1,5 +1,32 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.3.6] - 2026-06-12
+
+### 🐛 修复 (Fixes)
+- **[P0] 修复 main_window.py self.table 在构造完成前被访问**：将信号连接移至 `_try_load_session_cache` 之后，确保 UI 组件已初始化。
+- **[P0] 修复 quant_worker.py start_worker RuntimeError**：添加 `isRunning()` 检查，防止重复启动线程。
+- **[P1] 修复 BacktestEngine._save_cache 线程安全**：添加 `threading.Lock` 保护 `_cache` 字典的并发读写。
+- **[P1] 修复 BaseWorker._is_running 线程安全**：添加 `threading.Lock` 保护 `_is_running` 标志。
+- **[P1] 修复 _signals_history 读锁缺失**：`_merge_signals_for_symbol` 中读取历史记录时添加锁保护。
+- **[P1] 修复 check_and_update_database 时间戳在成功前写入**：将时间戳写入移至 `worker.finished.connect()` 信号。
+- **[P1] 修复 get_dark_trade_service 单例线程安全**：添加双重检查锁定模式。
+- **[P1] 修复 get_close_export_scheduler 单例线程安全**：添加双重检查锁定模式。
+- **[P1] 修复 NotifierService._token_cache 线程安全**：添加锁保护 token 缓存。
+- **[P1] 修复 CloseExportScheduler trigger_now 竞态条件**：使用非阻塞锁防止重复触发。
+- **[P2] 修复已弃用 PyQt6 API**：`event.pos()` → `event.position().toPoint()`，`event.globalPos()` → `event.globalPosition().toPoint()`。
+- **[P2] 修复 market_worker 使用 MarketManager 单例**：改用 `market_manager` 单例实例。
+- **[P2] 修复 dispatch_alert 绕过 token 缓存**：改用 `_get_app_token` 缓存。
+- **[P2] 修复 dispatch_image 绕过共享会话**：改用共享 session。
+- **[P2] 修复 double retry 机制**：移除重复的重试逻辑。
+- **[P2] 修复 format_stock_code 返回无效格式**：对无效股票代码返回 `None`。
+- **[P2] 修复 turnover 零值检查**：添加零值检查防止除零错误。
+- **[P2] 修复 dark_trade consecutive days 仅流入**：支持双向（流入/流出）统计。
+- **[P2] 修复 _fetch_history_and_update 锁持有时间过长**：在锁外构建新缓存。
+- **[P2] 修复 _on_manual_export_excel 阻塞 UI**：改用 ExcelExportThread 后台线程。
+
+### ⚡ 优化 (Optimization)
+- **[清理] 移除死代码**：移除 `restore_default_style` 空方法及其调用、`dark_trade_exporter` 重复 freeze_panes。
+
 ## [v4.3.5] - 2026-06-12
 
 ### 🐛 修复 (Fixes)

@@ -316,13 +316,12 @@ class MainWindowViewModel(QObject):
 
             if should_update:
                 worker = WorkerRunnable(update_stock_database)
+                # 连接完成信号，仅在成功时更新时间戳
+                worker.finished.connect(
+                    lambda: self._config_manager.set("last_db_update", current_time)
+                )
                 QThreadPool.globalInstance().start(worker)
                 app_logger.info("启动时数据库更新已启动")
-
-                # 假设更新成功并不在这里记录，由 db_updater 自己控制，
-                # 但旧代码是在这里或者_update_database_if_needed里写 set()，
-                # 我们这里简单的标记一下请求更新的时间
-                self._config_manager.set("last_db_update", current_time)
         except Exception as e:
             app_logger.error(f"启动时数据库更新检查失败: {e}")
 

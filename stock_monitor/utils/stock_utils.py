@@ -41,8 +41,7 @@ class StockCodeProcessor:
             if len(code) == 8 and code[2:].isdigit():
                 return code
             else:
-                # 即使格式不完全正确，也返回原始代码
-                return code
+                return None
 
         # 港股代码处理
         elif code.startswith("hk"):
@@ -50,8 +49,7 @@ class StockCodeProcessor:
             if len(code) == 7 and code[2:].isdigit():
                 return code
             else:
-                # 即使格式不完全正确，也返回原始代码
-                return code
+                return None
 
         # 6位纯数字代码（应该避免这种情况，但在某些情况下可能需要处理）
         elif len(code) == 6 and code.isdigit():

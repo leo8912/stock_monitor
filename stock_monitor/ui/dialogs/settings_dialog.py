@@ -92,6 +92,30 @@ class UpdateCheckThread(QThread):
             self.error_occurred.emit(str(e))
 
 
+class ExcelExportThread(QThread):
+    """Excel 导出后台线程"""
+
+    export_finished = pyqtSignal(bool, str)
+
+    def __init__(self, watchlist_codes: list, parent=None):
+        super().__init__(parent)
+        self._watchlist_codes = watchlist_codes
+
+    def run(self):
+        try:
+            from scripts.reporting.export_stocks_to_excel import export_to_excel
+
+            output_path = "analysis_reports/stock_export_report.xlsx"
+            export_to_excel(
+                output_path=output_path,
+                include_history=True,
+                history_symbols=self._watchlist_codes,
+            )
+            self.export_finished.emit(True, output_path)
+        except Exception as e:
+            self.export_finished.emit(False, str(e))
+
+
 class TestAppThread(QThread):
     """企业应用推送测试线程"""
 
@@ -1280,36 +1304,33 @@ class NewSettingsDialog(QDialog):
 
     def _on_manual_export_excel_clicked(self):
         """手动执行自选股指标导出到 Excel"""
-        from PyQt6.QtCore import Qt
-        from PyQt6.QtWidgets import QApplication, QMessageBox
 
-        # 设置等待光标
-        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         self.btn_manual_export_excel.setEnabled(False)
         self.btn_manual_export_excel.setText("正在导出...")
-        QApplication.processEvents()
 
-        try:
-            from scripts.reporting.export_stocks_to_excel import export_to_excel
+        # 使用后台线程执行导出，避免阻塞 UI
+        watchlist_codes = self.get_stocks_from_list(self.watch_list)
+        self._export_thread = ExcelExportThread(watchlist_codes, self)
+        self._export_thread.export_finished.connect(self._on_export_finished)
+        self._export_thread.start()
 
-            # 导出自选股历史数据及指标
-            export_to_excel(
-                output_path="analysis_reports/stock_export_report.xlsx",
-                include_history=True,
-                history_symbols=self.get_stocks_from_list(self.watch_list),
-            )
-            QApplication.restoreOverrideCursor()
+    def _on_export_finished(self, success: bool, result: str):
+        """处理导出完成结果"""
+        self.btn_manual_export_excel.setEnabled(True)
+        self.btn_manual_export_excel.setText("导出自选股指标")
+
+        if success:
+            from PyQt6.QtWidgets import QMessageBox
+
             QMessageBox.information(
                 self,
                 "导出成功",
-                "自选股技术指标数据已成功导出至：\nanalysis_reports/stock_export_report.xlsx",
+                f"自选股技术指标数据已成功导出至：\n{result}",
             )
-        except Exception as e:
-            QApplication.restoreOverrideCursor()
-            QMessageBox.critical(self, "导出失败", f"导出过程中发生异常：\n{e}")
-        finally:
-            self.btn_manual_export_excel.setEnabled(True)
-            self.btn_manual_export_excel.setText("📊 导出指标数据到 Excel")
+        else:
+            from PyQt6.QtWidgets import QMessageBox
+
+            QMessageBox.critical(self, "导出失败", f"导出过程中发生异常：\n{result}")
 
     def _on_manual_fetch_dark_trade_clicked(self):
         """手动抓取并导出暗盘资金数据到 Excel"""
@@ -1594,8 +1615,6 @@ class NewSettingsDialog(QDialog):
         if self.main_window:
             self._clear_preview_state()
             self.main_window.update()
-            if hasattr(self.main_window, "menu") and self.main_window.menu:
-                self.main_window.menu.restore_default_style()
 
     def _emit_config_changed_signal(self):
         """发送配置更改信号"""
@@ -1659,9 +1678,6 @@ class NewSettingsDialog(QDialog):
             self._clear_preview_state()
             self.main_window.update_font_size()
             self.main_window.update()
-            # 恢复主窗口菜单的默认样式
-            if hasattr(self.main_window, "menu") and self.main_window.menu:
-                self.main_window.menu.restore_default_style()
 
         # 隐藏窗口而不是关闭
         self.hide()
@@ -1849,8 +1865,6 @@ class NewSettingsDialog(QDialog):
             # 清除主窗口的预览透明度
             if self.main_window:
                 self._clear_preview_state()
-                if hasattr(self.main_window, "menu") and self.main_window.menu:
-                    self.main_window.menu.restore_default_style()
         except Exception as e:
             from stock_monitor.utils.logger import app_logger
 

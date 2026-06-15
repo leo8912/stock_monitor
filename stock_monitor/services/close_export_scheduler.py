@@ -3,6 +3,7 @@
 负责在每天收盘时(15:05)自动触发数据抓取和导出任务
 """
 
+import threading
 from datetime import datetime
 from datetime import time as dtime
 from pathlib import Path
@@ -40,6 +41,7 @@ class CloseExportScheduler(QtCore.QThread):
         self._export_time_window_start = dtime(15, 5)  # 15:05
         self._export_time_window_end = dtime(15, 30)  # 15:30
         self._check_interval_ms = 60000  # 每60秒检查一次
+        self._export_lock = threading.Lock()
 
     def enable(self):
         """启用自动导出"""
@@ -88,6 +90,9 @@ class CloseExportScheduler(QtCore.QThread):
 
     def _execute_export(self):
         """执行导出任务"""
+        if not self._export_lock.acquire(blocking=False):
+            app_logger.info("[CloseExportScheduler] 导出任务正在执行中，跳过")
+            return
         try:
             self.export_started.emit()
             app_logger.info("[CloseExportScheduler] 开始执行收盘数据导出...")
@@ -148,6 +153,8 @@ class CloseExportScheduler(QtCore.QThread):
             error_msg = f"收盘数据导出异常: {e}"
             app_logger.error(f"[CloseExportScheduler] {error_msg}")
             self.export_failed.emit(error_msg)
+        finally:
+            self._export_lock.release()
 
     def run(self):
         """线程主循环"""
@@ -193,11 +200,14 @@ class CloseExportScheduler(QtCore.QThread):
 
 # 全局单例
 _scheduler_instance = None
+_scheduler_lock = threading.Lock()
 
 
 def get_close_export_scheduler() -> CloseExportScheduler:
     """获取全局调度器实例（懒初始化）"""
     global _scheduler_instance
     if _scheduler_instance is None:
-        _scheduler_instance = CloseExportScheduler()
+        with _scheduler_lock:
+            if _scheduler_instance is None:
+                _scheduler_instance = CloseExportScheduler()
     return _scheduler_instance

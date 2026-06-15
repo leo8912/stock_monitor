@@ -237,13 +237,23 @@ def export_dark_trade_excel(
         for d in recent_dates:
             hist_nets.append(history_net.get(d, {}).get(code, None))
 
-        # 连续流入天数（从最近日期起，连续正值天数）
+        # 连续方向天数（从最近日期起，连续正值或负值天数）
         consecutive = 0
-        for v in hist_nets:
-            if v is not None and v > 0:
-                consecutive += 1
-            else:
-                break
+        if hist_nets and hist_nets[0] is not None:
+            if hist_nets[0] > 0:
+                # 连续流入
+                for v in hist_nets:
+                    if v is not None and v > 0:
+                        consecutive += 1
+                    else:
+                        break
+            elif hist_nets[0] < 0:
+                # 连续流出（存为负数表示流出）
+                for v in hist_nets:
+                    if v is not None and v < 0:
+                        consecutive -= 1
+                    else:
+                        break
 
         return {
             "code": code,
@@ -284,7 +294,6 @@ def export_dark_trade_excel(
 
     def _write_sheet(ws, rows: list[dict], title: str):
         ws.title = title
-        ws.freeze_panes = "A2"
 
         # 历史日期列名
         date_cols = []
@@ -332,7 +341,9 @@ def export_dark_trade_excel(
                 round(row["regular_net"], 2),
                 round(row["total_net"], 2),
                 round(row["activity"], 4),
-                round(row["turnover"] * 100, 2) if row["turnover"] else None,
+                round(row["turnover"] * 100, 2)
+                if row["turnover"] is not None
+                else None,
                 row["sector1"],
                 row["sector2"],
                 row["consecutive"],

@@ -48,11 +48,12 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         # 初始化ViewModel
         self.viewModel = MainWindowViewModel()
 
+        self.setup_ui()
+
         # 连接本地信号（必须在 _try_load_session_cache 之前，因为缓存加载会 emit）
         self.update_table_signal.connect(self.table.update_data)
         self.table.height_adjustment_requested.connect(self.adjust_window_height)
 
-        self.setup_ui()
         # 尝试加载会话缓存
         if not self._try_load_session_cache():
             # 如果没有加载到缓存，确保窗口最终会显示

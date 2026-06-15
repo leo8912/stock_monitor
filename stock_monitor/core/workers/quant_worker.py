@@ -153,7 +153,10 @@ class QuantWorker(QtCore.QThread):
     def start_worker(self):
         if not self._stop_event.is_set():
             self._stop_event.clear()
-            self.start()
+            if not self.isRunning():
+                self.start()
+            else:
+                app_logger.warning("QuantWorker 线程仍在运行，跳过启动")
 
     def stop_worker(self):
         self._stop_event.set()
@@ -1043,7 +1046,8 @@ class QuantWorker(QtCore.QThread):
                 cycle_info += f"{daily_wave_text}\n{h60_wave_text}\n"
                 cycle_info += stats_text
 
-                history_list = self._signals_history.get(symbol, [])
+                with self._lock:
+                    history_list = self._signals_history.get(symbol, [])
                 if history_list:
                     cycle_info += "\n今日轨迹：" + " → ".join(
                         [f"{h['time']} {h['name']}" for h in history_list[-5:]]

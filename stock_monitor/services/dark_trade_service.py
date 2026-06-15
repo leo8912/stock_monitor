@@ -227,34 +227,36 @@ class DarkTradeService(QtCore.QThread):
                 history[d] = build_net_flow_index(records)
                 app_logger.info(f"[DarkTrade] {d} 历史: {len(history[d])} 只")
 
-            # 计算连续天数并更新缓存
+            # 计算连续天数并更新缓存（在锁外构建新缓存，减少锁持有时间）
             update_time = datetime.now().strftime("%H:%M")
+            new_cache = {}
+            for code, (today_net, _) in self._cache.items():
+                # 收集每天的数据（从今天往前）
+                all_nets = [today_net]
+                for d in dates[1:]:
+                    all_nets.append(history.get(d, {}).get(code, 0.0))
+
+                # 计算连续方向天数
+                consecutive = 0
+                if today_net > 0:
+                    # 连续流入：从今天往前，连续正值
+                    for v in all_nets:
+                        if v > 0:
+                            consecutive += 1
+                        else:
+                            break
+                elif today_net < 0:
+                    # 连续流出：从今天往前，连续负值（存为负数表示流出）
+                    for v in all_nets:
+                        if v < 0:
+                            consecutive -= 1
+                        else:
+                            break
+
+                new_cache[code] = (today_net, consecutive)
+
             with self._lock:
-                for code, (today_net, _) in self._cache.items():
-                    # 收集每天的数据（从今天往前）
-                    all_nets = [today_net]
-                    for d in dates[1:]:
-                        all_nets.append(history.get(d, {}).get(code, 0.0))
-
-                    # 计算连续方向天数
-                    consecutive = 0
-                    if today_net > 0:
-                        # 连续流入：从今天往前，连续正值
-                        for v in all_nets:
-                            if v > 0:
-                                consecutive += 1
-                            else:
-                                break
-                    elif today_net < 0:
-                        # 连续流出：从今天往前，连续负值（存为负数表示流出）
-                        for v in all_nets:
-                            if v < 0:
-                                consecutive -= 1
-                            else:
-                                break
-
-                    self._cache[code] = (today_net, consecutive)
-
+                self._cache = new_cache
                 self._cache_time = update_time
 
             self.cache_updated.emit(update_time)
@@ -337,11 +339,14 @@ class DarkTradeService(QtCore.QThread):
 
 # 全局单例（供 main_window 和其他模块使用）
 _dark_trade_service: DarkTradeService | None = None
+_dark_trade_service_lock = threading.Lock()
 
 
 def get_dark_trade_service() -> DarkTradeService:
     """获取全局暗盘服务实例（懒初始化）"""
     global _dark_trade_service
     if _dark_trade_service is None:
-        _dark_trade_service = DarkTradeService()
+        with _dark_trade_service_lock:
+            if _dark_trade_service is None:
+                _dark_trade_service = DarkTradeService()
     return _dark_trade_service

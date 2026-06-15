@@ -1,5 +1,7 @@
 """Worker 基类模块"""
 
+import threading
+
 from PyQt6 import QtCore
 
 from stock_monitor.utils.logger import app_logger
@@ -16,18 +18,21 @@ class BaseWorker(QtCore.QThread):
         super().__init__()
         self._name = name
         self._is_running = False
+        self._lock = threading.Lock()
         self.interval = 60  # 默认刷新间隔（秒）
 
     def start_worker(self):
         """启动工作线程"""
-        if not self.isRunning():
-            self._is_running = True
-            self.start()
-            app_logger.info(f"{self._name}已启动")
+        with self._lock:
+            if not self.isRunning():
+                self._is_running = True
+                self.start()
+                app_logger.info(f"{self._name}已启动")
 
     def stop_worker(self):
         """停止工作线程"""
-        self._is_running = False
+        with self._lock:
+            self._is_running = False
         self.wait(2000)
         app_logger.info(f"{self._name}已停止")
 

@@ -112,7 +112,7 @@ class DraggableWindowMixin:
                         return True
                 elif hasattr(self, "menu") and hasattr(self.menu, "popup"):
                     if isinstance(self, QtWidgets.QWidget):
-                        click_pos = self.mapToGlobal(event.pos())
+                        click_pos = self.mapToGlobal(event.position().toPoint())
                         self.menu.popup(click_pos)
                         event.accept()
                         return True
@@ -306,7 +306,7 @@ class DraggableWindowMixin:
             and self.drag_position is not None
         ):
             if isinstance(self, QtWidgets.QWidget):
-                self.move(event.globalPos() - self.drag_position)
+                self.move(event.globalPosition().toPoint() - self.drag_position)
                 event.accept()
 
     def mouseReleaseEvent(self, event):

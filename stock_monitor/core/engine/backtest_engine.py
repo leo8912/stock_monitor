@@ -1,6 +1,7 @@
 import datetime
 import json
 import os
+import threading
 
 from stock_monitor.config.manager import get_config_dir
 from stock_monitor.core.engine.quant_engine import QuantEngine
@@ -16,6 +17,7 @@ class BacktestEngine:
         self.qe = quant_engine
         self.target_profit = 0.05
         self.stop_loss = 0.05
+        self._lock = threading.Lock()
 
         # 持久化文件路径
         config_dir = get_config_dir()
@@ -47,9 +49,9 @@ class BacktestEngine:
         today_str = datetime.date.today().isoformat()
         cache_key = f"{symbol}_{category}_{today_str}"
 
-        if cache_key in self._cache:
-            # app_logger.debug(f"回测缓存命中 [{symbol} cat={category}]")
-            return self._cache[cache_key]
+        with self._lock:
+            if cache_key in self._cache:
+                return self._cache[cache_key]
 
         try:
             df = self.qe.fetch_bars(symbol, market, category, offset=p["offset"])
@@ -105,7 +107,8 @@ class BacktestEngine:
                 "avg_profit": round(total_profit / n, 4),
             }
             # 存入并保存持久化缓存
-            self._cache[cache_key] = res
+            with self._lock:
+                self._cache[cache_key] = res
             self._save_cache()
             return res
 
@@ -124,8 +127,9 @@ class BacktestEngine:
         today_str = datetime.date.today().isoformat()
         cache_key = f"rsrs_{symbol}_{category}_{z_threshold}_{today_str}"
 
-        if cache_key in self._cache:
-            return self._cache[cache_key]
+        with self._lock:
+            if cache_key in self._cache:
+                return self._cache[cache_key]
 
         try:
             # RSRS 需要较深的历史数据进行标准化
@@ -176,7 +180,8 @@ class BacktestEngine:
                 "win_rate": round(success_count / n, 4),
                 "avg_profit": round(total_profit / n, 4),
             }
-            self._cache[cache_key] = res
+            with self._lock:
+                self._cache[cache_key] = res
             self._save_cache()
             return res
         except Exception as e:
@@ -192,8 +197,9 @@ class BacktestEngine:
         today_str = datetime.date.today().isoformat()
         cache_key = f"confluence_{symbol}_{category}_{z_threshold}_{today_str}"
 
-        if cache_key in self._cache:
-            return self._cache[cache_key]
+        with self._lock:
+            if cache_key in self._cache:
+                return self._cache[cache_key]
 
         try:
             # 同样需要较深历史数据
@@ -251,7 +257,8 @@ class BacktestEngine:
                 "win_rate": round(success_count / n, 4),
                 "avg_profit": round(total_profit / n, 4),
             }
-            self._cache[cache_key] = res
+            with self._lock:
+                self._cache[cache_key] = res
             self._save_cache()
             return res
         except Exception as e:
@@ -268,8 +275,9 @@ class BacktestEngine:
         today_str = datetime.date.today().isoformat()
         cache_key = f"score_{symbol}_{category}_{min_score}_{today_str}"
 
-        if cache_key in self._cache:
-            return self._cache[cache_key]
+        with self._lock:
+            if cache_key in self._cache:
+                return self._cache[cache_key]
 
         try:
             # 增加 offset 以获取更多样本值
@@ -326,7 +334,8 @@ class BacktestEngine:
                 "win_rate": round(success_count / n, 4),
                 "avg_profit": round(total_profit / n, 4),
             }
-            self._cache[cache_key] = res
+            with self._lock:
+                self._cache[cache_key] = res
             self._save_cache()
             return res
         except Exception as e:
@@ -363,9 +372,8 @@ class BacktestEngine:
     def _save_cache(self):
         """保存缓存到文件"""
         try:
-            # 简单限速：这里如果写得太频繁会有 IO 压力
-            # 但由于 get_strategy_stats 只有在扫描到新信号时才触发，频率尚可接受
-            with open(self._cache_file, "w", encoding="utf-8") as f:
-                json.dump(self._cache, f)
+            with self._lock:
+                with open(self._cache_file, "w", encoding="utf-8") as f:
+                    json.dump(self._cache, f)
         except Exception as e:
             app_logger.error(f"保存回测缓存失败: {e}")

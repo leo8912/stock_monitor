@@ -12,7 +12,7 @@ import easyquotation
 from mootdx.quotes import Quotes
 
 from stock_monitor.core.resolvers.mootdx_registry import MootdxNameRegistry
-from stock_monitor.utils.error_handler import retry_on_failure, safe_call
+from stock_monitor.utils.error_handler import safe_call
 from stock_monitor.utils.logger import app_logger
 
 # 常量定义
@@ -153,7 +153,6 @@ class StockDataFetcher:
 
         return None
 
-    @retry_on_failure(max_attempts=3, delay=1.0)
     def fetch_single(self, code: str) -> Optional[dict[str, Any]]:
         """
         获取单只股票数据,带重试机制

@@ -85,10 +85,11 @@ class NotifierService:
         now = time.time()
 
         # 1. 检查缓存
-        if corp_id in cls._token_cache:
-            token, expiry = cls._token_cache[corp_id]
-            if now < expiry - 60:  # 提前1分钟过期
-                return token
+        with cls._lock:
+            if corp_id in cls._token_cache:
+                token, expiry = cls._token_cache[corp_id]
+                if now < expiry - 60:  # 提前1分钟过期
+                    return token
 
         # 2. 从服务器获取
         try:
@@ -97,7 +98,8 @@ class NotifierService:
             if resp.get("errcode") == 0:
                 token = resp["access_token"]
                 expires_in = resp.get("expires_in", 7200)
-                cls._token_cache[corp_id] = (token, now + expires_in)
+                with cls._lock:
+                    cls._token_cache[corp_id] = (token, now + expires_in)
                 return token
             else:
                 app_logger.error(f"获取企微 App Token 失败: {resp}")
@@ -228,11 +230,9 @@ class NotifierService:
             corp_secret = config.get("wecom_corpsecret", "")
 
             if all([agent_id, corp_id, corp_secret]):
-                # 获取 Access Token
-                token_url = f"https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid={corp_id}&corpsecret={corp_secret}"
+                # 获取 Access Token（使用缓存）
                 try:
-                    token_resp = cls._get_session().get(token_url, timeout=10).json()
-                    access_token = token_resp.get("access_token")
+                    access_token = cls._get_app_token(corp_id, corp_secret)
                     if access_token:
                         send_url = f"https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token={access_token}"
 
@@ -258,7 +258,9 @@ class NotifierService:
                         else:
                             app_logger.error(f"企微应用消息发送失败: {resp}")
                     else:
-                        app_logger.error(f"获取企微 Token 失败: {token_resp}")
+                        app_logger.error(
+                            f"获取企微 Token 失败: access_token={access_token}"
+                        )
                 except Exception as e:
                     app_logger.error(f"企微应用消息推送异常: {e}")
             else:
@@ -440,9 +442,11 @@ class NotifierService:
                         try:
                             with open(image_path, "rb") as f:
                                 files = {"media": f}
-                                upload_resp = requests.post(
-                                    upload_url, files=files, timeout=15
-                                ).json()
+                                upload_resp = (
+                                    cls._get_session()
+                                    .post(upload_url, files=files, timeout=15)
+                                    .json()
+                                )
 
                             media_id = upload_resp.get("media_id")
                             if media_id:
@@ -457,9 +461,11 @@ class NotifierService:
                                     "image": {"media_id": media_id},
                                     "safe": 0,
                                 }
-                                resp = requests.post(
-                                    send_url, json=payload, timeout=10
-                                ).json()
+                                resp = (
+                                    cls._get_session()
+                                    .post(send_url, json=payload, timeout=10)
+                                    .json()
+                                )
                                 if resp.get("errcode") == 0:
                                     app_logger.info("企微应用图片消息发送成功")
                                     if title:
@@ -505,9 +511,11 @@ class NotifierService:
                 }
 
                 headers = {"Content-Type": "application/json"}
-                resp = requests.post(
-                    webhook_url, json=payload, headers=headers, timeout=15
-                ).json()
+                resp = (
+                    cls._get_session()
+                    .post(webhook_url, json=payload, headers=headers, timeout=15)
+                    .json()
+                )
 
                 if resp.get("errcode") == 0:
                     app_logger.info("Webhook 图片发送成功")

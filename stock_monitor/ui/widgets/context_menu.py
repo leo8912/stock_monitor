@@ -24,16 +24,6 @@ class AppContextMenu(QtWidgets.QMenu):
         """设置菜单样式"""
         self.setObjectName("AppContextMenu")
 
-    def update_font_family(self, font_family):
-        """
-        更新菜单字体族，不再在组件级别执行，依赖 QApplication
-        """
-        pass
-
-    def restore_default_style(self):
-        """恢复默认样式"""
-        pass
-
 
 # 示例用法和测试代码
 if __name__ == "__main__":
