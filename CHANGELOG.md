@@ -1,5 +1,10 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.4.1] - 2026-06-15
+
+### 🐛 修复 (Fixes)
+- 修复 GitHub Actions workflow 触发路径：`version.py` → `pyproject.toml`
+
 ## [v4.4.0] - 2026-06-15
 
 ### 🏗️ 架构重构 (Architecture)
