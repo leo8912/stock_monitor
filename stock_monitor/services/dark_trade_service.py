@@ -195,9 +195,17 @@ class DarkTradeService(QtCore.QThread):
             date_key = date_str or datetime.now().strftime("%Y%m%d")
             update_time = datetime.now().strftime("%H:%M")
 
-            # 先以 consecutive_days=0 更新缓存（保证UI有基本数据）
+            # 保留已有的 consecutive_days，只更新当日净流入
             with self._lock:
-                self._cache = {code: (net, 0) for code, net in new_index.items()}
+                old_cache = dict(self._cache)
+                merged = {}
+                for code, net in new_index.items():
+                    if code in old_cache:
+                        old_net, old_days = old_cache[code]
+                        merged[code] = (net, old_days)
+                    else:
+                        merged[code] = (net, 0)
+                self._cache = merged
                 self._cache_date = date_key
                 self._cache_time = update_time
                 self._last_refresh_ts = time.time()
@@ -312,6 +320,9 @@ class DarkTradeService(QtCore.QThread):
         # 启动后异步补历史（不阻塞UI，但计算连续天数后会再次emit）
         self._fetch_history_and_update()
 
+        history_refresh_interval = 30 * 60  # 每30分钟刷新一次连续天数
+        last_history_refresh = time.time()
+
         while self._running:
             try:
                 # 处理手动抓取请求（线程安全）
@@ -320,6 +331,7 @@ class DarkTradeService(QtCore.QThread):
                     app_logger.info("[DarkTrade] 执行手动全量抓取...")
                     self._do_fetch_and_update()
                     self._fetch_history_and_update()
+                    last_history_refresh = time.time()
 
                 self._check_close_export()
 
@@ -328,6 +340,11 @@ class DarkTradeService(QtCore.QThread):
                     elapsed = time.time() - self._last_refresh_ts
                     if elapsed >= self.refresh_interval:
                         self._do_fetch_and_update()
+
+                    # 定期刷新连续天数
+                    if time.time() - last_history_refresh >= history_refresh_interval:
+                        self._fetch_history_and_update()
+                        last_history_refresh = time.time()
 
             except Exception as e:
                 app_logger.error(f"[DarkTrade] 主循环异常: {e}")
