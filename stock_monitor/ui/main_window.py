@@ -48,6 +48,10 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         # 初始化ViewModel
         self.viewModel = MainWindowViewModel()
 
+        # 连接本地信号（必须在 _try_load_session_cache 之前，因为缓存加载会 emit）
+        self.update_table_signal.connect(self.table.update_data)
+        self.table.height_adjustment_requested.connect(self.adjust_window_height)
+
         self.setup_ui()
         # 尝试加载会话缓存
         if not self._try_load_session_cache():
@@ -202,9 +206,7 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         # self.viewModel.stock_data_updated.connect(self._handle_refresh_data)
         # self.viewModel.refresh_error_occurred.connect(self._handle_refresh_error)
 
-        # 初始化状态条，连接本地信号
-        self.update_table_signal.connect(self.table.update_data)
-        self.table.height_adjustment_requested.connect(self.adjust_window_height)
+        # 初始化状态条
 
         # 加载状态指示器，初始隐藏
         self.loading_label = QtWidgets.QLabel("⏳ 数据加载中...")

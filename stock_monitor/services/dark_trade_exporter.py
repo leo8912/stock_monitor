@@ -270,7 +270,10 @@ def export_dark_trade_excel(
 
     # 清理自选股代码（去市场前缀，统一6位）
     def clean_code(c: str) -> str:
-        return c.lstrip("sShHzZkK") if len(c) > 6 else c
+        for prefix in ("sh", "sz", "hk", "SH", "SZ", "HK"):
+            if c.startswith(prefix):
+                return c[len(prefix) :]
+        return c
 
     watchlist_clean = {clean_code(c) for c in watchlist_codes}
     watchlist_rows = [row for row in all_rows if row["code"] in watchlist_clean]

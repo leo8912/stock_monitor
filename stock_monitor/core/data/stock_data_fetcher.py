@@ -73,10 +73,6 @@ class StockDataFetcher:
         if hasattr(self, "_executor") and self._executor:
             self._executor.shutdown(wait=True, cancel_futures=True)
 
-    def _get_name_cache_file(self):
-        # 已经转移到 MootdxNameRegistry
-        pass
-
     def get_quotation_engine(self, code: str):
         """
         根据股票代码获取相应的行情引擎
@@ -189,7 +185,10 @@ class StockDataFetcher:
         Returns:
             Dict[str, Optional[Dict[str, Any]]]: 股票数据字典,键为股票代码,值为股票数据或None
         """
+        import threading
+
         result = {}
+        result_lock = threading.Lock()
 
         # 按市场类型分组
         sina_codes = []  # A股普通股票和指数
@@ -205,11 +204,15 @@ class StockDataFetcher:
         futures = []
         if sina_codes:
             futures.append(
-                self._executor.submit(self._fetch_mootdx_stocks, result, sina_codes)
+                self._executor.submit(
+                    self._fetch_mootdx_stocks, result, result_lock, sina_codes
+                )
             )
         if hk_codes:
             futures.append(
-                self._executor.submit(self._fetch_hk_stocks, result, hk_codes)
+                self._executor.submit(
+                    self._fetch_hk_stocks, result, result_lock, hk_codes
+                )
             )
 
         # 等待所有任务完成
@@ -222,7 +225,7 @@ class StockDataFetcher:
 
         return result
 
-    def _fetch_mootdx_stocks(self, result: dict, sina_codes: list[str]):
+    def _fetch_mootdx_stocks(self, result: dict, result_lock, sina_codes: list[str]):
         """
         批量使用 mootdx 获取A股数据，并使用 easyquotation 缓存名称
         """
@@ -246,19 +249,20 @@ class StockDataFetcher:
 
             # 2. 拼接数据
             updated_count = 0
-            for code, row in zip(sina_codes, records):
-                if not isinstance(row, dict) or "price" not in row:
-                    continue
-                row["name"] = self.name_registry.get_name(code)
-                result[code] = row
-                updated_count += 1
+            with result_lock:
+                for code, row in zip(sina_codes, records):
+                    if not isinstance(row, dict) or "price" not in row:
+                        continue
+                    row["name"] = self.name_registry.get_name(code)
+                    result[code] = row
+                    updated_count += 1
 
             app_logger.debug(f"成功使用 mootdx 获取 {updated_count} 只 A 股行情")
 
         except Exception as e:
             app_logger.error(f"批量获取 mootdx 基础行情失败: {e}")
 
-    def _fetch_hk_stocks(self, result: dict, hk_codes: list[str]):
+    def _fetch_hk_stocks(self, result: dict, result_lock, hk_codes: list[str]):
         """
         批量获取港股数据
         Args:
@@ -295,7 +299,8 @@ class StockDataFetcher:
                 )
 
                 if hk_data:
-                    result.update(hk_data)
+                    with result_lock:
+                        result.update(hk_data)
                     app_logger.debug(f"成功获取 {len(hk_data)} 只港股数据")
         except Exception as e:
             app_logger.error(f"批量获取港股数据时发生错误: {e}")

@@ -33,8 +33,6 @@ class FinancialFilter:
         s_lower = symbol.lower()
         if s_lower.startswith(("sh", "sz")):
             raw_symbol = symbol[2:]
-        elif s_lower.startswith(("sh", "sz")):  # 冗余检查，以防大小写混合
-            raw_symbol = symbol[2:]
 
         data = self._get_cached_data(raw_symbol)
         if not data:

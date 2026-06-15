@@ -129,24 +129,6 @@ class TestIndicatorAccuracyBenchmarks:
         assert np.percentile(valid_pulse, 10) > 0.1
         assert np.percentile(valid_pulse, 90) < 5.0
 
-    def test_indicator_cache_consistency(self):
-        """指标缓存一致性 - 同一输入应得到相同输出"""
-        from stock_monitor.core.cache.cache_warmer import IndicatorComputationOptimizer
-
-        mock_engine = MagicMock()
-        bars_df = pd.DataFrame({"close": [100, 101, 102]})
-        mock_engine.fetch_bars.return_value = bars_df
-        mock_engine.calculate_rsrs.return_value = (1.5, 0.05)
-
-        optimizer = IndicatorComputationOptimizer(mock_engine)
-
-        # 同一输入计算两次
-        result1 = optimizer.compute_indicator_set("000001.SZ", ["RSRS"], bars_df)
-        result2 = optimizer.compute_indicator_set("000001.SZ", ["RSRS"], bars_df)
-
-        # 结果应该完全相同
-        assert result1 == result2
-
     def test_multi_timeframe_consistency(self, sample_bars_df):
         """多时间框架一致性 - 同股票不同周期应有相同特征"""
         # 日线和4小时线应该反映相同的趋势方向

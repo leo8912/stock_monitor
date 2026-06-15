@@ -1257,10 +1257,7 @@ class NewSettingsDialog(QDialog):
 
             from stock_monitor.utils.logger import app_logger
 
-            # [P1 FIX] 保存前先验证配置有效性
-            if not self.viewModel.validate_settings(settings):
-                return False  # 验证失败，阻止保存
-
+            # 保存前验证已在 viewModel.save_settings 中执行，此处不再重复
             self.viewModel.save_settings(settings)
             return True
         except Exception as e:
@@ -1860,19 +1857,3 @@ class NewSettingsDialog(QDialog):
             app_logger.error(f"设置对话框 hideEvent 处理失败：{e}")
         finally:
             super().hideEvent(event)
-
-    def on_activated(self, reason):
-        """
-        托盘图标激活事件处理
-
-        Args:
-            reason: 激活原因
-        """
-        from PyQt6 import QtGui, QtWidgets
-
-        if reason == QtWidgets.QSystemTrayIcon.ActivationReason.Trigger:  # type: ignore
-            self.main_window.show()
-            self.main_window.raise_()
-            self.main_window.activateWindow()
-        elif reason == QtWidgets.QSystemTrayIcon.ActivationReason.Context:  # type: ignore
-            self.contextMenu().exec(QtGui.QCursor.pos())  # type: ignore

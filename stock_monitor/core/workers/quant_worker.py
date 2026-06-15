@@ -870,7 +870,8 @@ class QuantWorker(QtCore.QThread):
         fin_info = f"{fin_label} {fin_reasons}" if fin_reasons else fin_label
 
         # 历史轨迹
-        history_list = self._signals_history.get(symbol, [])
+        with self._lock:
+            history_list = self._signals_history.get(symbol, [])
         history_text = ""
         if history_list:
             history_text = "\n今日轨迹：" + " → ".join(

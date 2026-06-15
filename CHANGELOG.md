@@ -1,5 +1,31 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.3.5] - 2026-06-12
+
+### 🐛 修复 (Fixes)
+- **[P0] 修复自适应阈值缓存失效**：`_market_cap_cache.put()` 改为 `.set()`，修复市值阈值永远无法缓存导致重复 API 调用。
+- **[P0] 修复 dispatch_report 未定义变量**：app 通道成功后添加 `return True`，消除 `webhook_url` 未定义导致的 `UnboundLocalError`。
+- **[P1] 修复 LRUCacheWithTTL 线程安全**：添加 `threading.Lock` 保护所有缓存操作，防止并发读写导致状态损坏。
+- **[P1] 修复 _market_benchmark_cache 线程安全**：添加类级锁保护多线程并发访问大盘基准缓存。
+- **[P1] 修复 StockDatabase 单例初始化竞态**：`__init__` 添加锁保护，防止并发初始化导致数据库重复初始化。
+- **[P1] 修复 ConfigManager 单例线程安全**：`__new__` 和 `__init__` 添加类级锁，`get`/`set` 添加实例锁。
+- **[P1] 修复 _signals_history 并发读取**：`_merge_signals_for_symbol` 中读取历史记录时添加锁保护。
+- **[P1] 修复 matplotlib figure 内存泄漏**：WaveChartDialog 关闭时调用 `plt.close()` 释放资源。
+- **[P1] 修复 update_table_signal 在连接前 emit**：将信号连接移至 `_try_load_session_cache` 之前。
+- **[P1] 清理 IndicatorComputationOptimizer 死测试**：移除引用不存在类的测试代码。
+- **[P2] 修复 DataFrame 变异副作用**：`calculate_intensity_score`、`calculate_comprehensive_indicators`、`check_macd_bullish_divergence` 改为在副本上操作。
+- **[P2] 修复 NotifierService 线程安全**：`_get_session` 和 `_get_app_token` 添加锁保护。
+- **[P2] 修复 clear_all_caches 遗漏 _market_cap_cache**：补全市值缓存清理。
+- **[P2] 修复 fetch_bars 缓存命中检查**：使用实际行数而非请求偏移量判断缓存有效性。
+- **[P2] 修复 dispatch_alert 绕过共享会话**：改用 `cls._get_session()` 统一 HTTP 连接池。
+- **[P2] 修复配置文件非原子写入**：改为先写临时文件再 `os.replace()` 原子替换。
+- **[P2] 修复 fetch_multiple 共享字典竞态**：添加 `threading.Lock` 保护并发写入。
+- **[P2] 修复 clean_code 过度截断**：改为显式前缀移除而非 `lstrip`。
+- **[P2] 修复设置保存重复验证**：移除 `_save_config_via_vm` 中的重复验证调用。
+
+### ⚡ 优化 (Optimization)
+- **[清理] 移除死代码**：删除 `_get_name_cache_file` 空方法、`on_activated` 不可达方法、`financial_filter.py` 冗余分支、`_ensure_ta_active` 不可达 return。
+
 ## [v4.3.4] - 2026-06-12
 
 ### 🐛 修复 (Fixes)

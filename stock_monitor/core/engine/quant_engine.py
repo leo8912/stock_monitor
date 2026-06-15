@@ -4,6 +4,7 @@
 
 import os
 import sys
+import threading
 import time
 
 import numpy as np
@@ -36,6 +37,7 @@ class LRUCacheWithTTL:
     """LRU + TTL 混合缓存，基于 OrderedDict 实现（线程安全）"""
 
     def __init__(self, max_size=128, default_ttl=60):
+        import threading
         from collections import OrderedDict
 
         self.cache = OrderedDict()
@@ -43,48 +45,54 @@ class LRUCacheWithTTL:
         self.default_ttl = default_ttl
         self.hits = 0
         self.misses = 0
+        self._lock = threading.Lock()
 
     def get(self, key, ttl_override=None):
-        if key not in self.cache:
-            self.misses += 1
-            return None
-        value, timestamp, count = self.cache[key]
-        ttl = ttl_override or self.default_ttl
-        if time.time() - timestamp > ttl:
-            del self.cache[key]
-            self.misses += 1
-            return None
-        self.cache[key] = [value, timestamp, count + 1]
-        self.cache.move_to_end(key)
-        self.hits += 1
-        return value
+        with self._lock:
+            if key not in self.cache:
+                self.misses += 1
+                return None
+            value, timestamp, count = self.cache[key]
+            ttl = ttl_override or self.default_ttl
+            if time.time() - timestamp > ttl:
+                del self.cache[key]
+                self.misses += 1
+                return None
+            self.cache[key] = [value, timestamp, count + 1]
+            self.cache.move_to_end(key)
+            self.hits += 1
+            return value
 
     def set(self, key, value, ttl_override=None):
-        if key in self.cache:
-            del self.cache[key]
-        while len(self.cache) >= self.max_size:
-            self.cache.popitem(last=False)
-        self.cache[key] = [value, time.time(), 0]
+        with self._lock:
+            if key in self.cache:
+                del self.cache[key]
+            while len(self.cache) >= self.max_size:
+                self.cache.popitem(last=False)
+            self.cache[key] = [value, time.time(), 0]
 
     def delete(self, key):
         """删除缓存中的指定key"""
-        self.cache.pop(key, None)
+        with self._lock:
+            self.cache.pop(key, None)
 
     def clear(self):
         """清空所有缓存条目"""
-        self.cache.clear()
+        with self._lock:
+            self.cache.clear()
 
     def get_stats(self):
-        total = self.hits + self.misses
-        rate = (self.hits / total * 100) if total else 0
-        return {
-            "size": len(self.cache),
-            "hits": self.hits,
-            "misses": self.misses,
-            "hit_rate": f"{rate:.1f}%",
-            "max_size": self.max_size,
-            "avg_ttl": self.default_ttl,
-        }
+        with self._lock:
+            total = self.hits + self.misses
+            rate = (self.hits / total * 100) if total else 0
+            return {
+                "size": len(self.cache),
+                "hits": self.hits,
+                "misses": self.misses,
+                "hit_rate": f"{rate:.1f}%",
+                "max_size": self.max_size,
+                "avg_ttl": self.default_ttl,
+            }
 
 
 _bars_cache_instance = None
@@ -111,6 +119,7 @@ class QuantEngine:
 
     # 大盘基准缓存，避免重复拉取
     _market_benchmark_cache = {}
+    _market_benchmark_lock = threading.Lock()
     _rsrs_cache = {}  # RSRS 计算缓存：{(symbol, timeframe): (zscore, slope, timestamp)}
 
     def __init__(self, mootdx_client):
@@ -144,8 +153,10 @@ class QuantEngine:
         self._avg_vol_cache.clear()
         self._auction_cache.clear()
         self._large_order_cache.clear()
+        self._market_cap_cache.clear()
         self._rsrs_cache.clear()
-        self._market_benchmark_cache.clear()
+        with self._market_benchmark_lock:
+            self._market_benchmark_cache.clear()
 
     def _parse_symbol(
         self, symbol: str, market: int = None
@@ -194,12 +205,11 @@ class QuantEngine:
         cache_entry = self._bars_lru_cache.get(cache_key)
         if cache_entry is not None:
             if isinstance(cache_entry, tuple) and len(cache_entry) == 2:
-                cached_df, cached_offset = cache_entry
+                cached_df, _cached_offset = cache_entry
             else:
                 cached_df = cache_entry
-                cached_offset = len(cached_df)
 
-            if len(cached_df) >= offset or cached_offset >= offset:
+            if len(cached_df) >= offset:
                 return cached_df.tail(offset).copy().reset_index(drop=True)
 
         # 3. 核心抓取循环 (候选路径自动回退)
@@ -357,6 +367,8 @@ class QuantEngine:
         self, df: pd.DataFrame, window: int = 30, end_idx: int = None
     ) -> bool:
         try:
+            # 复制 DataFrame 避免修改调用者的原始数据
+            df = df.copy()
             if "MACDh_12_26_9" not in df.columns:
                 df.ta.macd(append=True)
             curr = df if end_idx is None else df.iloc[: end_idx + 1]
@@ -503,6 +515,8 @@ class QuantEngine:
         if df.empty or len(df) < 60:
             return {}
         try:
+            # 复制 DataFrame 避免修改调用者的原始数据
+            df = df.copy()
             res = {}
             # 1. 均线分析 (EMA5, 10, 20, 60)
             df.ta.ema(length=5, append=True)
@@ -564,13 +578,12 @@ class QuantEngine:
             idx_market = 1  # SH
 
             # 检查基准缓存 (1分钟有效期)
-            import time
-
             now_ts = time.time()
-            if "benchmark" in self._market_benchmark_cache:
-                cache_val, ts, is_valid = self._market_benchmark_cache["benchmark"]
-                if now_ts - ts < 60:
-                    return cache_val, is_valid
+            with self._market_benchmark_lock:
+                if "benchmark" in self._market_benchmark_cache:
+                    cache_val, ts, is_valid = self._market_benchmark_cache["benchmark"]
+                    if now_ts - ts < 60:
+                        return cache_val, is_valid
 
             idx_info = self.get_latest_price_info(idx_symbol, idx_market)
 
@@ -579,11 +592,13 @@ class QuantEngine:
                 app_logger.warning(
                     "[大盘数据] 上证指数数据获取失败，Alpha 计算将使用 0.0 作为基准"
                 )
-                self._market_benchmark_cache["benchmark"] = (0.0, now_ts, False)
+                with self._market_benchmark_lock:
+                    self._market_benchmark_cache["benchmark"] = (0.0, now_ts, False)
                 return 0.0, False
 
             idx_pct = idx_info.get("pct", 0.0)
-            self._market_benchmark_cache["benchmark"] = (idx_pct, now_ts, True)
+            with self._market_benchmark_lock:
+                self._market_benchmark_cache["benchmark"] = (idx_pct, now_ts, True)
             return idx_pct, True
         except Exception as e:
             app_logger.error(f"[大盘数据] 获取上证指数异常：{e}")
@@ -601,6 +616,10 @@ class QuantEngine:
         curr = df if end_idx is None else df.iloc[: end_idx + 1]
         if len(curr) < 20:
             return 0
+
+        # 复制 DataFrame 避免修改调用者的原始数据
+        df = df.copy()
+        curr = df if end_idx is None else df.iloc[: end_idx + 1]
 
         score = 0
         signal_names = [s["name"] for s in signals]
@@ -824,12 +843,11 @@ class QuantEngine:
                 f"激活 pandas-ta 时发生未知错误: {e}\n{traceback.format_exc()}"
             )
             return False
-        return True
 
     def scan_all_timeframes(self, symbol: str, market: int = None) -> list[dict]:
         """全量扫描，按大周期→小周期排序返回"""
         # 针对打包环境的自愈点
-        self._ensure_ta_active(pd.DataFrame())
+        self._ensure_ta_active()
 
         results = []
         for tf, cat in self.FreqMap.items():
@@ -946,7 +964,7 @@ class QuantEngine:
                                 threshold = BIG_ORDER_THRESHOLD_LARGE_CAP
 
                             # 缓存结果
-                            self._market_cap_cache.put(symbol, threshold)
+                            self._market_cap_cache.set(symbol, threshold)
                             return threshold
                         except (ValueError, TypeError):
                             pass

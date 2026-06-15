@@ -182,19 +182,20 @@ class StockDatabase(StockDataSource):
 
     def __init__(self):
         """初始化数据库连接"""
-        if not hasattr(self, "_initialized"):
-            # 使用配置目录存储数据库，确保数据持久化且可写
-            config_dir = get_config_dir()
-            self.db_path = os.path.join(config_dir, DB_FILE)
+        with self._lock:
+            if not hasattr(self, "_initialized"):
+                # 使用配置目录存储数据库，确保数据持久化且可写
+                config_dir = get_config_dir()
+                self.db_path = os.path.join(config_dir, DB_FILE)
 
-            self._initialized = True
-            # 确保数据库文件和表结构存在
-            self._initialize_database()
+                self._initialized = True
+                # 确保数据库文件和表结构存在
+                self._initialize_database()
 
-            # 智能检查：如果数据库为空，导入基础数据
-            if self.is_empty():
-                app_logger.info("检测到空数据库，正在初始化...")
-                self._populate_base_data()
+                # 智能检查：如果数据库为空，导入基础数据
+                if self.is_empty():
+                    app_logger.info("检测到空数据库，正在初始化...")
+                    self._populate_base_data()
 
     @contextmanager
     def _get_connection(self):

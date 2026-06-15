@@ -4,6 +4,7 @@
 """
 
 import os
+import threading
 import time
 from typing import Optional
 
@@ -64,13 +65,16 @@ class NotifierService:
     _token_cache = {}
     # 共享 HTTP 会话（连接池复用）
     _session = None
+    _lock = threading.Lock()
 
     @classmethod
     def _get_session(cls):
         """获取共享的 requests.Session"""
         if cls._session is None:
-            cls._session = requests.Session()
-            cls._session.headers.update({"Content-Type": "application/json"})
+            with cls._lock:
+                if cls._session is None:
+                    cls._session = requests.Session()
+                    cls._session.headers.update({"Content-Type": "application/json"})
         return cls._session
 
     @classmethod
@@ -227,7 +231,7 @@ class NotifierService:
                 # 获取 Access Token
                 token_url = f"https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid={corp_id}&corpsecret={corp_secret}"
                 try:
-                    token_resp = requests.get(token_url, timeout=10).json()
+                    token_resp = cls._get_session().get(token_url, timeout=10).json()
                     access_token = token_resp.get("access_token")
                     if access_token:
                         send_url = f"https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token={access_token}"
@@ -243,7 +247,11 @@ class NotifierService:
                             "text": {"content": full_content},
                             "safe": 0,
                         }
-                        resp = requests.post(send_url, json=payload, timeout=10).json()
+                        resp = (
+                            cls._get_session()
+                            .post(send_url, json=payload, timeout=10)
+                            .json()
+                        )
                         if resp.get("errcode") == 0:
                             app_logger.info(f"企微应用消息发送成功: {title}")
                             success = True
@@ -310,6 +318,10 @@ class NotifierService:
                 app_logger.error(f"企业应用推送汇总报告异常: {app_err}")
                 success = False
 
+        # App 通道成功，直接返回
+        if success:
+            return True
+
         # 2. Webhook Markdown 通道
         if not success:
             webhook_url = config.get("wecom_webhook", "")
@@ -331,18 +343,6 @@ class NotifierService:
             if footer:
                 text_content += f"\n\n---\n{footer}"
             return cls.send_wecom_webhook_text(webhook_url, text_content)
-
-        text_content = f"📊 {title}\n\n报告时间：{time.strftime('%Y-%m-%d %H:%M')}\n\n"
-        text_content += "\n\n".join([item.replace("**", "") for item in content_items])
-        if footer:
-            text_content += f"\n\n---\n\n{footer.replace('**', '')}"
-
-        try:
-            payload = {"msgtype": "text", "text": {"content": text_content}}
-            resp = requests.post(webhook_url, json=payload, timeout=10)
-            return resp.json().get("errcode") == 0
-        except Exception:
-            return False
 
     @classmethod
     def dispatch_custom_message(

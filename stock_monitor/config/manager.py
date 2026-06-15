@@ -2,6 +2,7 @@ import json
 import os
 import shutil
 import sys
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -70,6 +71,7 @@ class ConfigManager:
 
     _instance = None
     _default_config_path = CONFIG_PATH  # 类级别默认值
+    _class_lock = threading.Lock()
 
     def __new__(cls, config_path: str = CONFIG_PATH):
         """
@@ -82,11 +84,13 @@ class ConfigManager:
             单例模式下，首次调用确定配置路径，后续调用忽略参数
         """
         if cls._instance is None:
-            # 首次创建：存储路径到类属性
-            cls._default_config_path = config_path
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
-            cls._instance._config_path = config_path  # 直接存储到实例
+            with cls._class_lock:
+                if cls._instance is None:
+                    # 首次创建：存储路径到类属性
+                    cls._default_config_path = config_path
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
+                    cls._instance._config_path = config_path  # 直接存储到实例
         return cls._instance
 
     def __init__(self, config_path: str = CONFIG_PATH):
@@ -114,6 +118,7 @@ class ConfigManager:
         self._config_path = config_path
         self.config_path = config_path  # 保持向后兼容
         self._config: dict[str, Any] = {}
+        self._instance_lock = threading.Lock()
         self._load_config()
         self._initialized = True
 
@@ -143,18 +148,28 @@ class ConfigManager:
 
     def _save_config(self) -> bool:
         """
-        保存配置文件
+        保存配置文件（原子写入，防止中断导致文件损坏）
 
         Returns:
             bool: 保存是否成功
         """
         try:
-            with open(self.config_path, "w", encoding="utf-8") as f:
+            # 先写入临时文件，再原子替换，防止写入中断导致文件损坏
+            tmp_path = self.config_path + ".tmp"
+            with open(tmp_path, "w", encoding="utf-8") as f:
                 json.dump(self._config, f, ensure_ascii=False, indent=2)
+            # 原子替换（Windows 上 os.replace 是原子操作）
+            os.replace(tmp_path, self.config_path)
             app_logger.info("配置文件保存成功")
             return True
         except Exception as e:
             app_logger.error(f"保存配置文件时发生错误: {e}")
+            # 清理临时文件
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except OSError:
+                pass
             return False
 
     def get(self, key: str, default: Any = None) -> Any:
@@ -168,7 +183,8 @@ class ConfigManager:
         Returns:
             配置项的值或默认值
         """
-        return self._config.get(key, default)
+        with self._instance_lock:
+            return self._config.get(key, default)
 
     def set(self, key: str, value: Any) -> bool:
         """
@@ -181,8 +197,9 @@ class ConfigManager:
         Returns:
             bool: 是否保存成功
         """
-        self._config[key] = value
-        return self._save_config()
+        with self._instance_lock:
+            self._config[key] = value
+            return self._save_config()
 
     def _create_default_config(self) -> dict[str, Any]:
         """创建默认配置文件"""

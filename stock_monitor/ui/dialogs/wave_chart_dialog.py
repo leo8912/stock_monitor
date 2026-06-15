@@ -147,6 +147,15 @@ class WaveChartDialog(QtWidgets.QDialog):
 
         main_layout.addWidget(self.info_box)
 
+    def closeEvent(self, event):
+        """关闭时释放 matplotlib 资源"""
+        try:
+            plt.close(self.figure)
+            self.figure.clear()
+        except Exception:
+            pass
+        super().closeEvent(event)
+
     def load_and_plot(self):
         """
         获取数据、分析、绘制并更新UI

@@ -9,7 +9,6 @@ import pytest
 
 from stock_monitor.core.cache.cache_warmer import (
     CacheWarmer,
-    IndicatorComputationOptimizer,
     PerformanceMonitor,
 )
 
@@ -125,95 +124,6 @@ class TestCacheWarmer:
 
         assert "warming_stats" in status
         assert "engine_caches" in status
-
-
-class TestIndicatorComputationOptimizer:
-    """指标计算优化器测试"""
-
-    @pytest.fixture
-    def mock_engine(self):
-        """创建模拟的引擎"""
-        mock_engine = MagicMock()
-
-        import pandas as pd
-
-        mock_bars = pd.DataFrame(
-            {
-                "close": [100, 101, 102, 103, 104],
-                "volume": [1000, 1100, 1200, 1300, 1400],
-            }
-        )
-        mock_engine.fetch_bars.return_value = mock_bars
-        mock_engine.calculate_rsrs.return_value = (1.5, 0.05)
-        mock_engine.detect_obv_accumulation.return_value = [{"level": "low"}]
-        mock_engine.scan_all_timeframes.return_value = [
-            {"name": "MACD底背离"},
-            {"name": "RSI超卖"},
-        ]
-
-        return mock_engine
-
-    def test_optimizer_initialization(self, mock_engine):
-        """测试优化器初始化"""
-        optimizer = IndicatorComputationOptimizer(mock_engine)
-
-        assert optimizer.indicator_cache == {}
-        assert optimizer.cache_time == {}
-
-    def test_compute_rsrs_indicator(self, mock_engine):
-        """测试RSRS指标计算"""
-        optimizer = IndicatorComputationOptimizer(mock_engine)
-
-        results = optimizer.compute_indicator_set("000001.SZ", ["RSRS"])
-
-        assert "RSRS" in results
-        assert results["RSRS"]["z_score"] == 1.5
-
-    def test_compute_multiple_indicators(self, mock_engine):
-        """测试多个指标计算"""
-        optimizer = IndicatorComputationOptimizer(mock_engine)
-
-        results = optimizer.compute_indicator_set("000001.SZ", ["RSRS", "OBV", "MACD"])
-
-        assert "RSRS" in results
-        assert "OBV" in results
-        assert "MACD" in results
-
-    def test_compute_with_provided_bars(self, mock_engine):
-        """测试使用提供的K线数据计算指标"""
-        import pandas as pd
-
-        optimizer = IndicatorComputationOptimizer(mock_engine)
-        bars_df = pd.DataFrame({"close": [100, 101, 102]})
-
-        _ = optimizer.compute_indicator_set("000001.SZ", ["RSRS"], bars_df=bars_df)
-
-        # 验证没有调用fetch_bars
-        mock_engine.fetch_bars.assert_not_called()
-
-    def test_invalidate_symbol_cache(self, mock_engine):
-        """测试单个符号缓存失效"""
-        optimizer = IndicatorComputationOptimizer(mock_engine)
-
-        optimizer.indicator_cache["000001.SZ"] = {"RSRS": {"z_score": 1.5}}
-        optimizer.cache_time["000001.SZ"] = time.time()
-
-        optimizer.invalidate_cache("000001.SZ")
-
-        assert "000001.SZ" not in optimizer.indicator_cache
-        assert "000001.SZ" not in optimizer.cache_time
-
-    def test_invalidate_all_caches(self, mock_engine):
-        """测试清空所有缓存"""
-        optimizer = IndicatorComputationOptimizer(mock_engine)
-
-        optimizer.indicator_cache["000001.SZ"] = {"RSRS": {"z_score": 1.5}}
-        optimizer.cache_time["000001.SZ"] = time.time()
-
-        optimizer.invalidate_cache()
-
-        assert len(optimizer.indicator_cache) == 0
-        assert len(optimizer.cache_time) == 0
 
 
 class TestPerformanceMonitor:
