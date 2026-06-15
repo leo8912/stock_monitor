@@ -47,6 +47,7 @@ def network_retry(
     min_wait: float = DEFAULT_MIN_WAIT,
     max_wait: float = DEFAULT_MAX_WAIT,
     multiplier: float = DEFAULT_MULTIPLIER,
+    backoff_factor: float = None,
 ):
     """
     网络请求重试装饰器（指数退避）
@@ -56,7 +57,10 @@ def network_retry(
         min_wait: 最小等待时间（秒）
         max_wait: 最大等待时间（秒）
         multiplier: 退避倍数
+        backoff_factor: 兼容旧接口，等同于 multiplier
     """
+    if backoff_factor is not None:
+        multiplier = backoff_factor
     return retry(
         stop=stop_after_attempt(max_attempts),
         wait=wait_exponential(multiplier=multiplier, min=min_wait, max=max_wait),
