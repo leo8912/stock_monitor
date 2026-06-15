@@ -1,5 +1,11 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.4.2] - 2026-06-15
+
+### 🐛 修复 (Fixes)
+- 修复 Python 3.9 兼容性：`X | None` 语法 → `Optional`（PyInstaller 构建环境）
+- 修复 GitHub 更新检查：修复 `ghfast.top` 镜像失效，优化请求头和超时
+
 ## [v4.4.1] - 2026-06-15
 
 ### 🐛 修复 (Fixes)
