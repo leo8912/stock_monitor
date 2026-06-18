@@ -197,6 +197,15 @@ class StockDatabase(StockDataSource):
                     app_logger.info("检测到空数据库，正在初始化...")
                     self._populate_base_data()
 
+    def close(self):
+        """关闭数据库连接池"""
+        try:
+            pool = get_db_pool()
+            pool.close_all()
+            app_logger.info("数据库连接池已关闭")
+        except Exception as e:
+            app_logger.warning(f"关闭数据库连接池失败: {e}")
+
     @contextmanager
     def _get_connection(self):
         """获取数据库连接（上下文管理器，自动归还到连接池）"""

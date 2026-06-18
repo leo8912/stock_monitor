@@ -743,7 +743,14 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         清理 Qt 对象、断开信号连接、保存状态
         """
         try:
-            app_logger.info("主窗口关闭，开始清理资源...")
+            # 记录关闭来源：spontaneous()=True 表示用户操作(X按钮/Alt+F4)，False 表示代码调用 close()
+            is_user_action = event.spontaneous()
+            source = (
+                "用户操作(点击X/Alt+F4)"
+                if is_user_action
+                else "程序内部触发(代码调用close())"
+            )
+            app_logger.info(f"主窗口关闭事件触发，来源: {source}，开始清理资源...")
 
             # 1. 停止所有计时器
             if hasattr(self, "_loading_timer") and self._loading_timer:

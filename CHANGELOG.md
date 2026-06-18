@@ -1,5 +1,11 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.4.8] - 2026-06-18
+
+### 🐛 修复 (Fixes)
+- 修复 `StockDatabase` 缺少 `close()` 方法导致关闭时警告 `'StockDatabase' object has no attribute 'close'`
+- `closeEvent` 增加关闭来源日志：记录是用户操作（点击X/Alt+F4）还是程序内部触发（代码调用close()），便于排查意外退出问题
+
 ## [v4.4.7] - 2026-06-15
 
 ### 🐛 修复 (Fixes)
