@@ -9,7 +9,11 @@ from typing import Any
 import pandas as pd
 
 from ...utils.logger import app_logger
-from .quant_engine_constants import WAVE_MIN_K_COUNT, WAVE_ZIGZAG_THRESHOLD
+from .quant_engine_constants import (
+    GLOBAL_TREND_THRESHOLD,
+    WAVE_MIN_K_COUNT,
+    WAVE_ZIGZAG_THRESHOLD,
+)
 
 
 class SwingPoint:
@@ -235,7 +239,9 @@ class WaveAnalyzer:
         if len(all_peaks) >= 2:
             recent_high = all_peaks[-1].price
             prev_high = all_peaks[-2].price
-            if recent_high < prev_high * 0.92:  # 近期高点比前高点低 8% 以上
+            if (
+                recent_high < prev_high * GLOBAL_TREND_THRESHOLD
+            ):  # 近期高点比前高点低 8% 以上
                 is_global_downtrend = True
 
         # 低点降低 → 下跌趋势
@@ -609,7 +615,7 @@ class WaveAnalyzer:
         # 使用实际当前价（收盘价），而非最后一个摆动点价格
         curr_price = (
             actual_current_price
-            if actual_current_price
+            if actual_current_price is not None
             else (swings[-1].price if swings else 0)
         )
         if curr_price <= 0:

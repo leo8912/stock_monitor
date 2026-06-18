@@ -78,3 +78,4 @@ MIN_OPERATING_PROFIT_GROWTH = -0.3  # 最小营业利润增长率
 # ====== 波浪与斐波那契相关常量 ======
 WAVE_ZIGZAG_THRESHOLD = 0.05  # ZigZag 摆动高低点检测阈值（默认5%）
 WAVE_MIN_K_COUNT = 50  # 波浪分析所需的最小 K 线数量
+GLOBAL_TREND_THRESHOLD = 0.92  # 全局趋势判断阈值：高点降低超过8%判定为下跌趋势

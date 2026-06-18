@@ -331,7 +331,6 @@ class WaveChartDialog(QtWidgets.QDialog):
         df = result.df.copy()
         swings = result.swings
         fib_levels = result.fib_levels
-        current_wave = result.current_wave
 
         # K线图占88%，右侧价格栏占12%
         ax = self.figure.add_axes([0.06, 0.08, 0.80, 0.84])
@@ -454,15 +453,11 @@ class WaveChartDialog(QtWidgets.QDialog):
 
         # 右侧价格栏
         curr_price = float(df.iloc[-1]["close"])
-        self._draw_price_bar(
-            ax2, ax, curr_price, fib_levels, current_wave, result.remaining_space
-        )
+        self._draw_price_bar(ax2, ax, curr_price, fib_levels, result.remaining_space)
 
         self.canvas.draw()
 
-    def _draw_price_bar(
-        self, ax2, ax_main, curr_price, fib_levels, current_wave, remaining_space
-    ):
+    def _draw_price_bar(self, ax2, ax_main, curr_price, fib_levels, remaining_space):
         ax2.set_xlim(0, 1)
         ax2.set_ylim(ax_main.get_ylim())
         ax2.axis("off")
