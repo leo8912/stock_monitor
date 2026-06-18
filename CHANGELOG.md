@@ -1,5 +1,10 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.4.9] - 2026-06-18
+
+### 🐛 修复 (Fixes)
+- 修复 Python 3.9 兼容性：`quant_worker.py` 和 `wave_analyzer.py` 中的 `X | Y` 类型注解语法导致打包版闪退，添加 `from __future__ import annotations` 解决
+
 ## [v4.4.8] - 2026-06-18
 
 ### 🐛 修复 (Fixes)
