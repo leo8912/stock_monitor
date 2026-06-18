@@ -2,7 +2,9 @@
 波浪理论与斐波那契数列分析引擎
 """
 
-from typing import Any, Optional
+from __future__ import annotations
+
+from typing import Any
 
 import pandas as pd
 
@@ -157,7 +159,7 @@ class WaveAnalyzer:
     @staticmethod
     def analyze(
         df: pd.DataFrame, threshold: float = WAVE_ZIGZAG_THRESHOLD
-    ) -> Optional[WaveAnalysisResult]:
+    ) -> WaveAnalysisResult | None:
         """
         进行波浪和斐波那契综合分析
         """

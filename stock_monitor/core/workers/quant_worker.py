@@ -2,6 +2,8 @@
 量化雷达扫描后台线程（并行优化版）
 """
 
+from __future__ import annotations
+
 import json
 import threading
 import time
