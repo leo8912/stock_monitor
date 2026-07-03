@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
+    QDoubleSpinBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -774,6 +775,60 @@ class NewSettingsDialog(QDialog):
         )
         quant_layout.addWidget(self.auto_close_export_checkbox)
 
+        # --- 斐波那契设置区域 ---
+        fib_group = QGroupBox("📐 斐波那契分析设置")
+        fib_layout = QVBoxLayout()
+        fib_layout.setContentsMargins(10, 10, 10, 10)
+        fib_layout.setSpacing(8)
+        fib_group.setLayout(fib_layout)
+
+        # 浪5目标系数
+        wave5_layout = QHBoxLayout()
+        wave5_layout.addWidget(QLabel("浪5目标系数:"))
+        self.fib_wave5_spin = QDoubleSpinBox()
+        self.fib_wave5_spin.setRange(0.1, 2.0)
+        self.fib_wave5_spin.setSingleStep(0.05)
+        self.fib_wave5_spin.setDecimals(3)
+        self.fib_wave5_spin.setValue(0.618)
+        self.fib_wave5_spin.setToolTip("浪5目标 = 浪1幅度 × 此系数 + 浪4低点")
+        wave5_layout.addWidget(self.fib_wave5_spin)
+        wave5_layout.addStretch()
+        fib_layout.addLayout(wave5_layout)
+
+        # 浪4回调系数
+        wave4_layout = QHBoxLayout()
+        wave4_layout.addWidget(QLabel("浪4回调系数:"))
+        self.fib_wave4_spin = QDoubleSpinBox()
+        self.fib_wave4_spin.setRange(0.1, 1.0)
+        self.fib_wave4_spin.setSingleStep(0.05)
+        self.fib_wave4_spin.setDecimals(3)
+        self.fib_wave4_spin.setValue(0.382)
+        self.fib_wave4_spin.setToolTip("浪4回调目标 = 浪3幅度 × 此系数")
+        wave4_layout.addWidget(self.fib_wave4_spin)
+        wave4_layout.addStretch()
+        fib_layout.addLayout(wave4_layout)
+
+        # B浪反弹系数
+        waveb_layout = QHBoxLayout()
+        waveb_layout.addWidget(QLabel("B浪反弹系数:"))
+        self.fib_waveb_spin = QDoubleSpinBox()
+        self.fib_waveb_spin.setRange(0.1, 1.0)
+        self.fib_waveb_spin.setSingleStep(0.05)
+        self.fib_waveb_spin.setDecimals(3)
+        self.fib_waveb_spin.setValue(0.5)
+        self.fib_waveb_spin.setToolTip("B浪反弹目标 = 浪A幅度 × 此系数")
+        waveb_layout.addWidget(self.fib_waveb_spin)
+        waveb_layout.addStretch()
+        fib_layout.addLayout(waveb_layout)
+
+        # 重置按钮
+        reset_fib_button = QPushButton("恢复默认值")
+        reset_fib_button.setFixedWidth(100)
+        reset_fib_button.clicked.connect(self._reset_fib_settings)
+        fib_layout.addWidget(reset_fib_button, alignment=Qt.AlignmentFlag.AlignRight)
+
+        quant_layout.addWidget(fib_group)
+
         # --- 推送通道选择 ---
         channel_layout = QHBoxLayout()
         channel_layout.addWidget(QLabel("通知渠道:"))
@@ -1246,6 +1301,12 @@ class NewSettingsDialog(QDialog):
             self.wecom_corpsecret_input.setText(settings.get("wecom_corpsecret", ""))
             self.wecom_agentid_input.setText(settings.get("wecom_agentid", ""))
 
+            # 斐波那契设置
+            fib_coefficients = settings.get("fib_target_coefficients", {})
+            self.fib_wave5_spin.setValue(fib_coefficients.get("wave_5_target", 0.618))
+            self.fib_wave4_spin.setValue(fib_coefficients.get("wave_4_retrace", 0.382))
+            self.fib_waveb_spin.setValue(fib_coefficients.get("wave_b_retrace", 0.5))
+
             self._on_push_mode_changed()
         except Exception as e:
             from stock_monitor.utils.logger import app_logger
@@ -1279,6 +1340,13 @@ class NewSettingsDialog(QDialog):
             settings["wecom_corpsecret"] = self.wecom_corpsecret_input.text().strip()
             settings["wecom_agentid"] = self.wecom_agentid_input.text().strip()
 
+            # 斐波那契配置保存
+            settings["fib_target_coefficients"] = {
+                "wave_5_target": self.fib_wave5_spin.value(),
+                "wave_4_retrace": self.fib_wave4_spin.value(),
+                "wave_b_retrace": self.fib_waveb_spin.value(),
+            }
+
             from stock_monitor.utils.logger import app_logger
 
             # 保存前验证已在 viewModel.save_settings 中执行，此处不再重复
@@ -1289,6 +1357,12 @@ class NewSettingsDialog(QDialog):
 
             app_logger.error(f"Failed to save config via VM: {e}")
             return False
+
+    def _reset_fib_settings(self):
+        """重置斐波那契设置为默认值"""
+        self.fib_wave5_spin.setValue(0.618)
+        self.fib_wave4_spin.setValue(0.382)
+        self.fib_waveb_spin.setValue(0.5)
 
     def _on_ok_clicked(self):
         """点击确定按钮的处理函数"""
