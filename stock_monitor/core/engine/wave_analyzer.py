@@ -10,6 +10,8 @@ import pandas as pd
 
 from ...utils.logger import app_logger
 from .quant_engine_constants import (
+    FIB_TARGET_COEFFICIENTS,
+    FIBONACCI_RATIOS,
     GLOBAL_TREND_THRESHOLD,
     WAVE_MIN_K_COUNT,
     WAVE_ZIGZAG_THRESHOLD,
@@ -474,14 +476,8 @@ class WaveAnalyzer:
         low_val = min(p1.price, p0.price)
         diff = high_val - low_val
 
-        # 回撤比率
-        ratios = {
-            "0.236": 0.236,
-            "0.382": 0.382,
-            "0.500": 0.500,
-            "0.618": 0.618,
-            "0.786": 0.786,
-        }
+        # 使用配置的斐波那契比率
+        ratios = FIBONACCI_RATIOS.copy()
 
         levels = {}
         # 如果最近是下跌段 (Peak -> Trough)
@@ -643,20 +639,22 @@ class WaveAnalyzer:
                     basis = "浪1幅度×1.618"
 
             elif wave == "5" and len(up_segments) >= 2:
-                # 浪5目标 = 浪1幅度 × 0.618 + 浪4低点（衰减）
+                # 浪5目标 = 浪1幅度 × 系数 + 浪4低点（衰减）
                 w1_amp = up_segments[0]
                 last_troughs = [s for s in extremes if s.type == "trough"]
                 if len(last_troughs) >= 1:
                     w5_start = last_troughs[-1].price
-                    target_price = w5_start + w1_amp * 0.618
-                    basis = "浪1幅度×0.618（衰减）"
+                    coeff = FIB_TARGET_COEFFICIENTS["wave_5_target"]
+                    target_price = w5_start + w1_amp * coeff
+                    basis = f"浪1幅度×{coeff}（衰减）"
 
             elif wave == "4":
-                # 浪4回调目标 = 浪3幅度 × 0.382
+                # 浪4回调目标 = 浪3幅度 × 系数
                 if len(up_segments) >= 1:
                     w3_amp = up_segments[-1]
-                    target_price = curr_price - w3_amp * 0.382
-                    basis = "浪3幅度×0.382回调"
+                    coeff = FIB_TARGET_COEFFICIENTS["wave_4_retrace"]
+                    target_price = curr_price - w3_amp * coeff
+                    basis = f"浪3幅度×{coeff}回调"
 
         # 下跌趋势中的浪
         elif trend == "bearish" and wave in ("A", "B", "C"):
@@ -675,14 +673,15 @@ class WaveAnalyzer:
                     basis = "浪A幅度等长"
 
             elif wave == "B":
-                # B浪反弹通常回撤 A浪的 0.382~0.618
+                # B浪反弹通常回撤 A浪的 系数
                 if down_segments:
                     w_a_amp = down_segments[0]
                     last_peaks = [s for s in extremes if s.type == "peak"]
                     if last_peaks:
                         w_b_start = last_peaks[-1].price
-                        target_price = w_b_start + w_a_amp * 0.5
-                        basis = "浪A幅度×0.5反弹"
+                        coeff = FIB_TARGET_COEFFICIENTS["wave_b_retrace"]
+                        target_price = w_b_start + w_a_amp * coeff
+                        basis = f"浪A幅度×{coeff}反弹"
 
         if target_price is None or target_price <= 0:
             return None
@@ -703,3 +702,112 @@ class WaveAnalyzer:
             "remaining_days_est": avg_days,
             "basis": basis,
         }
+
+
+def explain_wave(wave: str, trend: str) -> str:
+    """
+    解释当前波浪阶段的含义
+
+    Args:
+        wave: 波浪标识 (1-5, A, B, C)
+        trend: 趋势方向 (bullish, bearish)
+
+    Returns:
+        波浪阶段的中文解释
+    """
+    explanations = {
+        ("1", "bullish"): "筑底完成，刚刚启动上涨",
+        ("2", "bullish"): "上涨后回踩确认，正常调整",
+        ("3", "bullish"): "主升浪，涨幅最大、速度最快",
+        ("4", "bullish"): "上涨途中休整，蓄力再冲高",
+        ("5", "bullish"): "上涨末期，动能衰减，追高风险大",
+        ("A", "bearish"): "上涨结束，开始下跌调整",
+        ("B", "bearish"): "下跌途中的反弹，空间有限",
+        ("C", "bearish"): "加速下跌阶段，杀伤力最大",
+    }
+    return explanations.get((wave, trend), "震荡筑底阶段，方向待确认")
+
+
+def wave_hint(wave: str, trend: str) -> str:
+    """
+    根据波浪阶段给出操作建议
+
+    Args:
+        wave: 波浪标识 (1-5, A, B, C)
+        trend: 趋势方向 (bullish, bearish)
+
+    Returns:
+        操作建议文本
+    """
+    hints = {
+        ("1", "bullish"): "建议: 底部确认后可小仓试探",
+        ("2", "bullish"): "建议: 回调企稳是加仓机会",
+        ("3", "bullish"): "建议: 持股待涨，不轻易下车",
+        ("4", "bullish"): "建议: 耐心持有，等调整结束再加仓",
+        ("5", "bullish"): "建议: 逢高减仓，锁定利润",
+        ("A", "bearish"): "建议: 止损离场，不要死扛",
+        ("B", "bearish"): "建议: 反弹是逃命机会，别追",
+        ("C", "bearish"): "建议: 等企稳再考虑入场",
+    }
+    return hints.get((wave, trend), "建议: 观望为主，等方向明确")
+
+
+def analyze_and_record(
+    df: pd.DataFrame,
+    symbol: str,
+    timeframe: str = "daily",
+    threshold: float = WAVE_ZIGZAG_THRESHOLD,
+    record_prediction: bool = True,
+    fib_coefficients: dict | None = None,
+) -> WaveAnalysisResult | None:
+    """
+    进行波浪分析并记录预测
+
+    Args:
+        df: K线数据
+        symbol: 股票代码
+        timeframe: 时间周期
+        threshold: ZigZag阈值
+        record_prediction: 是否记录预测
+        fib_coefficients: 自定义斐波那契系数 (可选)
+
+    Returns:
+        WaveAnalysisResult or None
+    """
+    # 如果提供了自定义系数，更新全局系数
+    if fib_coefficients:
+        for key, value in fib_coefficients.items():
+            if key in FIB_TARGET_COEFFICIENTS:
+                FIB_TARGET_COEFFICIENTS[key] = value
+
+    result = WaveAnalyzer.analyze(df, threshold)
+
+    if result and record_prediction and result.current_wave:
+        wave = result.current_wave.get("wave", "unknown")
+        trend = result.current_wave.get("trend", "bullish")
+        confidence = result.current_wave.get("confidence", 0)
+        current_price = float(df.iloc[-1]["close"])
+
+        # 获取目标价格
+        target_price = None
+        if result.remaining_space:
+            target_price = result.remaining_space.get("target_price")
+
+        # 记录预测
+        try:
+            from ...services.wave_prediction_service import wave_prediction_service
+
+            wave_prediction_service.record_prediction(
+                symbol=symbol,
+                wave=wave,
+                trend=trend,
+                confidence=confidence,
+                price_at_prediction=current_price,
+                target_price=target_price,
+                timeframe=timeframe,
+                notes=f"自动记录: {explain_wave(wave, trend)}",
+            )
+        except Exception as e:
+            app_logger.debug(f"[波浪预测] 记录预测失败（非致命）: {e}")
+
+    return result
