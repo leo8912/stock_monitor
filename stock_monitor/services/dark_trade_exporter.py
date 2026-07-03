@@ -1,12 +1,14 @@
 """
-暗盘资金数据 Excel 导出模块
+暗盘资金数据 Excel/CSV 导出模块
 收盘后生成：
   Sheet 1 "全市场暗盘"  —— 全市场5000+只股票，含明盘+暗盘数据，可直接筛选
   Sheet 2 "自选股暗盘"  —— 自选股子集，高亮展示
+  CSV 文件 —— 全市场暗盘数据，便于其他工具处理
 """
 
 from __future__ import annotations
 
+import csv
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -131,33 +133,34 @@ def _apply_conditional_color(cell, value, field: str = "net") -> None:
             cell.font = Font(color="008000")
 
 
-def export_dark_trade_excel(
+def export_dark_trade_csv(
     watchlist_codes: list,
     output_path=None,
     history_days: int = 5,
 ) -> Path:
     """
-    收盘后导出暗盘数据Excel（双Sheet）
+    收盘后导出暗盘数据CSV
 
     Args:
         watchlist_codes: 自选股代码列表（原始格式，如 'sh600519' / '000559'）
-        output_path:    输出文件路径，默认 analysis_reports/dark_trade_YYYYMMDD.xlsx
+        output_path:    输出文件路径，默认 analysis_reports/dark_trade_YYYYMMDD.csv
         history_days:   历史天数（近N天的净流入数据列）
 
     Returns:
         实际保存的 Path 对象
     """
+
     today_str = datetime.now().strftime("%Y%m%d")
 
     if output_path is None:
         out_dir = Path("analysis_reports")
         out_dir.mkdir(parents=True, exist_ok=True)
-        output_path = out_dir / f"dark_trade_{today_str}.xlsx"
+        output_path = out_dir / f"dark_trade_{today_str}.csv"
     else:
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    app_logger.info("[DarkExport] 开始生成暗盘Excel报表...")
+    app_logger.info("[DarkExport] 开始生成暗盘CSV报表...")
 
     # ── 1. 抓取今日全量暗盘数据 ──────────────────────────────────────────────
     today_records = fetch_all_dark_trade(today_str)
@@ -275,6 +278,72 @@ def export_dark_trade_excel(
             "hist_nets": hist_nets,
             "consecutive": consecutive,
         }
+
+    all_rows = [_build_row(r) for r in today_records]
+
+    # 清理自选股代码（去市场前缀，统一6位）
+    def clean_code(c: str) -> str:
+        for prefix in ("sh", "sz", "hk", "SH", "SZ", "HK"):
+            if c.startswith(prefix):
+                return c[len(prefix) :]
+        return c
+
+    watchlist_clean = {clean_code(c) for c in watchlist_codes}
+    watchlist_rows = [row for row in all_rows if row["code"] in watchlist_clean]
+
+    # ── 5. 写 CSV ──────────────────────────────────────────────────────────
+    # 历史日期列名
+    date_cols = []
+    for d in recent_dates:
+        dt = datetime.strptime(d, "%Y%m%d")
+        date_cols.append(f"{dt.month}/{dt.day}净流入(万)")
+
+    headers = [
+        "代码",
+        "市场",
+        "名称",
+        "收盘价",
+        "涨跌幅%",
+        "成交量(万股)",
+        "成交额(亿)",
+        "暗盘净流入(万)",
+        "明盘净流入(万)",
+        "主力净流入合计(万)",
+        "暗盘活跃度",
+        "换手率%",
+        "板块1",
+        "板块2",
+        "连续流入天数",
+    ] + date_cols
+
+    with open(output_path, "w", newline="", encoding="utf-8-sig") as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(headers)
+
+        for row in all_rows:
+            hist = row["hist_nets"]
+            data_row = [
+                row["code"],
+                row["market"],
+                row["name"],
+                row["close"] if row["close"] != "" else "",
+                row["pct_chg"] if row["pct_chg"] != "" else "",
+                round(float(row["volume_wan"]), 2) if row["volume_wan"] != "" else "",
+                round(float(row["amount_yi"]), 4) if row["amount_yi"] != "" else "",
+                round(row["dark_net"], 2),
+                round(row["regular_net"], 2),
+                round(row["total_net"], 2),
+                round(row["activity"], 4),
+                round(row["turnover"] * 100, 2) if row["turnover"] is not None else "",
+                row["sector1"],
+                row["sector2"],
+                row["consecutive"],
+            ] + [round(v, 2) if v is not None else "" for v in hist]
+
+            writer.writerow(data_row)
+
+    app_logger.info(f"[DarkExport] CSV已保存: {output_path}")
+    return output_path
 
     all_rows = [_build_row(r) for r in today_records]
 

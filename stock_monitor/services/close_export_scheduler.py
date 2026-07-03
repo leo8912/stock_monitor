@@ -136,6 +136,19 @@ class CloseExportScheduler(QtCore.QThread):
             except Exception as e:
                 app_logger.error(f"[CloseExportScheduler] 自选股指标导出失败: {e}")
 
+            # 3. 推送暗盘统计
+            try:
+                from stock_monitor.core.config_center import config_center
+                from stock_monitor.services.dark_trade_stats import (
+                    push_dark_trade_stats,
+                )
+
+                user_stocks = config_center.user_stocks
+                push_dark_trade_stats(config_center._manager.config, user_stocks)
+                app_logger.info("[CloseExportScheduler] 暗盘统计推送已触发")
+            except Exception as e:
+                app_logger.error(f"[CloseExportScheduler] 暗盘统计推送失败: {e}")
+
             # 标记今天已执行
             self._mark_exported()
 
