@@ -12,7 +12,7 @@ from PyQt6 import QtWidgets
 plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "DejaVu Sans"]
 plt.rcParams["axes.unicode_minus"] = False
 
-from ...core.engine.wave_analyzer import WaveAnalyzer
+from ...core.engine.wave_analyzer import analyze_and_record, explain_wave, wave_hint
 from ...utils.logger import app_logger
 
 CARD_BG = "#1e1e1e"
@@ -170,6 +170,23 @@ class WaveChartDialog(QtWidgets.QDialog):
         self._card_labels["fib"].setWordWrap(True)
         cards_layout.addWidget(self._card_labels["fib"])
 
+        # 预测统计行
+        stats_row = QtWidgets.QHBoxLayout()
+        stats_row.setSpacing(8)
+
+        # 统计卡片
+        stats_card = self._make_card()
+        self._card_labels["stats_title"] = self._card_header(stats_card, "历史预测统计")
+        self._card_labels["stats_success"] = self._card_label(
+            stats_card, "", f"font-size: 14px; font-weight: bold; color: {YELLOW};"
+        )
+        self._card_labels["stats_detail"] = self._card_label(
+            stats_card, "", f"font-size: 11px; color: {TEXT_DIM};"
+        )
+        stats_row.addWidget(stats_card, stretch=1)
+
+        cards_layout.addLayout(stats_row)
+
         parent_layout.addWidget(info_box)
 
     @staticmethod
@@ -234,10 +251,22 @@ class WaveChartDialog(QtWidgets.QDialog):
 
             result = None
             if self.subwave_cb.isChecked():
-                result = WaveAnalyzer.analyze(df, threshold=0.03)
+                result = analyze_and_record(
+                    df,
+                    symbol=self.symbol,
+                    timeframe=timeframe_key,
+                    threshold=0.03,
+                    fib_coefficients=self._get_fib_coefficients(),
+                )
             else:
                 for t in [0.08, 0.06, 0.05]:
-                    result = WaveAnalyzer.analyze(df, threshold=t)
+                    result = analyze_and_record(
+                        df,
+                        symbol=self.symbol,
+                        timeframe=timeframe_key,
+                        threshold=t,
+                        fib_coefficients=self._get_fib_coefficients(),
+                    )
                     if result:
                         break
 
@@ -266,10 +295,8 @@ class WaveChartDialog(QtWidgets.QDialog):
             f"color: {trend_color}; font-size: 18px; font-weight: bold; border: none;"
         )
         self._card_labels["wave_trend"].setText(f"{trend_text} | 置信度 {conf:.0f}%")
-        self._card_labels["wave_desc"].setText(
-            WaveChartDialog._explain_wave(wave, trend)
-        )
-        self._card_labels["wave_hint"].setText(WaveChartDialog._wave_hint(wave, trend))
+        self._card_labels["wave_desc"].setText(explain_wave(wave, trend))
+        self._card_labels["wave_hint"].setText(wave_hint(wave, trend))
 
         # 卡片2: 近期走势（清空重建）
         while self._trend_container.count():
@@ -324,6 +351,56 @@ class WaveChartDialog(QtWidgets.QDialog):
             self._card_labels["fib"].setText("Fibonacci: " + " | ".join(parts))
         else:
             self._card_labels["fib"].setText("")
+
+        # 预测统计行
+        self._update_prediction_stats()
+
+    def _update_prediction_stats(self):
+        """更新预测统计信息"""
+        try:
+            from ...services.wave_prediction_service import wave_prediction_service
+
+            stats = wave_prediction_service.get_prediction_stats(self.symbol)
+
+            if stats["total"] > 0:
+                success_rate = stats["success_rate"]
+                verified = stats["verified_count"]
+                total = stats["total"]
+                avg_profit = stats["avg_profit"]
+
+                # 显示成功率
+                self._card_labels["stats_success"].setText(
+                    f"成功率: {success_rate:.1f}%"
+                )
+
+                # 显示详细信息
+                detail_parts = []
+                if verified > 0:
+                    detail_parts.append(f"已验证: {verified}/{total}")
+                    detail_parts.append(f"平均盈亏: {avg_profit:+.2f}%")
+
+                self._card_labels["stats_detail"].setText(
+                    " | ".join(detail_parts) if detail_parts else f"共{total}条预测"
+                )
+            else:
+                self._card_labels["stats_success"].setText("暂无数据")
+                self._card_labels["stats_detail"].setText("首次分析将自动记录")
+
+        except Exception as e:
+            app_logger.debug(f"[波浪图弹窗] 获取预测统计失败: {e}")
+            self._card_labels["stats_success"].setText("统计不可用")
+            self._card_labels["stats_detail"].setText("")
+
+    def _get_fib_coefficients(self) -> dict:
+        """获取配置的斐波那契系数"""
+        try:
+            from ...config.manager import ConfigManager
+
+            config = ConfigManager()
+            return config.get("fib_target_coefficients", {})
+        except Exception as e:
+            app_logger.debug(f"[波浪图弹窗] 获取斐波那契系数失败: {e}")
+            return {}
 
     def plot_to_canvas(self, result, timeframe_name: str):
         self.figure.clear()
@@ -581,31 +658,3 @@ class WaveChartDialog(QtWidgets.QDialog):
                 fontsize=8 if not is_target else 9,
                 va="top",
             )
-
-    @staticmethod
-    def _explain_wave(wave, trend):
-        explanations = {
-            ("1", "bullish"): "筑底完成，刚刚启动上涨",
-            ("2", "bullish"): "上涨后回踩确认，正常调整",
-            ("3", "bullish"): "主升浪，涨幅最大、速度最快",
-            ("4", "bullish"): "上涨途中休整，蓄力再冲高",
-            ("5", "bullish"): "上涨末期，动能衰减，追高风险大",
-            ("A", "bearish"): "上涨结束，开始下跌调整",
-            ("B", "bearish"): "下跌途中的反弹，空间有限",
-            ("C", "bearish"): "加速下跌阶段，杀伤力最大",
-        }
-        return explanations.get((wave, trend), "震荡筑底阶段，方向待确认")
-
-    @staticmethod
-    def _wave_hint(wave, trend):
-        hints = {
-            ("1", "bullish"): "建议: 底部确认后可小仓试探",
-            ("2", "bullish"): "建议: 回调企稳是加仓机会",
-            ("3", "bullish"): "建议: 持股待涨，不轻易下车",
-            ("4", "bullish"): "建议: 耐心持有，等调整结束再加仓",
-            ("5", "bullish"): "建议: 逢高减仓，锁定利润",
-            ("A", "bearish"): "建议: 止损离场，不要死扛",
-            ("B", "bearish"): "建议: 反弹是逃命机会，别追",
-            ("C", "bearish"): "建议: 等企稳再考虑入场",
-        }
-        return hints.get((wave, trend), "建议: 观望为主，等方向明确")
