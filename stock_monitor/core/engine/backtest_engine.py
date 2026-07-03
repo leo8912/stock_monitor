@@ -5,6 +5,10 @@ import threading
 
 from stock_monitor.config.manager import get_config_dir
 from stock_monitor.core.engine.quant_engine import QuantEngine
+from stock_monitor.core.engine.quant_engine_constants import (
+    BACKTEST_STOP_LOSS,
+    BACKTEST_TARGET_PROFIT,
+)
 from stock_monitor.utils.logger import app_logger
 
 
@@ -15,8 +19,8 @@ class BacktestEngine:
 
     def __init__(self, quant_engine: QuantEngine):
         self.qe = quant_engine
-        self.target_profit = 0.05
-        self.stop_loss = 0.05
+        self.target_profit = BACKTEST_TARGET_PROFIT
+        self.stop_loss = BACKTEST_STOP_LOSS
         self._lock = threading.Lock()
 
         # 持久化文件路径

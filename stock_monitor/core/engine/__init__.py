@@ -18,6 +18,8 @@ from .backtest_engine import BacktestEngine
 from .financial_filter import FinancialFilter
 from .quant_engine import QuantEngine
 from .quant_engine_constants import (
+    BACKTEST_STOP_LOSS,
+    BACKTEST_TARGET_PROFIT,
     BBAND_LOOKBACK,
     BBAND_STD_DEV,
     BIG_ORDER_THRESHOLD_AMOUNT,
@@ -27,7 +29,10 @@ from .quant_engine_constants import (
     CACHE_TTL_SECONDS,
     DATE_YEAR_MAX,
     DATE_YEAR_MIN,
+    DEFAULT_FIB_LEVELS,
     EARLIEST_COMPENSATION_TIME,
+    FIB_TARGET_COEFFICIENTS,
+    FIBONACCI_RATIOS,
     INDEX_MIN_PRICE,
     MACD_FAST_PERIOD,
     MACD_SIGNAL_PERIOD,
@@ -64,7 +69,13 @@ from .quant_engine_constants import (
     WAVE_ZIGZAG_THRESHOLD,
     FreqMap,
 )
-from .wave_analyzer import WaveAnalysisResult, WaveAnalyzer
+from .wave_analyzer import (
+    WaveAnalysisResult,
+    WaveAnalyzer,
+    analyze_and_record,
+    explain_wave,
+    wave_hint,
+)
 from .wave_chart import WaveChart
 
 __all__ = [
@@ -74,6 +85,9 @@ __all__ = [
     "WaveAnalyzer",
     "WaveAnalysisResult",
     "WaveChart",
+    "explain_wave",
+    "wave_hint",
+    "analyze_and_record",
     "CACHE_TTL_SECONDS",
     "MAX_CACHE_SIZE",
     "MAX_AVG_VOL_CACHE_AGE",
@@ -119,4 +133,9 @@ __all__ = [
     "MIN_OPERATING_PROFIT_GROWTH",
     "WAVE_ZIGZAG_THRESHOLD",
     "WAVE_MIN_K_COUNT",
+    "BACKTEST_TARGET_PROFIT",
+    "BACKTEST_STOP_LOSS",
+    "FIBONACCI_RATIOS",
+    "FIB_TARGET_COEFFICIENTS",
+    "DEFAULT_FIB_LEVELS",
 ]

@@ -26,6 +26,7 @@ from stock_monitor.core.resolvers.symbol_resolver import SymbolResolver, SymbolT
 from stock_monitor.utils.logger import app_logger
 
 from .financial_filter import FinancialFilter
+from .quant_engine_constants import FreqMap
 
 try:
     import akshare as ak
@@ -107,15 +108,6 @@ def get_bars_cache(max_size=128, ttl=60):
 
 class QuantEngine:
     """量化策略雷达"""
-
-    FreqMap = {"15m": 1, "30m": 2, "60m": 3, "daily": 9}
-
-    TF_CHINESE_MAP = {
-        "15m": "15分钟",
-        "30m": "30分钟",
-        "60m": "60分钟",
-        "daily": "日线",
-    }
 
     # 大盘基准缓存，避免重复拉取
     _market_benchmark_cache = {}
@@ -850,7 +842,7 @@ class QuantEngine:
         self._ensure_ta_active()
 
         results = []
-        for tf, cat in self.FreqMap.items():
+        for tf, cat in FreqMap.items():
             try:
                 df = self.fetch_bars(symbol, market, cat, offset=250)
                 if df.empty or len(df) < 50:

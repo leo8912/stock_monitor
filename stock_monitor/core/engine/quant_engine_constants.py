@@ -79,3 +79,29 @@ MIN_OPERATING_PROFIT_GROWTH = -0.3  # 最小营业利润增长率
 WAVE_ZIGZAG_THRESHOLD = 0.05  # ZigZag 摆动高低点检测阈值（默认5%）
 WAVE_MIN_K_COUNT = 50  # 波浪分析所需的最小 K 线数量
 GLOBAL_TREND_THRESHOLD = 0.92  # 全局趋势判断阈值：高点降低超过8%判定为下跌趋势
+
+# ====== 回测引擎相关常量 ======
+BACKTEST_TARGET_PROFIT = 0.05  # 回测目标收益率 (5%)
+BACKTEST_STOP_LOSS = 0.05  # 回测止损率 (5%)
+
+# ====== 斐波那契比例常量 ======
+FIBONACCI_RATIOS = {
+    "0.236": 0.236,
+    "0.382": 0.382,
+    "0.500": 0.500,
+    "0.618": 0.618,
+    "0.786": 0.786,
+    "1.000": 1.000,
+    "1.618": 1.618,
+    "2.618": 2.618,
+}
+
+# 默认显示的斐波那契级别（用户可自定义）
+DEFAULT_FIB_LEVELS = ["0.382", "0.500", "0.618"]
+
+# 斐波那契目标计算系数（用户可自定义）
+FIB_TARGET_COEFFICIENTS = {
+    "wave_5_target": 0.618,  # 浪5目标 = 浪1幅度 × 系数
+    "wave_4_retrace": 0.382,  # 浪4回调 = 浪3幅度 × 系数
+    "wave_b_retrace": 0.5,  # B浪反弹 = 浪A幅度 × 系数
+}
