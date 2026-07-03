@@ -77,6 +77,7 @@ hiddenimports = [
     'scipy',
     # 暗盘数据服务
     'stock_monitor.services.dark_trade_service',
+    'stock_monitor.services.dark_trade_stats',
     'stock_monitor.services.dark_trade_exporter',
     'stock_monitor.services.close_export_scheduler',
     'scipy.signal',

@@ -22,3 +22,5 @@ certifi>=2024.0.0
 # 图表绘制（波浪理论/斐波那契K线图生成）
 matplotlib>=3.7.0
 mplfinance>=0.12.10b0
+# 重试机制
+tenacity>=8.0.0
