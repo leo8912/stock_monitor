@@ -21,6 +21,7 @@ from ..cache.cache_warmer import CacheWarmer, PerformanceMonitor
 from ..engine import WaveAnalyzer, WaveChart
 from ..engine.backtest_engine import BacktestEngine
 from ..engine.quant_engine import QuantEngine
+from ..engine.quant_engine_constants import TF_CHINESE_MAP
 
 CACHE_DIR = Path(get_config_dir()) / "cache"
 SIGNAL_CACHE_FILE = CACHE_DIR / "signal_cache.json"
@@ -971,7 +972,7 @@ class QuantWorker(QtCore.QThread):
         pending_signals = []
 
         for sig in signals:
-            tf_cn = self.engine.TF_CHINESE_MAP.get(sig.get("tf", "Daily"), "日线")
+            tf_cn = TF_CHINESE_MAP.get(sig.get("tf", "Daily"), "日线")
             sig_name = f"{tf_cn}:{sig['name']}"
 
             # 防抖动检测

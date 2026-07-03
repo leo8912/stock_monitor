@@ -265,6 +265,37 @@ class StockDatabase(StockDataSource):
                     "CREATE INDEX IF NOT EXISTS idx_qlog_time ON quant_alerts_log(timestamp)"
                 )
 
+                # 创建波浪预测历史表
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS wave_predictions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        symbol TEXT NOT NULL,
+                        prediction_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        wave TEXT NOT NULL,  -- '1', '2', '3', '4', '5', 'A', 'B', 'C'
+                        trend TEXT NOT NULL,  -- 'bullish', 'bearish'
+                        confidence REAL,
+                        price_at_prediction REAL,  -- 预测时的价格
+                        target_price REAL,  -- 目标价格
+                        timeframe TEXT,  -- '15m', '30m', '60m', 'daily'
+                        is_verified BOOLEAN DEFAULT FALSE,  -- 是否已验证
+                        verification_time DATETIME,
+                        actual_outcome TEXT,  -- 'correct', 'wrong', 'partial'
+                        profit_loss_pct REAL,  -- 盈亏百分比
+                        notes TEXT
+                    )
+                """
+                )
+                cursor.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_wp_symbol ON wave_predictions(symbol)"
+                )
+                cursor.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_wp_time ON wave_predictions(prediction_time)"
+                )
+                cursor.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_wp_verified ON wave_predictions(is_verified)"
+                )
+
                 # PRAGMA 优化已统一在 _get_connection 中配置
 
                 conn.commit()
