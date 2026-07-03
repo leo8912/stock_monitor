@@ -226,6 +226,13 @@ class ConfigManager:
             "quant_alert_score_threshold": 2,  # 评分变化阈值，超过此值才重新推送
             "quant_alert_merge_enabled": True,  # 是否启用信号合并推送
             "quant_max_workers": None,  # 量化扫描线程数（None=自动）
+            # 斐波那契配置
+            "fib_levels": ["0.382", "0.500", "0.618"],  # 显示的斐波那契级别
+            "fib_target_coefficients": {
+                "wave_5_target": 0.618,  # 浪5目标系数
+                "wave_4_retrace": 0.382,  # 浪4回调系数
+                "wave_b_retrace": 0.5,  # B浪反弹系数
+            },
         }
 
     def _ensure_required_keys_exist(self, config: dict[str, Any]) -> None:

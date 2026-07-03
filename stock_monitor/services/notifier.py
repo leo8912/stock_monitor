@@ -81,7 +81,7 @@ class NotifierService:
     def send_wecom_app_message(
         cls, config: dict, title: str, description: str, url: str = ""
     ) -> bool:
-        """发送企业微信应用消息（使用 markdown 格式以获得更好的渲染效果）
+        """发送企业微信应用消息（使用 text 格式以获得更好的个人微信兼容性）
 
         支持自动重试机制（指数退避）
         """
