@@ -1,5 +1,16 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.5.1] - 2026-07-07
+
+### ✨ 改进 (Improvements)
+- 重构 `close_export_scheduler` 为任务注册模式：3个子任务（暗盘Excel导出、自选股指标导出、暗盘统计推送）封装为独立类，可单独启用/禁用/触发
+- `dark_trade_stats.py` 添加 CLI 入口：支持命令行直接运行 `python -m stock_monitor.services.dark_trade_stats --codes sh600519` 测试暗盘统计推送
+- 设置界面添加"📊 测试暗盘统计推送"按钮：可立即计算并推送暗盘统计到企业微信
+- 添加集成测试 `test_dark_trade_stats_integration.py`：验证真实数据计算 + mock推送
+
+### 🐛 修复 (Fixes)
+- 修复暗盘统计推送在收盘时未触发的问题：现在可通过按钮或 `scheduler.trigger_now(task_name="暗盘统计推送")` 单独触发
+
 ## [v4.5.0] - 2026-07-03
 
 ### ✨ 新功能 (New Features)

@@ -196,6 +196,55 @@ class DarkTradeExportThread(QThread):
             self.export_finished.emit(False, f"导出暗盘数据时发生异常：\n{e}")
 
 
+class DarkTradeStatsPushThread(QThread):
+    """暗盘统计推送后台线程"""
+
+    push_finished = pyqtSignal(bool, str)
+
+    def __init__(self, watchlist_codes: list, parent=None):
+        super().__init__(parent)
+        self._watchlist_codes = watchlist_codes
+
+    def run(self):
+        try:
+            from stock_monitor.core.config_center import config_center
+            from stock_monitor.services.dark_trade_stats import (
+                calculate_dark_trade_stats,
+                format_dark_trade_stats_message,
+            )
+            from stock_monitor.utils.logger import app_logger
+
+            app_logger.info("[DarkStats] 手动触发暗盘统计推送...")
+
+            # 计算统计
+            stats = calculate_dark_trade_stats(self._watchlist_codes, history_days=5)
+
+            if not stats.get("market_summary"):
+                self.push_finished.emit(False, "无统计数据（可能非交易时段或网络异常）")
+                return
+
+            # 格式化消息
+            message = format_dark_trade_stats_message(stats)
+
+            # 推送
+            from stock_monitor.services.notifier import NotifierService
+
+            title = "📊 暗盘资金统计"
+            success = NotifierService.dispatch_custom_message(
+                config_center._manager.config, title, message
+            )
+
+            if success:
+                self.push_finished.emit(True, "暗盘统计推送成功！\n\n" + message)
+            else:
+                self.push_finished.emit(False, "暗盘统计推送失败，请检查企业微信配置")
+        except Exception as e:
+            from stock_monitor.utils.logger import app_logger
+
+            app_logger.error(f"[DarkStats] 推送失败: {e}")
+            self.push_finished.emit(False, f"推送暗盘统计时发生异常：\n{e}")
+
+
 # StockSearchHandler and ConfigManagerHandler logic moved to ViewModel
 # Keep WatchListManager as it is UI logic
 class WatchListManager:
@@ -457,6 +506,9 @@ class NewSettingsDialog(QDialog):
         )
         self.btn_manual_fetch_dark_trade.clicked.connect(
             self._on_manual_fetch_dark_trade_clicked
+        )
+        self.btn_test_dark_trade_stats.clicked.connect(
+            self._on_test_dark_trade_stats_clicked
         )
         self.push_mode_combo.currentIndexChanged.connect(self._on_push_mode_changed)
         self.viewModel.error_occurred.connect(self._on_vm_error)
@@ -942,6 +994,15 @@ class NewSettingsDialog(QDialog):
             "包括主力净流入、超大单/大单/中单/小单资金流向"
         )
         btn_row_layout.addWidget(self.btn_manual_fetch_dark_trade)
+
+        # 测试暗盘统计推送按钮
+        self.btn_test_dark_trade_stats = QPushButton("📊 测试暗盘统计推送")
+        self.btn_test_dark_trade_stats.setObjectName("PrimaryButton")
+        self.btn_test_dark_trade_stats.setFixedWidth(180)
+        self.btn_test_dark_trade_stats.setToolTip(
+            "立即计算暗盘资金统计并推送到企业微信\n" "用于测试暗盘统计推送功能是否正常"
+        )
+        btn_row_layout.addWidget(self.btn_test_dark_trade_stats)
 
         quant_layout.addLayout(btn_row_layout)
 
@@ -1442,6 +1503,40 @@ class NewSettingsDialog(QDialog):
         self._dark_export_thread.export_finished.connect(_on_export_finished)
         self._dark_export_thread.finished.connect(self._dark_export_thread.deleteLater)
         self._dark_export_thread.start()
+
+        # 延迟恢复按钮（避免瞬间恢复）
+        QTimer.singleShot(3000, _restore_button)
+
+    def _on_test_dark_trade_stats_clicked(self):
+        """测试暗盘统计推送"""
+        from PyQt6.QtCore import QTimer
+        from PyQt6.QtWidgets import QApplication, QMessageBox
+
+        user_stocks = self.get_stocks_from_list(self.watch_list)
+
+        # 禁用按钮，显示进度
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        self.btn_test_dark_trade_stats.setEnabled(False)
+        self.btn_test_dark_trade_stats.setText("⏳ 推送中...")
+        QApplication.processEvents()
+
+        def _restore_button():
+            self.btn_test_dark_trade_stats.setEnabled(True)
+            self.btn_test_dark_trade_stats.setText("📊 测试暗盘统计推送")
+
+        def _on_push_finished(success: bool, message: str):
+            """推送完成回调（在主线程中执行）"""
+            QApplication.restoreOverrideCursor()
+            if success:
+                QMessageBox.information(self, "推送成功", message)
+            else:
+                QMessageBox.critical(self, "推送失败", message)
+
+        # 在后台线程执行推送（避免阻塞UI）
+        self._dark_stats_thread = DarkTradeStatsPushThread(user_stocks)
+        self._dark_stats_thread.push_finished.connect(_on_push_finished)
+        self._dark_stats_thread.finished.connect(self._dark_stats_thread.deleteLater)
+        self._dark_stats_thread.start()
 
         # 延迟恢复按钮（避免瞬间恢复）
         QTimer.singleShot(3000, _restore_button)

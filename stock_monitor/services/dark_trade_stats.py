@@ -195,3 +195,78 @@ def push_dark_trade_stats(config: dict, watchlist_codes: list[str]) -> bool:
     except Exception as e:
         app_logger.error(f"[DarkTradeStats] 推送异常: {e}")
         return False
+
+
+def main() -> None:
+    """CLI 入口 - 暗盘资金统计"""
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="暗盘资金统计 - 计算全市场和自选股暗盘净流入",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+示例:
+  # 计算并打印统计（不推送）
+  python -m stock_monitor.services.dark_trade_stats --codes sh600519 sz000559
+
+  # 计算并推送到企业微信
+  python -m stock_monitor.services.dark_trade_stats --codes sh600519 --push
+
+  # 只打印格式化消息
+  python -m stock_monitor.services.dark_trade_stats --print-only
+        """,
+    )
+    parser.add_argument(
+        "--codes",
+        nargs="*",
+        default=[],
+        help="自选股代码列表（如 sh600519 sz000559）",
+    )
+    parser.add_argument(
+        "--days",
+        type=int,
+        default=5,
+        help="历史天数（默认5天）",
+    )
+    parser.add_argument(
+        "--push",
+        action="store_true",
+        help="推送到企业微信",
+    )
+    parser.add_argument(
+        "--print-only",
+        action="store_true",
+        help="只打印格式化消息，不推送",
+    )
+    args = parser.parse_args()
+
+    # 计算统计
+    print(f"正在计算暗盘统计数据（{args.days}天历史）...")
+    stats = calculate_dark_trade_stats(args.codes, history_days=args.days)
+
+    if not stats.get("market_summary"):
+        print("⚠️ 无统计数据（可能非交易时段或网络异常）")
+        return
+
+    # 格式化消息
+    message = format_dark_trade_stats_message(stats)
+
+    if args.push:
+        # 推送模式
+        from stock_monitor.core.config_center import config_center
+
+        success = push_dark_trade_stats(config_center._manager.config, args.codes)
+        if success:
+            print("✅ 推送成功")
+        else:
+            print("❌ 推送失败")
+    else:
+        # 打印模式
+        print("\n" + message)
+
+    if args.print_only or not args.push:
+        print("\n💡 提示: 添加 --push 参数可推送到企业微信")
+
+
+if __name__ == "__main__":
+    main()
