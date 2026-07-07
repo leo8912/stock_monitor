@@ -1,5 +1,15 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.5.2] - 2026-07-07
+
+### ✨ 新功能 (New Features)
+- 暗盘统计新增 Excel 导出功能：筛选3日净流入>0 且 5日流入天数>3的股票，导出为 `.xlsx` 文件（3个工作表：筛选结果、全部自选股、全市场概览）
+- CLI 新增 `--export` 参数：`python -m stock_monitor.services.dark_trade_stats --codes sh600519 --export`
+
+### 🐛 修复 (Fixes)
+- 修复暗盘统计推送消息中股票名称显示为代码的问题：`stock_names` 字典现在同时存储原始代码（如 `sh600519`）和清理后代码（如 `600519`），确保名称正确匹配
+- 修复集成测试 `test_push_integration` 使用 `config_center.snapshot()` 替代 `config_center._manager.config`
+
 ## [v4.5.1] - 2026-07-07
 
 ### ✨ 改进 (Improvements)
