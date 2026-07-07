@@ -49,11 +49,11 @@ class DarkTradeExcelTask:
 
     def execute(self) -> str | None:
         from stock_monitor.services.dark_trade_exporter import (
-            export_dark_trade_excel,
+            export_dark_trade_csv,
         )
 
         try:
-            dark_file = export_dark_trade_excel(watchlist_codes=[])
+            dark_file = export_dark_trade_csv(watchlist_codes=[])
             app_logger.info(f"[CloseExportScheduler] 暗盘数据已导出: {dark_file}")
             return str(dark_file)
         except Exception as e:
