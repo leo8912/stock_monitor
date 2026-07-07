@@ -1,5 +1,11 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.5.4] - 2026-07-07
+
+### 🐛 修复 (Fixes)
+- 修复 `NotifierService.dispatch_custom_message()` 企业应用推送成功后 `webhook_url` 未定义导致的 `UnboundLocalError`：现在企业应用推送成功后直接返回，不再尝试 Webhook 回退
+- `DarkTradeExcelTask` 收盘调度现在同时导出两个文件：全市场暗盘数据 + 筛选后的统计结果（3日净流入>0且5日流入天数>3）
+
 ## [v4.5.3] - 2026-07-07
 
 ### 🐛 修复 (Fixes)
