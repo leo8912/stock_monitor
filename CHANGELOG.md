@@ -1,5 +1,11 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.5.3] - 2026-07-07
+
+### 🐛 修复 (Fixes)
+- 修复 `close_export_scheduler.py` 缺少 `from __future__ import annotations` 导致 Python 3.9 下 `str | None` 语法报错 `unsupported operand type(s) for |: 'type' and 'NoneType'`
+- 修复 `DarkTradeExcelTask.execute()` 导入不存在的 `export_dark_trade_excel` 函数，改用 `export_dark_trade_csv`
+
 ## [v4.5.2] - 2026-07-07
 
 ### ✨ 新功能 (New Features)
