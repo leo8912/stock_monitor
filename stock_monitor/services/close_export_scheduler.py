@@ -3,6 +3,8 @@
 负责在每天收盘时(15:05)自动触发数据抓取和导出任务
 """
 
+from __future__ import annotations
+
 import threading
 from datetime import datetime
 from datetime import time as dtime
