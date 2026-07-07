@@ -231,7 +231,7 @@ class DarkTradeStatsPushThread(QThread):
 
             title = "📊 暗盘资金统计"
             success = NotifierService.dispatch_custom_message(
-                config_center._manager.config, title, message
+                config_center.snapshot(), title, message
             )
 
             if success:

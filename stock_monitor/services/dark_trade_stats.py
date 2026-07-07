@@ -255,7 +255,7 @@ def main() -> None:
         # 推送模式
         from stock_monitor.core.config_center import config_center
 
-        success = push_dark_trade_stats(config_center._manager.config, args.codes)
+        success = push_dark_trade_stats(config_center.snapshot(), args.codes)
         if success:
             print("✅ 推送成功")
         else:

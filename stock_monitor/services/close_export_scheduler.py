@@ -121,7 +121,7 @@ class DarkTradeStatsTask:
 
         try:
             user_stocks = config_center.user_stocks
-            result = push_dark_trade_stats(config_center._manager.config, user_stocks)
+            result = push_dark_trade_stats(config_center.snapshot(), user_stocks)
             if result:
                 app_logger.info("[CloseExportScheduler] 暗盘统计推送已触发")
             else:
