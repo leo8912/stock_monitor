@@ -180,7 +180,7 @@ def format_dark_trade_stats_message(stats: dict) -> str:
 
 
 def push_dark_trade_stats(config: dict, watchlist_codes: list[str]) -> bool:
-    """推送暗盘统计到企业微信"""
+    """推送暗盘统计到企业微信，并导出Excel"""
     try:
         stats = calculate_dark_trade_stats(watchlist_codes)
         if not stats.get("market_summary"):
@@ -196,6 +196,15 @@ def push_dark_trade_stats(config: dict, watchlist_codes: list[str]) -> bool:
             app_logger.info("[DarkTradeStats] 暗盘统计推送成功")
         else:
             app_logger.warning("[DarkTradeStats] 暗盘统计推送失败")
+
+        # 同时导出Excel
+        try:
+            excel_path = export_dark_trade_stats_excel(watchlist_codes)
+            if excel_path:
+                app_logger.info(f"[DarkTradeStats] Excel已导出: {excel_path}")
+        except Exception as e:
+            app_logger.warning(f"[DarkTradeStats] Excel导出失败: {e}")
+
         return success
     except Exception as e:
         app_logger.error(f"[DarkTradeStats] 推送异常: {e}")

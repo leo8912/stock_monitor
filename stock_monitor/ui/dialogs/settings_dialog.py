@@ -510,6 +510,9 @@ class NewSettingsDialog(QDialog):
         self.btn_test_dark_trade_stats.clicked.connect(
             self._on_test_dark_trade_stats_clicked
         )
+        self.btn_export_dark_trade_excel.clicked.connect(
+            self._on_export_dark_trade_excel_clicked
+        )
         self.push_mode_combo.currentIndexChanged.connect(self._on_push_mode_changed)
         self.viewModel.error_occurred.connect(self._on_vm_error)
 
@@ -1003,6 +1006,15 @@ class NewSettingsDialog(QDialog):
             "立即计算暗盘资金统计并推送到企业微信\n" "用于测试暗盘统计推送功能是否正常"
         )
         btn_row_layout.addWidget(self.btn_test_dark_trade_stats)
+
+        # 导出暗盘统计Excel按钮
+        self.btn_export_dark_trade_excel = QPushButton("📈 导出暗盘Excel")
+        self.btn_export_dark_trade_excel.setObjectName("SecondaryButton")
+        self.btn_export_dark_trade_excel.setFixedWidth(140)
+        self.btn_export_dark_trade_excel.setToolTip(
+            "导出暗盘统计到Excel\n筛选条件：3日净流入>0 且 5日流入天数>3"
+        )
+        btn_row_layout.addWidget(self.btn_export_dark_trade_excel)
 
         quant_layout.addLayout(btn_row_layout)
 
@@ -1539,6 +1551,57 @@ class NewSettingsDialog(QDialog):
         self._dark_stats_thread.start()
 
         # 延迟恢复按钮（避免瞬间恢复）
+        QTimer.singleShot(3000, _restore_button)
+
+    def _on_export_dark_trade_excel_clicked(self):
+        """导出暗盘统计Excel"""
+        from PyQt6.QtCore import QTimer
+        from PyQt6.QtWidgets import QApplication, QMessageBox
+
+        user_stocks = self.get_stocks_from_list(self.watch_list)
+
+        # 禁用按钮，显示进度
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        self.btn_export_dark_trade_excel.setEnabled(False)
+        self.btn_export_dark_trade_excel.setText("⏳ 导出中...")
+        QApplication.processEvents()
+
+        def _restore_button():
+            self.btn_export_dark_trade_excel.setEnabled(True)
+            self.btn_export_dark_trade_excel.setText("📈 导出暗盘Excel")
+
+        def _do_export():
+            try:
+                from stock_monitor.services.dark_trade_stats import (
+                    export_dark_trade_stats_excel,
+                )
+
+                excel_path = export_dark_trade_stats_excel(user_stocks)
+                QTimer.singleShot(0, lambda: _on_export_finished(excel_path))
+            except Exception:
+                err_msg = "导出异常"
+                QTimer.singleShot(0, lambda: _on_export_finished(None, err_msg))
+
+        def _on_export_finished(excel_path: str | None, error: str = ""):
+            """导出完成回调（在主线程中执行）"""
+            QApplication.restoreOverrideCursor()
+            if excel_path:
+                QMessageBox.information(
+                    self,
+                    "导出成功",
+                    f"暗盘统计Excel已导出到：\n{excel_path}",
+                )
+            else:
+                msg = error or "无符合条件的数据（3日净流入>0且5日流入天数>3）"
+                QMessageBox.warning(self, "导出失败", f"导出失败：\n{msg}")
+
+        # 在后台线程执行导出
+        import threading
+
+        self._export_thread = threading.Thread(target=_do_export, daemon=True)
+        self._export_thread.start()
+
+        # 延迟恢复按钮
         QTimer.singleShot(3000, _restore_button)
 
     def get_stocks_from_list(self, watch_list):
