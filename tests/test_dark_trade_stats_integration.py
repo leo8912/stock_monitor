@@ -58,7 +58,7 @@ class TestDarkTradeStatsIntegration:
 
         from stock_monitor.core.config_center import config_center
 
-        result = push_dark_trade_stats(config_center._manager.config, ["sh600519"])
+        result = push_dark_trade_stats(config_center.snapshot(), ["sh600519"])
 
         assert result is True
         mock_dispatch.assert_called_once()
