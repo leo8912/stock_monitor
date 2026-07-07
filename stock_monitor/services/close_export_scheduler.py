@@ -51,14 +51,30 @@ class DarkTradeExcelTask:
         from stock_monitor.services.dark_trade_exporter import (
             export_dark_trade_csv,
         )
+        from stock_monitor.services.dark_trade_stats import (
+            export_dark_trade_stats_excel,
+        )
 
+        results = []
+
+        # 1. 全市场暗盘数据
         try:
             dark_file = export_dark_trade_csv(watchlist_codes=[])
             app_logger.info(f"[CloseExportScheduler] 暗盘数据已导出: {dark_file}")
-            return str(dark_file)
+            results.append(str(dark_file))
         except Exception as e:
             app_logger.error(f"[CloseExportScheduler] 暗盘数据导出失败: {e}")
-            return None
+
+        # 2. 筛选后的统计结果（3日净流入>0且5日流入天数>3）
+        try:
+            stats_file = export_dark_trade_stats_excel(watchlist_codes=[])
+            if stats_file:
+                app_logger.info(f"[CloseExportScheduler] 暗盘统计已导出: {stats_file}")
+                results.append(stats_file)
+        except Exception as e:
+            app_logger.error(f"[CloseExportScheduler] 暗盘统计导出失败: {e}")
+
+        return results[0] if results else None
 
 
 class StockIndicatorsTask:

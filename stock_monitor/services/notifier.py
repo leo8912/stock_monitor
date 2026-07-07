@@ -345,14 +345,17 @@ class NotifierService:
                     app_logger.error(f"企业应用推送异常: {app_err}")
                     success = False
 
+            # 如果企业应用推送成功，直接返回
+            if success:
+                return True
+
             # 2. Webhook Markdown 通道
-            if not success:
-                webhook_url = webhook_override or config.get("wecom_webhook", "")
-                if not webhook_url:
-                    app_logger.warning(
-                        "企微应用发送未成功且未配置 Webhook URL，无法发送自定义消息"
-                    )
-                    return False
+            webhook_url = webhook_override or config.get("wecom_webhook", "")
+            if not webhook_url:
+                app_logger.warning(
+                    "企微应用发送未成功且未配置 Webhook URL，无法发送自定义消息"
+                )
+                return False
 
             # 如果内容包含 HTML 标签或 Markdown 符号，尝试进行简单的清理转换为纯文本
             import re
