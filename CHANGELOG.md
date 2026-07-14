@@ -1,5 +1,10 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.5.10] - 2026-07-14
+
+### 🐛 修复 (Fixes)
+- 修复 `MainWindowViewModel.check_and_update_database()` 中 `WorkerRunnable`（QRunnable）没有 `finished` 信号导致启动崩溃：时间戳改为提交任务时同步更新
+
 ## [v4.5.9] - 2026-07-14
 
 ### 🐛 修复 (Fixes)
