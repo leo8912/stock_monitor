@@ -6,7 +6,7 @@ from stock_monitor.core.data.stock_data_fetcher import StockDataFetcher
 from stock_monitor.core.market.stock_manager import StockManager
 from stock_monitor.core.workers import MarketStatsWorker, QuantWorker, RefreshWorker
 from stock_monitor.data.stock.stock_db import StockDatabase
-from stock_monitor.services.dark_trade_service import get_dark_trade_service
+from stock_monitor.services.dark_trade.service import get_dark_trade_service
 from stock_monitor.utils.config_helper import ConfigKeys
 from stock_monitor.utils.logger import app_logger
 from stock_monitor.utils.stock_utils import StockCodeProcessor

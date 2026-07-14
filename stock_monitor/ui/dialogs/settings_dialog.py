@@ -208,7 +208,7 @@ class DarkTradeStatsPushThread(QThread):
     def run(self):
         try:
             from stock_monitor.core.config_center import config_center
-            from stock_monitor.services.dark_trade_stats import (
+            from stock_monitor.services.dark_trade import (
                 calculate_dark_trade_stats,
                 format_dark_trade_stats_message,
             )
@@ -1572,7 +1572,7 @@ class NewSettingsDialog(QDialog):
 
         def _do_export():
             try:
-                from stock_monitor.services.dark_trade_stats import (
+                from stock_monitor.services.dark_trade.exporter import (
                     export_dark_trade_stats_excel,
                 )
 

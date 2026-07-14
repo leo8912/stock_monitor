@@ -17,7 +17,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-from stock_monitor.services.dark_trade_service import fetch_all_dark_trade
+from stock_monitor.services.dark_trade.service import fetch_all_dark_trade
 from stock_monitor.utils.logger import app_logger
 
 # ── 明盘行情API（东方财富市场实时数据）──────────────────────────────────────

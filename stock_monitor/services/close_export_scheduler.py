@@ -48,11 +48,11 @@ class DarkTradeExcelTask:
         self._enabled = enabled
 
     def execute(self) -> str | None:
+        from stock_monitor.services.dark_trade.exporter import (
+            export_dark_trade_stats_excel,
+        )
         from stock_monitor.services.dark_trade_exporter import (
             export_dark_trade_csv,
-        )
-        from stock_monitor.services.dark_trade_stats import (
-            export_dark_trade_stats_excel,
         )
 
         results = []
@@ -135,7 +135,7 @@ class DarkTradeStatsTask:
 
     def execute(self) -> bool:
         from stock_monitor.core.config_center import config_center
-        from stock_monitor.services.dark_trade_stats import push_dark_trade_stats
+        from stock_monitor.services.dark_trade.pusher import push_dark_trade_stats
 
         try:
             user_stocks = config_center.user_stocks

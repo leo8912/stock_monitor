@@ -10,7 +10,7 @@ from stock_monitor.services.close_export_scheduler import (
     CloseExportScheduler,
     DarkTradeStatsTask,
 )
-from stock_monitor.services.dark_trade_stats import (
+from stock_monitor.services.dark_trade import (
     calculate_dark_trade_stats,
     format_dark_trade_stats_message,
     push_dark_trade_stats,

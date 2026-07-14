@@ -7,12 +7,13 @@ from __future__ import annotations
 
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from datetime import time as dtime
 
 import requests
 from PyQt6 import QtCore
 
+from stock_monitor.services.dark_trade.utils import get_recent_trade_dates
 from stock_monitor.utils.logger import app_logger
 
 DARKTRADE_URL = "https://quotederivates.eastmoney.com/datacenter/darktrade"
@@ -33,17 +34,6 @@ def _is_trading_hours() -> bool:
         return False
     t = now.time()
     return _MARKET_START <= t <= _MARKET_END
-
-
-def _get_recent_trade_dates(n: int = 3) -> list[str]:
-    """获取最近N个交易日日期列表（简单跳过周末）"""
-    dates: list[str] = []
-    current = datetime.now()
-    while len(dates) < n:
-        if current.weekday() < 5:
-            dates.append(current.strftime("%Y%m%d"))
-        current -= timedelta(days=1)
-    return dates
 
 
 def fetch_all_dark_trade(date_str=None) -> list:
@@ -222,7 +212,7 @@ class DarkTradeService(QtCore.QThread):
     def _fetch_history_and_update(self):
         """后台抓取前2天历史数据，计算连续流入/流出天数，更新缓存"""
         try:
-            dates = _get_recent_trade_dates(3)  # [今天, 昨天, 前天]
+            dates = get_recent_trade_dates(3)  # [今天, 昨天, 前天]
             if len(dates) < 2:
                 return
 
