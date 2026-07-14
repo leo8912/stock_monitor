@@ -62,8 +62,8 @@ class NoElideDelegate(QtWidgets.QStyledItemDelegate):
             index.data(QtCore.Qt.ItemDataRole.ForegroundRole) or QtGui.QColor("#ffffff")
         )
 
-        # 构造文本绘制矩形，内部留少量 padding
-        rect = option.rect.adjusted(4, 0, -4, 0)
+        # 构造文本绘制矩形，内部留少量 padding（转为 QRectF 以匹配 drawText 重载）
+        rect = QtCore.QRectF(option.rect.adjusted(4, 0, -4, 0))
 
         # 关键：禁用文本省略，完整显示
         text_option = QtGui.QTextOption()
