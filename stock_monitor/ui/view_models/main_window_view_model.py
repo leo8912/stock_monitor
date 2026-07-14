@@ -161,7 +161,7 @@ class MainWindowViewModel(QObject):
                 app_logger.warning(
                     f"Dirty data detected in user stock list, auto-repaired: {stocks} -> {cleaned_stocks}"
                 )
-                self._config_manager.set("user_stocks", cleaned_stocks)
+                self._config_helper.set("user_stocks", cleaned_stocks)
 
             app_logger.info(f"Loaded user stock list: {cleaned_stocks}")
             return cleaned_stocks
@@ -210,10 +210,13 @@ class MainWindowViewModel(QObject):
 
         if not self._refresh_worker.isRunning():
             # 确保线程已启动
-            config = self._config_manager.get_all()
+            user_stocks_val = user_stocks or self._config_helper.get_list(
+                ConfigKeys.USER_STOCKS, []
+            )
+            interval = self._config_helper.get_int(ConfigKeys.REFRESH_INTERVAL, 5)
             self._refresh_worker.start_refresh(
-                user_stocks or config.get("user_stocks", []),
-                config.get("refresh_interval", 5),
+                user_stocks_val,
+                interval,
             )
         else:
             self._refresh_worker.trigger_now()
@@ -309,7 +312,7 @@ class MainWindowViewModel(QObject):
             from stock_monitor.data.market.db_updater import update_stock_database
             from stock_monitor.utils.worker import WorkerRunnable
 
-            last_update = self._config_manager.get("last_db_update", 0)
+            last_update = self._config_helper.get("last_db_update", 0)
             current_time = time.time()
 
             should_update = False
@@ -323,7 +326,7 @@ class MainWindowViewModel(QObject):
                 worker = WorkerRunnable(update_stock_database)
                 # 连接完成信号，仅在成功时更新时间戳
                 worker.finished.connect(
-                    lambda: self._config_manager.set("last_db_update", current_time)
+                    lambda: self._config_helper.set("last_db_update", current_time)
                 )
                 QThreadPool.globalInstance().start(worker)
                 app_logger.info("启动时数据库更新已启动")
