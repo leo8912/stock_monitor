@@ -1,5 +1,10 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.5.7] - 2026-07-14
+
+### 🐛 修复 (Fixes)
+- 修复 v4.5.6 引入的 `QScrollBarPolicy` 导入路径错误导致应用启动崩溃：`QtWidgets.QScrollBarPolicy` 应为 `QtCore.Qt.ScrollBarPolicy`
+
 ## [v4.5.6] - 2026-07-14
 
 ### 🐛 修复 (Fixes)
