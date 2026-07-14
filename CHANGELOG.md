@@ -1,5 +1,10 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.5.8] - 2026-07-14
+
+### 🐛 修复 (Fixes)
+- 修复 v4.5.7 `NoElideDelegate.drawText` 调用时 `QRect` → `QRectF` 类型不匹配导致的渲染崩溃
+
 ## [v4.5.7] - 2026-07-14
 
 ### 🐛 修复 (Fixes)
