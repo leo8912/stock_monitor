@@ -1,5 +1,10 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.5.9] - 2026-07-14
+
+### 🐛 修复 (Fixes)
+- 修复 `MainWindowViewModel` 中 `_config_manager` 属性未定义导致启动时数据库更新检查崩溃：改用已初始化的 `_config_helper`
+
 ## [v4.5.8] - 2026-07-14
 
 ### 🐛 修复 (Fixes)
