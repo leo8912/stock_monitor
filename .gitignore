@@ -25,6 +25,7 @@ dist/
 .agents/
 .sisyphus/
 .workbuddy/
+.omo/
 skills-lock.json
 
 # Environment and local config

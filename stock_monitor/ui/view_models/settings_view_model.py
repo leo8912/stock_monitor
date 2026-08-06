@@ -4,6 +4,7 @@ from PyQt6 import QtCore
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
 from stock_monitor.data.stock.stocks import load_stock_data
+from stock_monitor.utils.config_helper import ConfigKeys
 from stock_monitor.utils.helpers import get_stock_emoji
 from stock_monitor.utils.logger import app_logger
 from stock_monitor.utils.stock_utils import StockCodeProcessor
@@ -44,8 +45,10 @@ class SettingsViewModel(QObject):
 
     def __init__(self):
         super().__init__()
+        from stock_monitor.core.config.container import container
         from stock_monitor.core.config_center import config_center
 
+        self._container = container
         self._config_manager = config_center.raw
         self._processor = StockCodeProcessor()
 
@@ -128,21 +131,27 @@ class SettingsViewModel(QObject):
     def load_settings(self):
         """Load all settings"""
         settings = {
-            "user_stocks": self._config_manager.get("user_stocks", []),
+            "user_stocks": self._config_manager.get(ConfigKeys.USER_STOCKS, []),
             "auto_start": self._config_manager.get("auto_start", False),
-            "refresh_interval": self._config_manager.get("refresh_interval", 5),
+            "refresh_interval": self._config_manager.get(
+                ConfigKeys.REFRESH_INTERVAL, 5
+            ),
             "font_size": self._config_manager.get("font_size", 13),
             "font_family": self._config_manager.get("font_family", "微软雅黑"),
             "transparency": self._config_manager.get("transparency", 80),
             "drag_sensitivity": self._config_manager.get("drag_sensitivity", 5),
             # Add missing quant settings for persistence
-            "quant_enabled": self._config_manager.get("quant_enabled", False),
-            "auto_export_excel": self._config_manager.get("auto_export_excel", False),
-            "wecom_webhook": self._config_manager.get("wecom_webhook", ""),
-            "push_mode": self._config_manager.get("push_mode", "webhook"),
-            "wecom_corpid": self._config_manager.get("wecom_corpid", ""),
-            "wecom_corpsecret": self._config_manager.get("wecom_corpsecret", ""),
-            "wecom_agentid": self._config_manager.get("wecom_agentid", ""),
+            "quant_enabled": self._config_manager.get(ConfigKeys.QUANT_ENABLED, False),
+            "auto_export_excel": self._config_manager.get(
+                ConfigKeys.AUTO_EXPORT_EXCEL, False
+            ),
+            "wecom_webhook": self._config_manager.get(ConfigKeys.WECOM_WEBHOOK, ""),
+            "push_mode": self._config_manager.get(ConfigKeys.PUSH_MODE, "webhook"),
+            "wecom_corpid": self._config_manager.get(ConfigKeys.WECOM_CORPID, ""),
+            "wecom_corpsecret": self._config_manager.get(
+                ConfigKeys.WECOM_CORPSECRET, ""
+            ),
+            "wecom_agentid": self._config_manager.get(ConfigKeys.WECOM_AGENTID, ""),
         }
         self.settings_loaded.emit(settings)
         return settings
@@ -155,8 +164,11 @@ class SettingsViewModel(QObject):
                 # 验证失败时 validation_failed 信号已触发，直接返回
                 return False
 
+            # 统一通过 config_center.set() 写入，保证持锁且发布 CONFIG_CHANGED 事件
+            from stock_monitor.core.config_center import config_center
+
             for key, value in settings.items():
-                self._config_manager.set(key, value)
+                config_center.set(key, value)
 
             self.save_completed.emit()
             return True

@@ -221,6 +221,13 @@ class ConfigManager:
             "wecom_corpid": "",
             "wecom_corpsecret": "",
             "wecom_agentid": "",
+            "auto_start": False,
+            "font_size": 13,
+            "font_family": "微软雅黑",
+            "transparency": 80,
+            "drag_sensitivity": 5,
+            "auto_export_excel": False,
+            "auto_close_export": False,
             # 量化推送防抖动配置
             "quant_alert_cooldown": 1800,  # 基础冷却时间（秒），默认30分钟
             "quant_alert_score_threshold": 2,  # 评分变化阈值，超过此值才重新推送
@@ -281,8 +288,9 @@ class ConfigManager:
 def load_config() -> dict[str, Any]:
     """加载配置文件，包含完整的错误处理和默认值"""
     manager = ConfigManager()
-    # 由于使用了单例模式，这里直接返回内部配置的副本
-    return manager._config.copy()
+    # 加锁读取，避免与 set() 并发写产生竞态
+    with manager._instance_lock:
+        return manager._config.copy()
 
 
 def save_config(cfg: dict[str, Any]) -> bool:
@@ -296,7 +304,11 @@ def save_config(cfg: dict[str, Any]) -> bool:
         bool: 保存是否成功
     """
     manager = ConfigManager()
-    # 确保必要的键存在，避免外部传入不完整的配置
-    manager._ensure_required_keys_exist(cfg)
-    manager._config = cfg
-    return manager._save_config()
+    # 加锁合并保存，避免整体替换导致丢失未在 cfg 中的配置键
+    with manager._instance_lock:
+        merged = manager._config.copy()
+        merged.update(cfg)
+        # 确保必要的键存在
+        manager._ensure_required_keys_exist(merged)
+        manager._config = merged
+        return manager._save_config()

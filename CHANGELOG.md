@@ -1,5 +1,18 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.5.11] - 2026-07-14
+
+### 🐛 修复 (Fixes)
+- 修复 `settings_dialog.py` 导出暗盘交易时调用不存在的 `export_dark_trade_excel`，改为 `export_dark_trade_csv`
+- 删除无调用方的死代码 `core/app_service.py`
+- 修复 `SettingsViewModel` 缺少 `_container` 属性导致"测试量化推送"崩溃
+- `ConfigManager.load_config/save_config` 加锁；`save_config` 由整表替换改为合并且保留已有关键字，避免保存时丢失其他配置键
+- `ConfigKeys` 补充 `WECOM_CORPID/CORPSECRET/AGENTID`，消除 `config_center` 读取时的 `AttributeError`
+- 移除危险的 `config_center.update()`（整表替换会清空未包含的键）
+- 配置写入统一走 `config_center.set()`（加锁 + 发布 `CONFIG_CHANGED` 事件）；主窗口订阅 `CONFIG_CHANGED` 幂等刷新
+- `settings_view_model.load_settings` 硬编码字符串键改为 `ConfigKeys` 常量；默认配置补齐 `auto_start/font_size/font_family/transparency/drag_sensitivity/auto_export_excel/auto_close_export`
+- `DIContainer` 单例 `__new__` 加双检锁、容器读写加 `_access_lock`，消除并发竞态
+
 ## [v4.5.10] - 2026-07-14
 
 ### 🐛 修复 (Fixes)

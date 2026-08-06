@@ -157,6 +157,9 @@ class ConfigKeys:
     # 消息推送
     WECOM_WEBHOOK = "wecom_webhook"
     PUSH_MODE = "push_mode"
+    WECOM_CORPID = "wecom_corpid"
+    WECOM_CORPSECRET = "wecom_corpsecret"
+    WECOM_AGENTID = "wecom_agentid"
 
     # 窗口位置
     WINDOW_POS = "window_pos"

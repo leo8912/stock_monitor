@@ -161,7 +161,11 @@ class MainWindowViewModel(QObject):
                 app_logger.warning(
                     f"Dirty data detected in user stock list, auto-repaired: {stocks} -> {cleaned_stocks}"
                 )
-                self._config_helper.set("user_stocks", cleaned_stocks)
+                config_center.set(
+                    ConfigKeys.USER_STOCKS,
+                    cleaned_stocks,
+                    publish_event=False,
+                )
 
             app_logger.info(f"Loaded user stock list: {cleaned_stocks}")
             return cleaned_stocks
@@ -326,7 +330,11 @@ class MainWindowViewModel(QObject):
                 worker = WorkerRunnable(update_stock_database)
                 QThreadPool.globalInstance().start(worker)
                 # 记录本次检查时间（无论更新成功与否，避免反复触发）
-                self._config_helper.set("last_db_update", current_time)
+                config_center.set(
+                    "last_db_update",
+                    current_time,
+                    publish_event=False,
+                )
                 app_logger.info("启动时数据库更新已启动")
         except Exception as e:
             app_logger.error(f"启动时数据库更新检查失败: {e}")

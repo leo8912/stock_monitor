@@ -172,12 +172,12 @@ class DarkTradeExportThread(QThread):
     def run(self):
         try:
             from stock_monitor.services.dark_trade_exporter import (
-                export_dark_trade_excel,
+                export_dark_trade_csv,
             )
             from stock_monitor.utils.logger import app_logger
 
             app_logger.info("[DarkExport] 手动触发暗盘数据导出...")
-            output_path = export_dark_trade_excel(
+            output_path = export_dark_trade_csv(
                 watchlist_codes=self._watchlist_codes,
                 history_days=5,
             )
@@ -185,9 +185,7 @@ class DarkTradeExportThread(QThread):
                 True,
                 f"暗盘资金数据已成功导出！\n\n"
                 f"保存位置：\n{output_path}\n\n"
-                f"包含两个 Sheet：\n"
-                f"  1. 全市场暗盘 - 全A股暗盘+明盘行情\n"
-                f"  2. 自选股暗盘 - 自选股子集",
+                f"包含全市场暗盘+明盘行情数据",
             )
         except Exception as e:
             from stock_monitor.utils.logger import app_logger

@@ -4,6 +4,7 @@
 """
 
 import inspect
+import threading
 import warnings
 from typing import Any, Callable, Optional, TypeVar, Union
 
@@ -34,11 +35,14 @@ class DIContainer:
     """依赖注入容器 - 支持类型和字符串键"""
 
     _instance = None
+    _lock = threading.Lock()
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
         return cls._instance
 
     def __init__(self):
@@ -47,6 +51,7 @@ class DIContainer:
         self._initialized = True
         self._factories: dict[Union[type, str], Callable] = {}
         self._singletons: dict[Union[type, str], Any] = {}
+        self._access_lock = threading.Lock()
         app_logger.debug("DI容器初始化完成")
 
     def register_singleton(self, key: Union[type, str], instance: Any) -> None:
@@ -57,7 +62,8 @@ class DIContainer:
             key: 服务类型或字符串键
             instance: 服务实例
         """
-        self._singletons[key] = instance
+        with self._access_lock:
+            self._singletons[key] = instance
         app_logger.debug(f"注册单例服务: {key}")
 
     def register_factory(self, key: Union[type, str], factory: Callable) -> None:
@@ -68,7 +74,8 @@ class DIContainer:
             key: 服务类型或字符串键
             factory: 工厂函数
         """
-        self._factories[key] = factory
+        with self._access_lock:
+            self._factories[key] = factory
         app_logger.debug(f"注册工厂: {key}")
 
     def register(self, key: Union[type, str], instance: Any) -> None:
@@ -96,15 +103,19 @@ class DIContainer:
         """
         # 优先返回已注册的单例
         if key in self._singletons:
-            return self._singletons[key]
+            with self._access_lock:
+                if key in self._singletons:
+                    return self._singletons[key]
 
         # 使用工厂创建
         if key in self._factories:
-            instance = self._factories[key]()
-            # 工厂创建的也缓存为单例
-            self._singletons[key] = instance
-            app_logger.debug(f"通过工厂创建服务: {key}")
-            return instance
+            with self._access_lock:
+                if key in self._factories:
+                    instance = self._factories[key]()
+                    # 工厂创建的也缓存为单例
+                    self._singletons[key] = instance
+                    app_logger.debug(f"通过工厂创建服务: {key}")
+                    return instance
 
         # 向后兼容:自动创建已知服务类型
         if isinstance(key, type):
@@ -118,7 +129,8 @@ class DIContainer:
                 )
                 instance = self._auto_create(key)
                 if instance is not None:
-                    self._singletons[key] = instance
+                    with self._access_lock:
+                        self._singletons[key] = instance
                     return instance
             else:
                 # 类型不在注册表中，无法自动创建
@@ -235,12 +247,14 @@ class DIContainer:
         Returns:
             是否已注册
         """
-        return key in self._singletons or key in self._factories
+        with self._access_lock:
+            return key in self._singletons or key in self._factories
 
     def clear(self) -> None:
         """清空所有注册的服务(主要用于测试)"""
-        self._factories.clear()
-        self._singletons.clear()
+        with self._access_lock:
+            self._factories.clear()
+            self._singletons.clear()
         app_logger.debug("DI容器已清空")
 
 

@@ -6,7 +6,7 @@
 import threading
 from typing import Any
 
-from stock_monitor.config.manager import ConfigManager, load_config, save_config
+from stock_monitor.config.manager import ConfigManager, load_config
 from stock_monitor.core.event_bus import Topics, event_bus
 from stock_monitor.utils.config_helper import ConfigHelper, ConfigKeys
 
@@ -77,17 +77,6 @@ class ConfigCenter:
             event_bus.publish(
                 Topics.CONFIG_CHANGED,
                 data={"key": key, "value": value},
-                source="ConfigCenter",
-            )
-        return success
-
-    def update(self, config: dict[str, Any], publish_event: bool = True) -> bool:
-        """批量更新配置"""
-        success = save_config(config)
-        if success and publish_event:
-            event_bus.publish(
-                Topics.CONFIG_CHANGED,
-                data={"keys": list(config.keys())},
                 source="ConfigCenter",
             )
         return success

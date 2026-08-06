@@ -6,6 +6,8 @@ from PyQt6.QtCore import (
 )
 
 from stock_monitor.core.config.container import container
+from stock_monitor.core.config_center import config_center
+from stock_monitor.core.event_bus import Topics, event_bus
 from stock_monitor.models.stock_data import StockRowData
 
 # Workers are now managed by ViewModel
@@ -64,6 +66,9 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         )
         self.viewModel.stock_data_updated.connect(self._handle_refresh_data)
         self.viewModel.refresh_error_occurred.connect(self._handle_refresh_error)
+
+        # 订阅配置变更事件，统一处理配置修改后的 UI 刷新（幂等）
+        event_bus.subscribe(Topics.CONFIG_CHANGED, self._on_config_changed_event)
 
         # 初始化加载超时计时器 (10s 收敛)
         self._loading_timer = QtCore.QTimer(self)
@@ -382,7 +387,9 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
     def save_position(self):
         """保存窗口位置到配置文件"""
         pos = self.pos()
-        self._config_helper.set("window_pos", [pos.x(), pos.y()])
+        config_center.set(
+            ConfigKeys.WINDOW_POS, [pos.x(), pos.y()], publish_event=False
+        )
 
     def load_position(self):
         """从配置文件加载窗口位置"""
@@ -549,6 +556,19 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
             self._pending_update = False
         self.update()
         app_logger.debug("UI 更新已节流合并")
+
+    def _on_config_changed_event(self, event) -> None:
+        """配置变更事件的幂等 UI 刷新回调"""
+        try:
+            key = None
+            if isinstance(event.data, dict):
+                key = event.data.get("key")
+            if key in (ConfigKeys.FONT_FAMILY, ConfigKeys.FONT_SIZE):
+                self.update_font_size()
+            elif key == ConfigKeys.TRANSPARENCY:
+                self.request_update()
+        except Exception as e:
+            app_logger.warning(f"处理配置变更事件失败: {e}")
 
     def update_font_size(self):
         """更新主窗口字体大小"""
