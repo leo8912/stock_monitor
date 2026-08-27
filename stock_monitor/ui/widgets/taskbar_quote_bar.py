@@ -120,6 +120,10 @@ _HWND_NOTOPMOST = -2
 _DWMWA_WINDOW_CORNER_PREFERENCE = 33
 _DWMWCP_DONOTROUND = 1
 
+# 列布局：列间距与左右内边距（像素）
+_COL_GAP = 10
+_EDGE_PAD = 4
+
 
 class TaskbarQuoteBar(QtWidgets.QWidget):
     """嵌入任务栏显示行情的窄条窗口。"""
@@ -361,17 +365,14 @@ class TaskbarQuoteBar(QtWidgets.QWidget):
     # ── 绘制 ────────────────────────────────────────────────────
 
     def _recalc_width(self) -> None:
-        """根据全部股票的最大文本宽度估算固定窗口宽度。
+        """根据全部股票各列的最大文本宽度估算固定窗口宽度。
 
         用全部股票（而非当前页）计算，保证轮播翻页时宽度恒定，
         避免行情条左右位置随内容变化而抖动。
         """
-        metrics = QtGui.QFontMetrics(self._make_font())
-        max_text = 0
-        for stock in self._all_stocks:
-            text = self._format_stock_text(stock)
-            max_text = max(max_text, metrics.horizontalAdvance(text))
-        new_width = max(120, max_text + 16)
+        col_widths = self._column_widths()
+        total = sum(col_widths) + _COL_GAP * max(0, len(col_widths) - 1)
+        new_width = max(120, int(total) + 2 * _EDGE_PAD)
         if new_width == self._bar_width:
             return
         self._bar_width = new_width
@@ -383,17 +384,27 @@ class TaskbarQuoteBar(QtWidgets.QWidget):
         font.setBold(True)
         return font
 
-    def _format_stock_text(self, stock: StockRowData) -> str:
-        parts = [stock.name]
-        if self._show_price and stock.price:
-            parts.append(stock.price)
-        if self._show_change and stock.change_str:
-            parts.append(stock.change_str)
+    def _stock_columns(self, stock: StockRowData) -> list[str]:
+        """按启用的列返回该股票各列文本（缺失填空串以保持列数一致）。"""
+        cols = [stock.name or ""]
+        if self._show_price:
+            cols.append(stock.price or "")
+        if self._show_change:
+            cols.append(stock.change_str or "")
         if self._show_dark_flow:
-            dark = self._format_dark_flow(stock)
-            if dark:
-                parts.append(dark)
-        return " ".join(parts)
+            cols.append(self._format_dark_flow(stock))
+        return cols
+
+    def _column_widths(self) -> list[int]:
+        """各列在所有股票中的最大文本宽度（像素）。"""
+        n_cols = 1 + int(self._show_price) + int(self._show_change)
+        n_cols += int(self._show_dark_flow)
+        widths = [0] * n_cols
+        metrics = QtGui.QFontMetrics(self._make_font())
+        for stock in self._all_stocks:
+            for i, text in enumerate(self._stock_columns(stock)):
+                widths[i] = max(widths[i], metrics.horizontalAdvance(text))
+        return widths
 
     @staticmethod
     def _format_dark_flow(stock: StockRowData) -> str:
@@ -458,20 +469,31 @@ class TaskbarQuoteBar(QtWidgets.QWidget):
     ) -> None:
         """绘制单页股票（上下堆叠），带垂直偏移与不透明度用于过渡动画。"""
         painter.setOpacity(max(0.0, min(1.0, opacity)))
-        width = self.width()
         total_h = self.height()
         row_h = total_h / len(stocks)
+        col_widths = self._column_widths()
+        # 各列起始 x（名称左对齐，其余数字列右对齐）
+        col_x = []
+        x = float(_EDGE_PAD)
+        for w in col_widths:
+            col_x.append(x)
+            x += w + _COL_GAP
         for i, stock in enumerate(stocks):
-            text = self._format_stock_text(stock)
             color = QtGui.QColor(stock.color_hex or COLORS.STOCK_NEUTRAL)
             painter.setPen(color)
-            rect = QtCore.QRectF(4, i * row_h + y_offset, width - 8, row_h)
-            painter.drawText(
-                rect,
-                QtCore.Qt.AlignmentFlag.AlignVCenter
-                | QtCore.Qt.AlignmentFlag.AlignLeft,
-                text,
-            )
+            y = i * row_h + y_offset
+            for j, text in enumerate(self._stock_columns(stock)):
+                align = (
+                    QtCore.Qt.AlignmentFlag.AlignLeft
+                    if j == 0
+                    else QtCore.Qt.AlignmentFlag.AlignRight
+                )
+                rect = QtCore.QRectF(col_x[j], y, col_widths[j], row_h)
+                painter.drawText(
+                    rect,
+                    QtCore.Qt.AlignmentFlag.AlignVCenter | align,
+                    text,
+                )
         painter.setOpacity(1.0)
 
     # ── Win32 嵌入 ──────────────────────────────────────────────
