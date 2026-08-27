@@ -420,6 +420,19 @@ class TaskbarQuoteBar(QtWidgets.QWidget):
         else:
             return f"{sign}{v:.1f}万"
 
+    @staticmethod
+    def _dark_flow_color(stock: StockRowData) -> QtGui.QColor:
+        """暗盘列颜色：流入红、流出绿，连续≥3天用深色（与表格一致）。"""
+        if not stock.dark_flow_valid:
+            return QtGui.QColor("#888888")
+        v = stock.dark_flow_wan
+        days = stock.dark_flow_consecutive_days
+        if v > 0:
+            return QtGui.QColor("#CC0000") if days >= 3 else QtGui.QColor("#e74c3f")
+        elif v < 0:
+            return QtGui.QColor("#145a32") if days <= -3 else QtGui.QColor("#27ae60")
+        return QtGui.QColor("#888888")
+
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.RenderHint.TextAntialiasing, True)
@@ -479,15 +492,20 @@ class TaskbarQuoteBar(QtWidgets.QWidget):
             col_x.append(x)
             x += w + _COL_GAP
         for i, stock in enumerate(stocks):
-            color = QtGui.QColor(stock.color_hex or COLORS.STOCK_NEUTRAL)
-            painter.setPen(color)
+            base_color = QtGui.QColor(stock.color_hex or COLORS.STOCK_NEUTRAL)
             y = i * row_h + y_offset
-            for j, text in enumerate(self._stock_columns(stock)):
+            cols = self._stock_columns(stock)
+            dark_idx = len(cols) - 1 if self._show_dark_flow else -1
+            for j, text in enumerate(cols):
                 align = (
                     QtCore.Qt.AlignmentFlag.AlignLeft
                     if j == 0
                     else QtCore.Qt.AlignmentFlag.AlignRight
                 )
+                if j == dark_idx:
+                    painter.setPen(self._dark_flow_color(stock))
+                else:
+                    painter.setPen(base_color)
                 rect = QtCore.QRectF(col_x[j], y, col_widths[j], row_h)
                 painter.drawText(
                     rect,
