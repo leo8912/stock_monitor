@@ -174,3 +174,4 @@ class ConfigKeys:
     TASKBAR_PER_PAGE = "taskbar_per_page"  # 每页显示股票数
     TASKBAR_SHOW_PRICE = "taskbar_show_price"  # 是否显示价格
     TASKBAR_SHOW_CHANGE = "taskbar_show_change"  # 是否显示涨跌幅
+    TASKBAR_SHOW_DARK_FLOW = "taskbar_show_dark_flow"  # 是否显示暗盘净流入

@@ -140,6 +140,7 @@ class TaskbarQuoteBar(QtWidgets.QWidget):
         self._per_page = 3
         self._show_price = True
         self._show_change = True
+        self._show_dark_flow = False
         self._carousel_enabled = True
         self._embedded = False
         self._taskbar_hwnd = 0
@@ -205,11 +206,13 @@ class TaskbarQuoteBar(QtWidgets.QWidget):
         carousel_enabled: bool = True,
         show_price: bool = True,
         show_change: bool = True,
+        show_dark_flow: bool = False,
     ) -> None:
         """应用显示配置。"""
         self._per_page = max(1, per_page)
         self._show_price = show_price
         self._show_change = show_change
+        self._show_dark_flow = show_dark_flow
         self._carousel_enabled = carousel_enabled
         if carousel_enabled:
             self._carousel_timer.start(max(1, carousel_interval_sec) * 1000)
@@ -386,7 +389,25 @@ class TaskbarQuoteBar(QtWidgets.QWidget):
             parts.append(stock.price)
         if self._show_change and stock.change_str:
             parts.append(stock.change_str)
+        if self._show_dark_flow:
+            dark = self._format_dark_flow(stock)
+            if dark:
+                parts.append(dark)
         return " ".join(parts)
+
+    @staticmethod
+    def _format_dark_flow(stock: StockRowData) -> str:
+        """暗盘净流入短文本；无有效数据时返回空串（不占位）。"""
+        if not stock.dark_flow_valid:
+            return ""
+        v = stock.dark_flow_wan
+        sign = "+" if v >= 0 else ""
+        if abs(v) >= 10000:
+            return f"{sign}{v / 10000:.1f}亿"
+        elif abs(v) >= 1000:
+            return f"{sign}{v:.0f}万"
+        else:
+            return f"{sign}{v:.1f}万"
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
         painter = QtGui.QPainter(self)

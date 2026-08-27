@@ -166,6 +166,9 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
                 show_change=config_center.get_bool(
                     ConfigKeys.TASKBAR_SHOW_CHANGE, True
                 ),
+                show_dark_flow=config_center.get_bool(
+                    ConfigKeys.TASKBAR_SHOW_DARK_FLOW, False
+                ),
             )
             bar.embed_failed.connect(self._on_taskbar_embed_failed)
             bar.show_main_requested.connect(self._show_main_window)
@@ -651,6 +654,9 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
                 show_price=config_center.get_bool(ConfigKeys.TASKBAR_SHOW_PRICE, True),
                 show_change=config_center.get_bool(
                     ConfigKeys.TASKBAR_SHOW_CHANGE, True
+                ),
+                show_dark_flow=config_center.get_bool(
+                    ConfigKeys.TASKBAR_SHOW_DARK_FLOW, False
                 ),
             )
         except Exception as e:

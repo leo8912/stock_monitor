@@ -843,8 +843,11 @@ class NewSettingsDialog(QDialog):
         self.taskbar_show_price_checkbox.setChecked(True)
         self.taskbar_show_change_checkbox = QCheckBox("显示涨跌幅")
         self.taskbar_show_change_checkbox.setChecked(True)
+        self.taskbar_show_dark_flow_checkbox = QCheckBox("显示暗盘")
+        self.taskbar_show_dark_flow_checkbox.setChecked(False)
         fields_row.addWidget(self.taskbar_show_price_checkbox)
         fields_row.addWidget(self.taskbar_show_change_checkbox)
+        fields_row.addWidget(self.taskbar_show_dark_flow_checkbox)
         fields_row.addStretch()
         taskbar_layout.addLayout(fields_row)
 
@@ -1437,6 +1440,9 @@ class NewSettingsDialog(QDialog):
             self.taskbar_show_change_checkbox.setChecked(
                 settings.get("taskbar_show_change", True)
             )
+            self.taskbar_show_dark_flow_checkbox.setChecked(
+                settings.get("taskbar_show_dark_flow", False)
+            )
             push_mode = settings.get("push_mode", "webhook")
             index = self.push_mode_combo.findData(push_mode)
             if index >= 0:
@@ -1482,6 +1488,7 @@ class NewSettingsDialog(QDialog):
                 "taskbar_carousel_interval": int(self.taskbar_interval_spin.value()),
                 "taskbar_show_price": self.taskbar_show_price_checkbox.isChecked(),
                 "taskbar_show_change": self.taskbar_show_change_checkbox.isChecked(),
+                "taskbar_show_dark_flow": self.taskbar_show_dark_flow_checkbox.isChecked(),
             }
 
             # 新增企微应用配置保存

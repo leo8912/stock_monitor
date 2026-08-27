@@ -234,6 +234,7 @@ class ConfigManager:
             "taskbar_per_page": 3,
             "taskbar_show_price": True,
             "taskbar_show_change": True,
+            "taskbar_show_dark_flow": False,
             # 量化推送防抖动配置
             "quant_alert_cooldown": 1800,  # 基础冷却时间（秒），默认30分钟
             "quant_alert_score_threshold": 2,  # 评分变化阈值，超过此值才重新推送

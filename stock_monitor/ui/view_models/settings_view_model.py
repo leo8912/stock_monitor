@@ -163,6 +163,9 @@ class SettingsViewModel(QObject):
             "taskbar_show_change": self._config_manager.get(
                 ConfigKeys.TASKBAR_SHOW_CHANGE, True
             ),
+            "taskbar_show_dark_flow": self._config_manager.get(
+                ConfigKeys.TASKBAR_SHOW_DARK_FLOW, False
+            ),
             "wecom_webhook": self._config_manager.get(ConfigKeys.WECOM_WEBHOOK, ""),
             "push_mode": self._config_manager.get(ConfigKeys.PUSH_MODE, "webhook"),
             "wecom_corpid": self._config_manager.get(ConfigKeys.WECOM_CORPID, ""),
