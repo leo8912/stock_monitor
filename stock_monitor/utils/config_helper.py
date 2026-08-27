@@ -167,3 +167,10 @@ class ConfigKeys:
     # 自动导出相关
     AUTO_EXPORT_EXCEL = "auto_export_excel"
     AUTO_CLOSE_EXPORT = "auto_close_export"  # 收盘时自动抓取全网数据
+
+    # 任务栏行情条
+    TASKBAR_QUOTE_ENABLED = "taskbar_quote_enabled"  # 是否启用任务栏行情条
+    TASKBAR_CAROUSEL_INTERVAL = "taskbar_carousel_interval"  # 自动轮播间隔(秒)
+    TASKBAR_PER_PAGE = "taskbar_per_page"  # 每页显示股票数
+    TASKBAR_SHOW_PRICE = "taskbar_show_price"  # 是否显示价格
+    TASKBAR_SHOW_CHANGE = "taskbar_show_change"  # 是否显示涨跌幅

@@ -86,6 +86,15 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         # 这里的 start_workers 会在 setup_refresh_worker 中被调用，或者我们可以在这里调用
         # 但考虑到 setup_refresh_worker 可能会用到 config，我们稍后在 setup_refresh_worker 中统一启动
 
+    def _show_main_window(self):
+        """从任务栏行情条右键菜单显示主界面。"""
+        self.show()
+        self.load_position()
+        self.raise_()
+        self.activateWindow()
+        if hasattr(self, "_ensure_topmost"):
+            self._ensure_topmost()
+
     def quit_application(self):
         """退出应用程序"""
         try:
@@ -103,6 +112,13 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
             self.hide()
             if hasattr(self, "tray_icon") and self.tray_icon:
                 self.tray_icon.hide()
+
+            # 2b. 停止任务栏行情条
+            if getattr(self, "taskbar_quote_bar", None) is not None:
+                try:
+                    self.taskbar_quote_bar.stop()
+                except Exception as e:
+                    app_logger.debug(f"停止任务栏行情条失败: {e}")
 
             # 3. 停止所有工作线程
             self.viewModel.stop_workers()
@@ -129,6 +145,57 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
 
         # 初始化数据缓存，用于即时重排交互
         self._last_data = []
+
+    def _setup_taskbar_quote_bar(self):
+        """根据配置初始化任务栏行情条（仅 Windows 有效）。"""
+        from stock_monitor.core.config_center import config_center
+
+        if not config_center.get_bool(ConfigKeys.TASKBAR_QUOTE_ENABLED, False):
+            return
+        try:
+            from stock_monitor.ui.widgets.taskbar_quote_bar import TaskbarQuoteBar
+
+            bar = TaskbarQuoteBar()
+            bar.configure(
+                per_page=config_center.get_int(ConfigKeys.TASKBAR_PER_PAGE, 3),
+                carousel_interval_sec=config_center.get_int(
+                    ConfigKeys.TASKBAR_CAROUSEL_INTERVAL, 5
+                ),
+                carousel_enabled=True,
+                show_price=config_center.get_bool(ConfigKeys.TASKBAR_SHOW_PRICE, True),
+                show_change=config_center.get_bool(
+                    ConfigKeys.TASKBAR_SHOW_CHANGE, True
+                ),
+            )
+            bar.embed_failed.connect(self._on_taskbar_embed_failed)
+            bar.show_main_requested.connect(self._show_main_window)
+            bar.settings_requested.connect(self.open_settings)
+            bar.quit_requested.connect(self.quit_application)
+            self.taskbar_quote_bar = bar
+            if not bar.start():
+                app_logger.warning("任务栏行情条嵌入失败，将回退到托盘展示")
+            else:
+                # 任务栏行情条成功显示：主界面与任务栏二选一，隐藏主浮窗
+                self._taskbar_active = True
+            # 若已有缓存数据，立即推送一次
+            latest = self.viewModel.get_latest_stock_data()
+            if latest:
+                bar.set_stocks(latest)
+        except Exception as e:
+            app_logger.error(f"初始化任务栏行情条失败: {e}")
+            self.taskbar_quote_bar = None
+
+    def _on_taskbar_embed_failed(self, reason: str):
+        """任务栏嵌入失败回调：记录并交由托盘降级。"""
+        app_logger.warning(f"任务栏行情条嵌入失败: {reason}")
+        if hasattr(self, "tray_icon") and self.tray_icon:
+            if hasattr(self.tray_icon, "enable_quote_fallback"):
+                try:
+                    self.tray_icon.enable_quote_fallback(
+                        self.viewModel.get_latest_stock_data()
+                    )
+                except Exception as e:
+                    app_logger.error(f"托盘降级失败: {e}")
 
     def _setup_window_properties(self):
         """设置窗口属性"""
@@ -177,6 +244,12 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
 
         self._config_helper = config_center._helper
         self._transparency = config_center.get_int(ConfigKeys.TRANSPARENCY, 80)
+
+        # 初始化任务栏行情条（可选功能）
+        self.taskbar_quote_bar = None
+        # 任务栏行情条激活时，主浮窗与其二选一，不再自动显示
+        self._taskbar_active = False
+        self._setup_taskbar_quote_bar()
 
         # 从配置中读取字体大小和字体族并更新表格
         self.update_font_size()
@@ -243,8 +316,8 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
             self.menu.removeEventFilter(self)
 
         # 立即更新市场状态条，提高优先级
-        # 确保窗口尽快显示，然后再更新市场状态
-        if not self.isVisible():
+        # 确保窗口尽快显示，然后再更新市场状态（任务栏行情条激活时不弹出）
+        if not self._taskbar_active and not self.isVisible():
             self.show()
             self.load_position()
             self.raise_()
@@ -275,8 +348,8 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
             ] * max(3, len(self.current_user_stocks))
             self.update_table_signal.emit(error_stocks)
 
-            # 即使出错也要显示窗口，避免一直隐藏
-            if not self.isVisible():
+            # 即使出错也要显示窗口，避免一直隐藏（任务栏行情条激活时不弹出）
+            if not self._taskbar_active and not self.isVisible():
                 self.show()
                 self.load_position()
                 self.raise_()
@@ -312,9 +385,25 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
             # 3. 更新表格数据
             self.update_table_signal.emit(data)
 
+            # 3b. 同步推送到任务栏行情条（如启用）
+            if getattr(self, "taskbar_quote_bar", None) is not None:
+                try:
+                    self.taskbar_quote_bar.set_stocks(data)
+                except Exception as e:
+                    app_logger.debug(f"更新任务栏行情条失败: {e}")
+
+            # 3c. 同步推送到托盘降级面板（如已启用）
+            if hasattr(self, "tray_icon") and self.tray_icon:
+                if hasattr(self.tray_icon, "update_quote_fallback"):
+                    try:
+                        self.tray_icon.update_quote_fallback(data)
+                    except Exception as e:
+                        app_logger.debug(f"更新托盘降级面板失败: {e}")
+
             # 仅在首次加载数据且窗口未显示时才强制显示
+            # 任务栏行情条激活时，主浮窗与其二选一，不自动弹出
             if not hasattr(self, "_first_show_done") or not self._first_show_done:
-                if not self.isVisible():
+                if not self._taskbar_active and not self.isVisible():
                     self.show()
                     self.load_position()
                     self.raise_()
@@ -360,26 +449,29 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
                 # 显示窗口和所有组件
                 self.market_status_bar.show()
                 self.table.show()
-                self.show()
-                self.raise_()
-                self.activateWindow()
+                if not self._taskbar_active:
+                    self.show()
+                    self.raise_()
+                    self.activateWindow()
 
                 app_logger.info("使用会话缓存快速启动界面")
                 return True
             else:
                 # 没有缓存：立即显示加载中状态，不再等待数据
-                self.show()
-                self.load_position()
-                self.raise_()
+                if not self._taskbar_active:
+                    self.show()
+                    self.load_position()
+                    self.raise_()
                 self.loading_label.show()
                 app_logger.info("无会话缓存，立即显示窗口，等待后台数据")
 
         except Exception as e:
             app_logger.warning(f"加载会话缓存失败: {e}")
             # 出错时也立即显示窗口，不阻塞用户
-            self.show()
-            self.load_position()
-            self.raise_()
+            if not self._taskbar_active:
+                self.show()
+                self.load_position()
+                self.raise_()
             self.loading_label.show()
 
         return False
@@ -539,6 +631,31 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         # 更新主窗口字体大小
         self.update_font_size()
 
+        # 同步任务栏行情条配置（每页数量/轮播间隔/显示字段实时生效）
+        self._reconfigure_taskbar_quote_bar()
+
+    def _reconfigure_taskbar_quote_bar(self):
+        """将最新配置应用到运行中的任务栏行情条，无需重启。"""
+        bar = getattr(self, "taskbar_quote_bar", None)
+        if bar is None:
+            return
+        from stock_monitor.core.config_center import config_center
+
+        try:
+            bar.configure(
+                per_page=config_center.get_int(ConfigKeys.TASKBAR_PER_PAGE, 3),
+                carousel_interval_sec=config_center.get_int(
+                    ConfigKeys.TASKBAR_CAROUSEL_INTERVAL, 5
+                ),
+                carousel_enabled=True,
+                show_price=config_center.get_bool(ConfigKeys.TASKBAR_SHOW_PRICE, True),
+                show_change=config_center.get_bool(
+                    ConfigKeys.TASKBAR_SHOW_CHANGE, True
+                ),
+            )
+        except Exception as e:
+            app_logger.warning(f"更新任务栏行情条配置失败: {e}")
+
     def request_update(self):
         """请求 UI 更新（节流模式，合并 50ms 内的多次请求）"""
         # [SAFETY] 检查属性是否已初始化，避免初始化顺序问题
@@ -566,6 +683,12 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
             if key in (ConfigKeys.FONT_FAMILY, ConfigKeys.FONT_SIZE):
                 self.update_font_size()
             elif key == ConfigKeys.TRANSPARENCY:
+                # 刷新透明度缓存，否则 paintEvent 仍用旧值渲染
+                new_transparency = self._config_helper.get_int(
+                    ConfigKeys.TRANSPARENCY, 80
+                )
+                if new_transparency != getattr(self, "_transparency", None):
+                    self._transparency = new_transparency
                 self.request_update()
         except Exception as e:
             app_logger.warning(f"处理配置变更事件失败: {e}")

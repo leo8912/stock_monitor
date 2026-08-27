@@ -48,11 +48,17 @@ class DIContainer:
     def __init__(self):
         if self._initialized:
             return
-        self._initialized = True
-        self._factories: dict[Union[type, str], Callable] = {}
-        self._singletons: dict[Union[type, str], Any] = {}
-        self._access_lock = threading.Lock()
-        app_logger.debug("DI容器初始化完成")
+        # 用类级锁保护初始化，避免 check-then-act 竞态。
+        # 必须先创建 _access_lock 再发布 _initialized = True，
+        # 确保任何观察到 _initialized == True 的线程都能拿到 _access_lock。
+        with self._lock:
+            if self._initialized:
+                return
+            self._factories: dict[Union[type, str], Callable] = {}
+            self._singletons: dict[Union[type, str], Any] = {}
+            self._access_lock = threading.Lock()
+            self._initialized = True
+            app_logger.debug("DI容器初始化完成")
 
     def register_singleton(self, key: Union[type, str], instance: Any) -> None:
         """
@@ -110,6 +116,9 @@ class DIContainer:
         # 使用工厂创建
         if key in self._factories:
             with self._access_lock:
+                # 锁内复查 _singletons，避免并发时单例被覆盖
+                if key in self._singletons:
+                    return self._singletons[key]
                 if key in self._factories:
                     instance = self._factories[key]()
                     # 工厂创建的也缓存为单例
@@ -130,6 +139,9 @@ class DIContainer:
                 instance = self._auto_create(key)
                 if instance is not None:
                     with self._access_lock:
+                        # 锁内复查 _singletons，避免并发时单例被覆盖
+                        if key in self._singletons:
+                            return self._singletons[key]
                         self._singletons[key] = instance
                     return instance
             else:

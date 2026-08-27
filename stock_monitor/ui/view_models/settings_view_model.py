@@ -145,6 +145,24 @@ class SettingsViewModel(QObject):
             "auto_export_excel": self._config_manager.get(
                 ConfigKeys.AUTO_EXPORT_EXCEL, False
             ),
+            "auto_close_export": self._config_manager.get(
+                ConfigKeys.AUTO_CLOSE_EXPORT, False
+            ),
+            "taskbar_quote_enabled": self._config_manager.get(
+                ConfigKeys.TASKBAR_QUOTE_ENABLED, False
+            ),
+            "taskbar_carousel_interval": self._config_manager.get(
+                ConfigKeys.TASKBAR_CAROUSEL_INTERVAL, 5
+            ),
+            "taskbar_per_page": self._config_manager.get(
+                ConfigKeys.TASKBAR_PER_PAGE, 3
+            ),
+            "taskbar_show_price": self._config_manager.get(
+                ConfigKeys.TASKBAR_SHOW_PRICE, True
+            ),
+            "taskbar_show_change": self._config_manager.get(
+                ConfigKeys.TASKBAR_SHOW_CHANGE, True
+            ),
             "wecom_webhook": self._config_manager.get(ConfigKeys.WECOM_WEBHOOK, ""),
             "push_mode": self._config_manager.get(ConfigKeys.PUSH_MODE, "webhook"),
             "wecom_corpid": self._config_manager.get(ConfigKeys.WECOM_CORPID, ""),

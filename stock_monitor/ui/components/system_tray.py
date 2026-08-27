@@ -35,6 +35,33 @@ class SystemTray(QtWidgets.QSystemTrayIcon):
         self.action_quit.triggered.connect(self.quit_application)
         self.activated.connect(self.on_activated)
 
+        # 托盘行情降级面板（任务栏嵌入失败时启用）
+        self._quote_fallback = None
+
+    def enable_quote_fallback(self, stocks=None):
+        """启用托盘行情轮播降级方案。"""
+        try:
+            from stock_monitor.core.config_center import config_center
+            from stock_monitor.ui.widgets.tray_quote_panel import TrayQuotePanel
+            from stock_monitor.utils.config_helper import ConfigKeys
+
+            if self._quote_fallback is None:
+                self._quote_fallback = TrayQuotePanel(self)
+                self._quote_fallback.configure(
+                    per_page=config_center.get_int(ConfigKeys.TASKBAR_PER_PAGE, 3),
+                    carousel_interval_sec=config_center.get_int(
+                        ConfigKeys.TASKBAR_CAROUSEL_INTERVAL, 5
+                    ),
+                )
+            self._quote_fallback.start(stocks)
+        except Exception:
+            pass
+
+    def update_quote_fallback(self, stocks):
+        """向托盘降级面板推送最新行情。"""
+        if self._quote_fallback is not None:
+            self._quote_fallback.set_stocks(stocks)
+
     def show_main_window(self):
         """显示主窗口"""
         self.main_window.show()

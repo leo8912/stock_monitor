@@ -788,9 +788,70 @@ class NewSettingsDialog(QDialog):
 
         display_layout.addLayout(display_row_layout)
 
+        # === 任务栏行情条设置 ===
+        taskbar_group = QGroupBox("📌 任务栏行情条")
+        taskbar_layout = QVBoxLayout()
+        taskbar_layout.setContentsMargins(10, 10, 10, 10)
+        taskbar_layout.setSpacing(8)
+        taskbar_group.setLayout(taskbar_layout)
+
+        self.taskbar_quote_enabled_checkbox = QCheckBox(
+            "在任务栏显示滚动行情（重启后生效）"
+        )
+        self.taskbar_quote_enabled_checkbox.setToolTip(
+            "启用后将行情条嵌入 Windows 任务栏通知区左侧，滚动显示自选股。\n"
+            "若嵌入失败（如系统限制），将自动降级到托盘图标轮播。"
+        )
+        taskbar_layout.addWidget(self.taskbar_quote_enabled_checkbox)
+
+        taskbar_row = QHBoxLayout()
+        taskbar_row.setSpacing(15)
+
+        # 每页股票数
+        per_page_layout = QHBoxLayout()
+        per_page_layout.setSpacing(8)
+        per_page_layout.addWidget(QLabel("每页显示:"))
+        self.taskbar_per_page_spin = QDoubleSpinBox()
+        self.taskbar_per_page_spin.setRange(1, 10)
+        self.taskbar_per_page_spin.setDecimals(0)
+        self.taskbar_per_page_spin.setSingleStep(1)
+        self.taskbar_per_page_spin.setValue(3)
+        per_page_layout.addWidget(self.taskbar_per_page_spin)
+        per_page_layout.addWidget(QLabel("只"))
+        taskbar_row.addLayout(per_page_layout)
+
+        # 轮播间隔
+        interval_layout = QHBoxLayout()
+        interval_layout.setSpacing(8)
+        interval_layout.addWidget(QLabel("轮播间隔:"))
+        self.taskbar_interval_spin = QDoubleSpinBox()
+        self.taskbar_interval_spin.setRange(1, 60)
+        self.taskbar_interval_spin.setDecimals(0)
+        self.taskbar_interval_spin.setSingleStep(1)
+        self.taskbar_interval_spin.setValue(5)
+        interval_layout.addWidget(self.taskbar_interval_spin)
+        interval_layout.addWidget(QLabel("秒"))
+        taskbar_row.addLayout(interval_layout)
+
+        taskbar_row.addStretch()
+        taskbar_layout.addLayout(taskbar_row)
+
+        # 显示字段
+        fields_row = QHBoxLayout()
+        fields_row.setSpacing(15)
+        self.taskbar_show_price_checkbox = QCheckBox("显示价格")
+        self.taskbar_show_price_checkbox.setChecked(True)
+        self.taskbar_show_change_checkbox = QCheckBox("显示涨跌幅")
+        self.taskbar_show_change_checkbox.setChecked(True)
+        fields_row.addWidget(self.taskbar_show_price_checkbox)
+        fields_row.addWidget(self.taskbar_show_change_checkbox)
+        fields_row.addStretch()
+        taskbar_layout.addLayout(fields_row)
+
         # [FIXED] 添加到父 widget 的 layout
         container_layout = QVBoxLayout()
         container_layout.addWidget(display_group)
+        container_layout.addWidget(taskbar_group)
         parent_widget.setLayout(container_layout)
 
     def _setup_quant_settings_ui(self, parent_widget):
@@ -1362,7 +1423,20 @@ class NewSettingsDialog(QDialog):
             )
             self.wecom_webhook_input.setText(settings.get("wecom_webhook", ""))
 
-            # 新增企微应用配置加载
+            # 任务栏行情条设置
+            self.taskbar_quote_enabled_checkbox.setChecked(
+                settings.get("taskbar_quote_enabled", False)
+            )
+            self.taskbar_per_page_spin.setValue(settings.get("taskbar_per_page", 3))
+            self.taskbar_interval_spin.setValue(
+                settings.get("taskbar_carousel_interval", 5)
+            )
+            self.taskbar_show_price_checkbox.setChecked(
+                settings.get("taskbar_show_price", True)
+            )
+            self.taskbar_show_change_checkbox.setChecked(
+                settings.get("taskbar_show_change", True)
+            )
             push_mode = settings.get("push_mode", "webhook")
             index = self.push_mode_combo.findData(push_mode)
             if index >= 0:
@@ -1403,6 +1477,11 @@ class NewSettingsDialog(QDialog):
                 "auto_export_excel": self.auto_export_excel_checkbox.isChecked(),
                 "auto_close_export": self.auto_close_export_checkbox.isChecked(),
                 "wecom_webhook": self.wecom_webhook_input.text().strip(),
+                "taskbar_quote_enabled": self.taskbar_quote_enabled_checkbox.isChecked(),
+                "taskbar_per_page": int(self.taskbar_per_page_spin.value()),
+                "taskbar_carousel_interval": int(self.taskbar_interval_spin.value()),
+                "taskbar_show_price": self.taskbar_show_price_checkbox.isChecked(),
+                "taskbar_show_change": self.taskbar_show_change_checkbox.isChecked(),
             }
 
             # 新增企微应用配置保存
