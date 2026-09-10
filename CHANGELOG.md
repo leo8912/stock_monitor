@@ -1,5 +1,11 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.7.1] - 2026-09-10
+
+### 🐛 修复 (Fixes)
+- 修复 `MarketDataAdapter` 在 PyInstaller 打包后启动报错 `TypeError: unsupported operand type(s) for |`
+  - 添加 `from __future__ import annotations` 避免 `pd.DataFrame | None` 在类定义时被运行时求值
+
 ## [v4.7.0] - 2026-09-10
 
 ### ✨ 新功能 (Features)
