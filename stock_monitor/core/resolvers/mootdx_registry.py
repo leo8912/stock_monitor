@@ -36,7 +36,11 @@ def safe_log_error(msg: str):
 
 
 class MootdxNameRegistry:
-    """负责单独管理 mootdx 标的名称的手工缓存和更新映射"""
+    """负责单独管理标的名称的手工缓存和更新映射
+
+    原使用 mootdx stocks() 全量同步名称，现已切换为 easyquotation + 批量行情获取。
+    缓存文件仍使用 mootdx_names.json 以保持向后兼容。
+    """
 
     def __init__(self, mootdx_client=None, parent=None):
         self.mootdx_client = mootdx_client
@@ -44,14 +48,18 @@ class MootdxNameRegistry:
         self._name_cache = self._load_name_cache()
 
     def update_client(self, client):
-        """更新 mootdx client 引用"""
+        """更新 MarketDataAdapter client 引用"""
         self.mootdx_client = client
 
-    def _get_mootdx_client(self):
-        """获取 mootdx client，支持延迟初始化"""
+    def _get_client(self):
+        """获取 MarketDataAdapter client，支持延迟初始化"""
         if self._parent is not None:
             # 通过父对象的 property 触发延迟初始化
-            return self._parent.mootdx_client
+            adapter = getattr(self._parent, "market_adapter", None)
+            if adapter is not None:
+                return adapter
+            # 向后兼容
+            return getattr(self._parent, "mootdx_client", None)
         return self.mootdx_client
 
     def _get_name_cache_file(self):
@@ -81,24 +89,22 @@ class MootdxNameRegistry:
             safe_log_error(f"保存缓存失败：{e}")
 
     def sync_mootdx_names(self):
-        """全量同步 mootdx 名称字典"""
-        # 通过 _get_mootdx_client 获取 client，支持延迟初始化
-        client = self._get_mootdx_client()
+        """全量同步名称字典（使用 MarketDataAdapter stocks() 方法）"""
+        client = self._get_client()
 
-        # 详细调试信息
         if client is None:
-            safe_log_error("mootdx client 为 None，无法同步名称")
-            safe_log_error(f"当前 parent: {self._parent}")
+            safe_log_error("MarketDataAdapter client 为 None，无法同步名称")
             if self._parent is not None:
                 try:
-                    parent_client = self._parent.mootdx_client
-                    safe_log_error(f"parent.mootdx_client: {parent_client}")
+                    safe_log_error(f"parent: {self._parent}")
+                    safe_log_error(
+                        f"parent.market_adapter: {getattr(self._parent, 'market_adapter', 'N/A')}"
+                    )
                 except Exception as e:
-                    safe_log_error(f"访问 parent.mootdx_client 失败：{e}")
+                    safe_log_error(f"访问 parent 属性失败：{e}")
             return
 
         # 防御 PyInstaller 窗口模式下 sys.stdout/stderr 为 None 的问题
-        # 'NoneType' object has no attribute 'write'
         stdout_orig = sys.stdout
         stderr_orig = sys.stderr
         temp_out = io.StringIO()
@@ -108,9 +114,8 @@ class MootdxNameRegistry:
         if sys.stderr is None:
             sys.stderr = temp_out
 
-        safe_log_info("本地缓存中存在未知名称，触发 mootdx 全量字典同步...")
+        safe_log_info("本地缓存中存在未知名称，触发全量名称字典同步...")
         try:
-            # 调用 stocks 方法获取数据
             safe_log_info(f"调用 client.stocks(market=0)，client 类型：{type(client)}")
             sz_df = client.stocks(market=0)
             safe_log_info(
@@ -164,7 +169,7 @@ class MootdxNameRegistry:
             import traceback
 
             error_detail = traceback.format_exc()
-            error_msg = f"全量同步 mootdx 名称字典失败：{e}\n详细堆栈:\n{error_detail}"
+            error_msg = f"全量同步名称字典失败：{e}\n详细堆栈:\n{error_detail}"
             safe_log_error(error_msg)
         finally:
             # 还原标准流

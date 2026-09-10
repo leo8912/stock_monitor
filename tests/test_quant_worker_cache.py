@@ -31,7 +31,7 @@ class TestQuantWorkerCachePersistence(unittest.TestCase):
 
         # 创建mock的stock_fetcher
         mock_fetcher = MagicMock()
-        mock_fetcher.mootdx_client = MagicMock()
+        mock_fetcher.market_adapter = MagicMock()
         mock_fetcher.name_registry = MagicMock()
 
         with patch(
@@ -54,7 +54,7 @@ class TestQuantWorkerCachePersistence(unittest.TestCase):
         from stock_monitor.core.workers.quant_worker import QuantWorker
 
         mock_fetcher = MagicMock()
-        mock_fetcher.mootdx_client = MagicMock()
+        mock_fetcher.market_adapter = MagicMock()
         mock_fetcher.name_registry = MagicMock()
 
         with (
@@ -103,7 +103,7 @@ class TestQuantWorkerCachePersistence(unittest.TestCase):
         from stock_monitor.core.workers.quant_worker import QuantWorker
 
         mock_fetcher = MagicMock()
-        mock_fetcher.mootdx_client = MagicMock()
+        mock_fetcher.market_adapter = MagicMock()
         mock_fetcher.name_registry = MagicMock()
 
         with patch(
@@ -135,7 +135,7 @@ class TestQuantWorkerCachePersistence(unittest.TestCase):
         from stock_monitor.core.workers.quant_worker import QuantWorker
 
         mock_fetcher = MagicMock()
-        mock_fetcher.mootdx_client = MagicMock()
+        mock_fetcher.market_adapter = MagicMock()
         mock_fetcher.name_registry = MagicMock()
 
         with patch(
@@ -155,7 +155,7 @@ class TestQuantWorkerCachePersistence(unittest.TestCase):
         from stock_monitor.core.workers.quant_worker import QuantWorker
 
         mock_fetcher = MagicMock()
-        mock_fetcher.mootdx_client = MagicMock()
+        mock_fetcher.market_adapter = MagicMock()
         mock_fetcher.name_registry = MagicMock()
 
         with (
@@ -192,7 +192,7 @@ class TestQuantWorkerCachePersistence(unittest.TestCase):
         from stock_monitor.core.workers.quant_worker import QuantWorker
 
         mock_fetcher = MagicMock()
-        mock_fetcher.mootdx_client = MagicMock()
+        mock_fetcher.market_adapter = MagicMock()
         mock_fetcher.name_registry = MagicMock()
 
         with (

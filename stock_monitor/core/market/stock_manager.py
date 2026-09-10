@@ -67,14 +67,15 @@ class StockManager:
     def _async_fetch_quant_data(self, codes: list[str]):
         """异步拉取量化数据（含大单流向与集合竞价），不阻塞主刷新线程"""
         if self._quant_engine is None:
-            if hasattr(self._stock_data_service, "fetcher") and getattr(
-                self._stock_data_service.fetcher, "mootdx_client", None
-            ):
-                self._quant_engine = QuantEngine(
-                    self._stock_data_service.fetcher.mootdx_client
+            adapter = None
+            if hasattr(self._stock_data_service, "fetcher"):
+                fetcher = self._stock_data_service.fetcher
+                adapter = getattr(fetcher, "market_adapter", None) or getattr(
+                    fetcher, "mootdx_client", None
                 )
-            else:
+            if adapter is None:
                 return
+            self._quant_engine = QuantEngine(adapter)
 
         for code in codes:
             try:

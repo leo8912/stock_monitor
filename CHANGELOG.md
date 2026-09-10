@@ -1,5 +1,23 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.7.0] - 2026-09-10
+
+### ✨ 新功能 (Features)
+- **全面移除 mootdx 依赖**，新增 `MarketDataAdapter` 统一行情适配层
+  - 实时行情：easyquotation（Sina 源），A股/港股均通过 TUN 稳定访问
+  - 日/周/月K线：腾讯财经 API（`web.ifzq.gtimg.cn`）
+  - 分钟K线（5/15/30/60min）：新浪财经 API（`money.finance.sina.com.cn`）
+  - 暗盘资金数据：东方财富接口保留不变
+- `MarketDataAdapter` 提供 mootdx 兼容接口（`bars`/`index`/`quotes`/`transaction`/`stocks`），对上层模块透明切换
+
+### 🐛 修复 (Fixes)
+- 修复 `stock_monitor.spec` 中 mootdx hidden imports 和数据收集逻辑的冗余代码
+- 删除 `stock_monitor/hooks/hook-mootdx.py`
+
+### 💅 优化 (Improvements)
+- 从 `requirements.txt` 和 `pyproject.toml` 中移除 `mootdx>=0.1.7`，减少安装体积
+- 保留 `mootdx_client` 向后兼容属性，平滑过渡
+
 ## [v4.6.3] - 2026-08-27
 
 ### 💅 优化 (Improvements)

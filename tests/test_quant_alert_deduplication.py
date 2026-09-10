@@ -17,8 +17,13 @@ class MockFetcher:
     """模拟股票数据获取器"""
 
     def __init__(self):
-        self.mootdx_client = None
+        self.market_adapter = None
         self.name_registry = MockNameRegistry()
+
+    # 向后兼容
+    @property
+    def mootdx_client(self):
+        return self.market_adapter
 
 
 class MockNameRegistry:

@@ -114,8 +114,8 @@ class QuantEngine:
     _market_benchmark_lock = threading.Lock()
     _rsrs_cache = {}  # RSRS 计算缓存：{(symbol, timeframe): (zscore, slope, timestamp)}
 
-    def __init__(self, mootdx_client):
-        self.client = mootdx_client
+    def __init__(self, market_adapter):
+        self.client = market_adapter
         self._bars_lru_cache = get_bars_cache(max_size=128, ttl=60)
         # 使用带容量限制的LRU缓存，防止长期运行导致内存泄漏
         self._avg_vol_cache = LRUCacheWithTTL(

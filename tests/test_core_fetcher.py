@@ -45,23 +45,22 @@ class TestStockDataFetcher(unittest.TestCase):
             self.assertEqual(result_retry["sh600000"]["name"], "Retry")
 
     def test_fetch_multiple_stocks(self):
-        """Test fetching multiple stocks (A-share and HK)"""
-        mock_quotation = MagicMock()
+        """Test fetching multiple stocks (A-share) with adapter + Sina fallback"""
+        mock_adapter = MagicMock()
+        mock_adapter.quotes.return_value = None  # adapter 返回空
 
-        # Mock A-share response
-        mock_quotation.stocks.return_value = {
-            "sh600000": {"name": "浦发银行", "now": 10.0}
+        mock_sina = MagicMock()
+        mock_sina.stocks.return_value = {
+            "600000": {"name": "浦发银行", "now": 10.0, "close": 9.9}
         }
 
-        codes = ["sh600000"]
+        self.fetcher._market_adapter = mock_adapter
+        self.fetcher._sina_client = mock_sina
 
-        # Mock get_quotation_engine to return our mock
-        with patch.object(
-            self.fetcher, "get_quotation_engine", return_value=mock_quotation
-        ):
-            result = self.fetcher.fetch_multiple(codes)
-            self.assertIn("sh600000", result)
-            self.assertEqual(result["sh600000"]["name"], "浦发银行")
+        codes = ["sh600000"]
+        result = self.fetcher.fetch_multiple(codes)
+        self.assertIn("sh600000", result)
+        self.assertEqual(result["sh600000"]["name"], "浦发银行")
 
     def test_fetch_hk_stock_logic(self):
         """Test HK stock fetching logic"""

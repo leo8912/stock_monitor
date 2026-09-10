@@ -10,7 +10,6 @@ zhconv>=1.4.1
 openpyxl>=3.0.7
 # pandas-ta-classic 为 Python 3.9+ 提供更好的兼容性支持
 pandas-ta-classic>=0.3.14
-mootdx>=0.1.7
 pytz>=2024.1
 akshare>=1.15.58
 lxml>=4.9.0

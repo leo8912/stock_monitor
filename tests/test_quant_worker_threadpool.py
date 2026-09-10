@@ -13,7 +13,7 @@ class TestQuantWorkerThreadPool(unittest.TestCase):
     def setUp(self):
         """测试前准备"""
         self.mock_fetcher = MagicMock()
-        self.mock_fetcher.mootdx_client = MagicMock()
+        self.mock_fetcher.market_adapter = MagicMock()
         self.mock_fetcher.name_registry = MagicMock()
 
     def test_thread_pool_auto_config(self):

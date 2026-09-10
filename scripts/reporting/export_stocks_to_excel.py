@@ -180,11 +180,11 @@ def export_to_excel(
     # 模式 B: 导出自选股历史数据及指标
     if include_history or mode in ["watchlist", "both"]:
         fetcher = StockDataFetcher()
-        mootdx_client = fetcher.mootdx_client
-        if not mootdx_client:
-            print("错误：网路故障或初始化 mootdx 行情引擎失败，跳过自选股历史获取！")
+        market_adapter = fetcher.market_adapter
+        if not market_adapter:
+            print("错误：MarketDataAdapter 初始化失败，跳过自选股历史获取！")
         else:
-            quant_engine = QuantEngine(mootdx_client)
+            quant_engine = QuantEngine(market_adapter)
             # 如果没有传入指定的代码，自动从配置中读取自选股
             watchlist = (
                 history_symbols if history_symbols is not None else get_watchlist()

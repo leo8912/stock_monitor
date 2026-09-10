@@ -38,7 +38,7 @@ class QuantWorker(QtCore.QThread):
     def __init__(self, stock_fetcher, wecom_webhook: str, scan_interval: int = 5 * 60):
         super().__init__()
         self.fetcher = stock_fetcher
-        self.engine = QuantEngine(self.fetcher.mootdx_client)
+        self.engine = QuantEngine(self.fetcher.market_adapter)
         self.backtester = BacktestEngine(self.engine)
         self.notifier = NotifierService()
         self.wecom_webhook = wecom_webhook

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stock_monitor"
-version = "4.6.3"
+version = "4.7.0"
 description = "A real-time stock monitoring application for A-shares"
 authors = [
     {name = "Stock Monitor Team"}
@@ -21,7 +21,6 @@ dependencies = [
     "zhconv>=1.4.1",
     "openpyxl>=3.0.7",
     "pandas-ta-classic>=0.3.14",
-    "mootdx>=0.1.7",
     "akshare>=1.15.58",
     "tenacity>=8.0.0",
     "lxml>=4.9.0",
