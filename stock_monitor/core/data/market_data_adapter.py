@@ -16,6 +16,8 @@
   - 逐笔成交: 无可靠替代 (返回空 DataFrame，调用方已降级)
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import requests
 
