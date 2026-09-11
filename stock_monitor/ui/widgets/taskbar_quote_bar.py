@@ -149,6 +149,10 @@ class TaskbarQuoteBar(QtWidgets.QWidget):
         self._embedded = False
         self._taskbar_hwnd = 0
         self._notify_hwnd = 0
+        self._market_up_count = 0
+        self._market_down_count = 0
+        self._market_flat_count = 0
+        self._market_total_count = 0
         # Win11 任务栏为 XAML 合成层，SetParent 子窗口会被 DesktopWindowContentBridge
         # 覆盖而不可见，改用置顶悬浮窗覆盖在任务栏通知区左侧
         self._overlay_mode = _is_windows_11()
@@ -231,6 +235,16 @@ class TaskbarQuoteBar(QtWidgets.QWidget):
         self._all_stocks = list(stocks or [])
         self._clamp_page()
         self._recalc_width()
+        self.update()
+
+    def update_market_stats(
+        self, up_count: int, down_count: int, flat_count: int, total_count: int
+    ) -> None:
+        """同步全市场涨跌比例并更新任务栏顶部红绿盘条。"""
+        self._market_up_count = int(up_count)
+        self._market_down_count = int(down_count)
+        self._market_flat_count = int(flat_count)
+        self._market_total_count = int(total_count)
         self.update()
 
     def start(self) -> bool:
@@ -443,6 +457,8 @@ class TaskbarQuoteBar(QtWidgets.QWidget):
         # 只有绘制了文字的像素才响应点击。
         painter.fillRect(self.rect(), QtGui.QColor(0, 0, 0, 1))
 
+        self._paint_market_summary(painter)
+
         stocks = self._current_page_stocks()
         if not stocks:
             painter.setPen(QtGui.QColor(COLORS.STOCK_NEUTRAL))
@@ -472,6 +488,45 @@ class TaskbarQuoteBar(QtWidgets.QWidget):
             self._paint_page(painter, stocks, 0.0, 1.0)
 
         painter.end()
+
+    def _paint_market_summary(self, painter: QtGui.QPainter) -> None:
+        """在任务栏行情条顶部绘制全市场红绿盘比例条。"""
+        if self._market_total_count <= 0:
+            return
+
+        strip_height = 2
+        width = self.width()
+        total_width = max(1, width)
+
+        up_width = int(total_width * self._market_up_count / self._market_total_count)
+        down_width = int(
+            total_width * self._market_down_count / self._market_total_count
+        )
+        flat_width = total_width - up_width - down_width
+
+        x_pos = 0
+        if up_width > 0:
+            gradient = QtGui.QLinearGradient(x_pos, 0, x_pos + up_width, 0)
+            gradient.setColorAt(0, QtGui.QColor(255, 69, 0, 220))
+            gradient.setColorAt(1, QtGui.QColor(231, 76, 60, 200))
+            painter.fillRect(x_pos, 0, up_width, strip_height, gradient)
+            x_pos += up_width
+
+        if flat_width > 0:
+            painter.fillRect(
+                x_pos,
+                0,
+                flat_width,
+                strip_height,
+                QtGui.QColor(128, 128, 128, 120),
+            )
+            x_pos += flat_width
+
+        if down_width > 0:
+            gradient = QtGui.QLinearGradient(x_pos, 0, x_pos + down_width, 0)
+            gradient.setColorAt(0, QtGui.QColor(39, 174, 96, 200))
+            gradient.setColorAt(1, QtGui.QColor(30, 132, 73, 220))
+            painter.fillRect(x_pos, 0, down_width, strip_height, gradient)
 
     def _paint_page(
         self,

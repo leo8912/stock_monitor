@@ -174,6 +174,7 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
             bar.show_main_requested.connect(self._show_main_window)
             bar.settings_requested.connect(self.open_settings)
             bar.quit_requested.connect(self.quit_application)
+            self.viewModel.market_stats_updated.connect(bar.update_market_stats)
             self.taskbar_quote_bar = bar
             if not bar.start():
                 app_logger.warning("任务栏行情条嵌入失败，将回退到托盘展示")
