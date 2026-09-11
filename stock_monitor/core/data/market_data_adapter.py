@@ -252,6 +252,73 @@ class MarketDataAdapter:
     #  实时行情接口（quotes）
     # ------------------------------------------------------------------
 
+    # 上证指数等指数代码在 easyquotation/Sina 中会映射到同代码的深圳股票
+    # (000001 → 平安银行)，因此指数必须走腾讯行情接口
+    _INDEX_SYMBOLS = {
+        "000001",  # 上证指数 (sh)
+        "999999",  # 上证指数 (内部代码)
+        "399001",  # 深证成指
+        "399006",  # 创业板指
+        "399005",  # 中小板指
+        "000300",  # 沪深300
+        "000016",  # 上证50
+        "000688",  # 科创50
+        "000905",  # 中证500
+        "000852",  # 中证1000
+    }
+
+    def _is_index_symbol(self, raw_code: str) -> bool:
+        """判断代码是否为已知指数"""
+        return raw_code in self._INDEX_SYMBOLS
+
+    def _fetch_tencent_realtime(self, symbols: list[str]) -> dict:
+        """
+        通过腾讯行情接口获取指数实时数据。
+        symbols: 带市场前缀的代码列表, 如 ['sh000001', 'sz399001']
+        返回 { 'sh000001': { 'name': ..., 'now': ..., 'close': ..., ... }, ... }
+        """
+        if not symbols:
+            return {}
+        query = ",".join(symbols)
+        url = f"https://qt.gtimg.cn/q={query}"
+        try:
+            resp = self._session.get(url, timeout=_REQUEST_TIMEOUT)
+            resp.encoding = "gbk"
+            result = {}
+            for line in resp.text.strip().split("\n"):
+                line = line.strip().rstrip(";")
+                if "=" not in line:
+                    continue
+                key, _, val = line.partition("=")
+                # key = "v_sh000001", val = '"1~上证指数~000001~3261.56~..."'
+                val = val.strip('"')
+                parts = val.split("~")
+                if len(parts) < 35:
+                    continue
+                # 腾讯行情字段: 0=市场 1=名称 2=代码 3=现价 4=昨收 5=今开
+                #   6=成交量(手) 7=外盘 8=内盘 9=买一价 ... 30=最高 31=最低
+                #   32=现价 33=最高 34=最低
+                stock_key = key.replace("v_", "")
+                result[stock_key] = {
+                    "name": parts[1],
+                    "code": parts[2],
+                    "now": _safe_float(parts[3]),
+                    "close": _safe_float(parts[4]),
+                    "open": _safe_float(parts[5]),
+                    "volume": _safe_float(parts[6]),
+                    "high": _safe_float(parts[33])
+                    if len(parts) > 33
+                    else _safe_float(parts[30]),
+                    "low": _safe_float(parts[34])
+                    if len(parts) > 34
+                    else _safe_float(parts[31]),
+                    "turnover": _safe_float(parts[37]) if len(parts) > 37 else 0.0,
+                }
+            return result
+        except Exception as e:
+            app_logger.warning(f"腾讯实时行情获取失败: {e}")
+            return {}
+
     def quotes(self, symbol: list[str] = None, **_kwargs) -> pd.DataFrame:
         """
         获取实时行情（兼容 mootdx quotes 接口）。
@@ -262,48 +329,107 @@ class MarketDataAdapter:
             return pd.DataFrame()
 
         try:
-            # easyquotation.sina 接受纯数字代码
-            clean_codes = []
+            # 将代码分为指数和个股两组
+            clean_codes = []  # easyquotation 用的纯数字代码
             code_map = {}  # clean_code → original code
-            for s in symbol:
-                # 去掉 sh/sz 前缀
-                clean = s[2:] if s.startswith(("sh", "sz")) else s
-                clean_codes.append(clean)
-                code_map[clean] = s
+            index_symbols = []  # 需要走腾讯的指数代码 (带前缀)
+            index_code_map = {}  # tencent_code → original code
 
-            raw = self._sina.stocks(clean_codes)
+            for s in symbol:
+                # 提取纯数字代码
+                clean = s[2:] if s.startswith(("sh", "sz")) else s
+
+                # 判断是否为指数
+                if self._is_index_symbol(clean):
+                    # 构造带市场前缀的代码给腾讯
+                    if s.startswith(("sh", "sz")):
+                        tencent_code = s
+                    else:
+                        # 000001/999999 默认上海, 399xxx 默认深圳
+                        mk = 1 if clean.startswith(("000", "999")) else 0
+                        tencent_code = f"{'sh' if mk == 1 else 'sz'}{clean}"
+                    index_symbols.append(tencent_code)
+                    index_code_map[tencent_code] = s
+                else:
+                    clean_codes.append(clean)
+                    code_map[clean] = s
+
+            raw = {}
+
+            # 1. 指数走腾讯实时行情
+            if index_symbols:
+                raw.update(self._fetch_tencent_realtime(index_symbols))
+
+            # 2. 个股走 easyquotation (Sina)
+            if clean_codes:
+                sina_raw = self._sina.stocks(clean_codes)
+                if sina_raw:
+                    raw.update(sina_raw)
+
             if not raw:
                 return pd.DataFrame()
 
             rows = []
+            # 处理个股数据
             for clean_code in clean_codes:
                 info = raw.get(clean_code)
                 if not info or not isinstance(info, dict):
                     continue
-                row = {
-                    "code": code_map.get(clean_code, clean_code),
-                    "price": _safe_float(info.get("now")),
-                    "last_close": _safe_float(info.get("close")),
-                    "open": _safe_float(info.get("open")),
-                    "high": _safe_float(info.get("high")),
-                    "low": _safe_float(info.get("low")),
-                    "vol": _safe_float(info.get("volume")),
-                    "cur_vol": _safe_float(info.get("turnover", 0))
-                    / max(_safe_float(info.get("now", 1)), 0.01),
-                    "amount": _safe_float(info.get("turnover")),
-                    "bid1": _safe_float(info.get("bid1")),
-                    "bid_vol1": _safe_float(info.get("bid1_volume")),
-                    "ask1": _safe_float(info.get("ask1")),
-                    "ask_vol1": _safe_float(info.get("ask1_volume")),
-                    "name": info.get("name", ""),
-                }
-                rows.append(row)
+                row = self._build_quote_row(
+                    code_map.get(clean_code, clean_code), info, is_index=False
+                )
+                if row:
+                    rows.append(row)
+
+            # 处理指数数据
+            for tencent_code in index_symbols:
+                info = raw.get(tencent_code)
+                if not info or not isinstance(info, dict):
+                    continue
+                row = self._build_quote_row(
+                    index_code_map.get(tencent_code, tencent_code), info, is_index=True
+                )
+                if row:
+                    rows.append(row)
 
             return pd.DataFrame(rows) if rows else pd.DataFrame()
 
         except Exception as e:
             app_logger.warning(f"easyquotation 行情获取失败: {e}")
             return pd.DataFrame()
+
+    @staticmethod
+    def _build_quote_row(code: str, info: dict, is_index: bool = False) -> dict | None:
+        """统一构造行情行数据，兼容 mootdx 列名"""
+        now = _safe_float(info.get("now"))
+        if now <= 0:
+            return None
+
+        name = info.get("name", "")
+        # 腾讯返回格式与 Sina 不同，需要统一
+        close = _safe_float(info.get("close"))
+        open_ = _safe_float(info.get("open"))
+        high = _safe_float(info.get("high"))
+        low = _safe_float(info.get("low"))
+        volume = _safe_float(info.get("volume"))
+        turnover = _safe_float(info.get("turnover", 0))
+
+        return {
+            "code": code,
+            "name": name,
+            "price": now,
+            "last_close": close,
+            "open": open_,
+            "high": high,
+            "low": low,
+            "vol": volume,
+            "cur_vol": turnover / max(now, 0.01) if turnover else 0.0,
+            "amount": turnover,
+            "bid1": _safe_float(info.get("bid1")),
+            "bid_vol1": _safe_float(info.get("bid1_volume")),
+            "ask1": _safe_float(info.get("ask1")),
+            "ask_vol1": _safe_float(info.get("ask1_volume")),
+        }
 
     # ------------------------------------------------------------------
     #  逐笔成交接口（transaction）

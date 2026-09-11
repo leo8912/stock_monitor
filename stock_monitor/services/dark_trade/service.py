@@ -136,14 +136,33 @@ class DarkTradeService(QtCore.QThread):
     # 公共查询接口（线程安全）
     # ──────────────────────────────────────────────
 
+    # 指数代码：东方财富暗盘API不返回指数数据，直接跳过
+    # 与 MarketDataAdapter._INDEX_SYMBOLS 保持同步
+    _INDEX_CODES = frozenset(
+        {
+            "000001",
+            "999999",  # 上证指数
+            "399001",
+            "399006",
+            "399005",  # 深证成指 / 创业板指 / 中小板指
+            "000300",
+            "000016",
+            "000688",
+            "000905",
+            "000852",  # 沪深300 / 上证50 / 科创50 / 中证500 / 中证1000
+        }
+    )
+
     def get_dark_flow(self, code: str) -> tuple[float, int] | None:
         """
         查询某只股票当日暗盘净流入（万元）及连续天数
         返回 (net_wan, consecutive_days) 或 None（无数据）
         consecutive_days: 正数=连续流入天数，负数绝对值=连续流出天数
         """
-        # 股票代码统一去除市场前缀（sh/sz/hk）
+        # 指数没有暗盘资金数据，直接返回
         clean_code = code.lstrip("sShHzZkK") if len(code) > 6 else code
+        if clean_code in self._INDEX_CODES:
+            return None
         with self._lock:
             val = self._cache.get(clean_code)
         return val

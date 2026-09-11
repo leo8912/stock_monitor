@@ -1,5 +1,14 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.7.3] - 2026-09-11
+
+### 🐛 修复 (Fixes)
+- 修复上证指数显示平安银行股价数据的 bug
+  - `MarketDataAdapter.quotes()` 对指数代码走腾讯实时行情 API，个股走 easyquotation，避免 `000001` 代码歧义
+  - 增加 `_INDEX_SYMBOLS` 集合和 `_fetch_tencent_realtime()` / `_build_quote_row()` 方法
+- 修复上证指数暗盘资金列显示平安银行数据的 bug
+  - `DarkTradeService.get_dark_flow()` 增加指数代码排除逻辑，东方财富暗盘 API 不返回指数数据
+
 ## [v4.7.2] - 2026-09-10
 
 ### 🐛 修复 (Fixes)

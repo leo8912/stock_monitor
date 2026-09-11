@@ -118,18 +118,20 @@ class StockDataProcessor:
 
     @staticmethod
     def _handle_special_stocks(code: str, info: dict[str, Any]) -> dict[str, Any]:
-        """处理特殊股票代码的名称映射"""
+        """处理特殊股票代码的名称映射（安全网，正常情况 quotes 已返回正确数据）"""
         pure_code = code[2:] if code.startswith(("sh", "sz")) else code
 
         if pure_code == "000001":
             if code == "sh000001":
-                # 只有当原名不是预期时才修改，或者强制修改
-                # 这里为了简单直接返回副本
-                info = info.copy()
-                info["name"] = "上证指数"
+                # quotes() 已通过腾讯接口返回正确上证指数数据
+                # 此处仅作为安全网，防止上游返回错误名称
+                if info.get("name") != "上证指数":
+                    info = info.copy()
+                    info["name"] = "上证指数"
             elif code == "sz000001":
-                info = info.copy()
-                info["name"] = "平安银行"
+                if info.get("name") != "平安银行":
+                    info = info.copy()
+                    info["name"] = "平安银行"
         return info
 
     @staticmethod

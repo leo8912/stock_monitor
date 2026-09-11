@@ -42,27 +42,18 @@ class StockDataValidator:
         info: dict[str, Any], pure_code: str, code: str, should_copy: bool = False
     ) -> Optional[dict[str, Any]]:
         """
-        处理特殊情况下的股票数据(如上证指数和平安银行)
-
-        Args:
-            info (Dict[str, Any]): 股票信息
-            pure_code (str): 纯股票代码
-            code (str): 完整股票代码
-            should_copy (bool): 是否需要复制数据以避免修改原始数据
-
-        Returns:
-            Optional[Dict[str, Any]]: 处理后的股票信息
+        处理特殊情况下的股票数据名称安全网。
+        quotes() 现已通过腾讯接口正确获取指数数据，此处仅兜底修正名称。
         """
         if pure_code == "000001":
-            # 检查是否应该显示为上证指数
             if code == "sh000001":
-                # 强制修正名称为上证指数
-                info = info.copy() if should_copy else info  # 创建副本避免修改原始数据
-                info["name"] = "上证指数"
+                if info.get("name") != "上证指数":
+                    info = info.copy() if should_copy else info
+                    info["name"] = "上证指数"
             elif code == "sz000001":
-                # 强制修正名称为平安银行
-                info = info.copy() if should_copy else info  # 创建副本避免修改原始数据
-                info["name"] = "平安银行"
+                if info.get("name") != "平安银行":
+                    info = info.copy() if should_copy else info
+                    info["name"] = "平安银行"
         return info
 
     @staticmethod
