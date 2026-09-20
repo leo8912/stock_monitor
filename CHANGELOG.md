@@ -35,6 +35,8 @@
 - 清理 4 个引用已删除模块的失效测试
 - 新增 16 个测试文件；全量 **587 passed / 10 skipped / 0 failed**
 - 新增 Python 3.9 兼容性 AST 守卫（CI 运行 3.9，本地 3.13 会掩盖如「`staticmethod` 对象可调用」这类 3.10+ 行为）
+  - 守卫自身在 3.9 下不可用已修复：原实现用 `ast.Match` 检测 match 语句，而该属性 3.10 才加入，
+    在 3.9 上抛 `AttributeError` 导致守卫全线失败；改为 `getattr` 降级
 
 ### ⚠️ 升级提示 (Upgrade Notes)
 - **请轮换企微凭据**：历史日志 `logs/stock_monitor.log` 中已明文残留 corpsecret 与 webhook key。脱敏只能阻止后续写入，已泄露的凭据需到企微后台重新生成

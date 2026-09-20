@@ -28,6 +28,16 @@ def _is_bitor(node: ast.AST) -> bool:
     return isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr)
 
 
+# 关键：``ast.Match`` 是 Python 3.10 才加入的，3.9 的 ast 模块**没有该属性**。
+# 本守卫自身要在 CI 的 Python 3.9 上运行，直接写 ``isinstance(node, ast.Match)``
+# 会抛 ``AttributeError: module 'ast' has no attribute 'Match'``，导致守卫在 3.9
+# 上全线 FAIL —— 即"3.9 兼容性守卫自己不兼容 3.9"的自指陷阱（v4.8.0 CI 真实踩到）。
+# 因此用 getattr 安全降级：属性缺失时按「无 match 语句」处理。
+_AST_MATCH_NODES = tuple(
+    node_type for node_type in (getattr(ast, "Match", None),) if node_type is not None
+)
+
+
 def _has_future_annotations(tree: ast.Module) -> bool:
     for node in tree.body:
         if isinstance(node, ast.ImportFrom) and node.module == "__future__":
@@ -85,8 +95,9 @@ def _scan_source(source: str, path: str) -> dict:
     has_future = _has_future_annotations(tree)
 
     # 1. match 语句：3.9 语法错误（本地能解析出来即已命中）
+    #    注意：3.9 无 ast.Match，故用降级元组；为空元组时短路跳过。
     for node in ast.walk(tree):
-        if isinstance(node, ast.Match):
+        if _AST_MATCH_NODES and isinstance(node, _AST_MATCH_NODES):
             result["hard"].append((path, node.lineno, "match 语句（3.9 语法错误）"))
 
     # 2. 函数签名注解中的 X | Y
