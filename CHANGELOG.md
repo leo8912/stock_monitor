@@ -1,5 +1,44 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.8.0] - 2026-09-20
+
+> 本版本源于一次全量代码审查（107 文件 / 22,423 行），集中修复 P0 9 项、P1 14 项、P2 12 项缺陷，并完成设置对话框的结构拆分。**用户可见行为保持不变**（既有的文案不一致处亦原样保留），内部可靠性与安全能力显著增强。
+
+### 🛡️ 安全加固 (Security)
+- **日志敏感信息脱敏**：新增 `RedactionFilter`，按「字段名 + 分隔符必须含 `=`/`:`」规则自动脱敏，覆盖 `corpsecret`、`webhook`、`access_token`、`api_key`、`app_secret`、`authorization`、`cookie`、`sessionid` 等
+  - 同时避免误脱：`cache key 已更新`、`secretary 提交`、`monkey patch`、`keychain` 等自然语言不再被误改
+- **更新校验改为 fail-closed**：哈希校验异常 / 缺失 / 非 64 位十六进制一律拒绝，不再默认放行
+  - 新增官方域名白名单（含端口校验），拒绝来自镜像站等非官方源的哈希文件
+- **企微应用 Token 缓存键修正**：由 `corp_id` 改为 `(corp_id, secret)`，修复「修改 Secret 后仍沿用旧 Token，导致测试推送用错误凭证也报成功」
+
+### 🐛 修复 (Fixes)
+- 修复 SQLite 连接池跨线程共享同一连接的数据损坏风险：连接改为按线程归属，写操作统一走全局写锁
+- 修复关闭主窗口后进程残留（僵尸进程）：关闭改为最小化到托盘，资源销毁统一由 `aboutToQuit` 触发
+- 修复设置对话框中后台任务卡死：原生线程内 `QTimer.singleShot` 回调不执行导致 WaitCursor 无法恢复，全部改为 QThread + 信号
+- 修复量化任务停止时误关闭全局连接池（`StockDatabase` 为单例）
+- 修复复盘报告在 UI 线程同步执行导致界面假死，改为后台生成并通过 `daily_report_ready` 信号回传
+- 修复 easyquotation 共享 `Session` 被线程池并发访问的问题，改为线程本地会话
+- 修复 5 处潜在除零
+- 修复日志 handler 清理时未关闭句柄导致的泄漏
+- 修复 `dark_trade_exporter.py` 中 `return` 之后 121 行不可达死代码（宣称的 Excel 双 Sheet 功能实际不存在）
+
+### 🧹 代码重构与质量提升 (Refactoring)
+- **设置对话框 page 级拆分**：`settings_dialog.py` 由 1768 行降至 429 行
+  - 新增 `settings_pages/{context, base, general, watchlist, display, quant}_page.py`、`settings_widgets.py`、`ui/workers/settings_workers.py`
+  - 各页统一 `build` / `load` / `collect` / `restore` / `cleanup` 接口；新增 AST 防退化断言，已迁移方法不得回到外壳
+- 企微推送 HTTP 逻辑收敛到 `NotifierService`，UI 层不再直接发起网络请求
+- 7 个超长函数拆分，圈复杂度全部降至 15 以下
+
+### 🧪 测试与工程化 (Testing & DevOps)
+- CI 增加质量门禁：`ruff check` + `ruff format --check` + `pytest`（此前只打包不跑测试）
+- 修复 `tests/test_market_bar.py` 导致 pytest 进程硬崩溃（exit 127）
+- 清理 4 个引用已删除模块的失效测试
+- 新增 16 个测试文件；全量 **587 passed / 10 skipped / 0 failed**
+- 新增 Python 3.9 兼容性 AST 守卫（CI 运行 3.9，本地 3.13 会掩盖如「`staticmethod` 对象可调用」这类 3.10+ 行为）
+
+### ⚠️ 升级提示 (Upgrade Notes)
+- **请轮换企微凭据**：历史日志 `logs/stock_monitor.log` 中已明文残留 corpsecret 与 webhook key。脱敏只能阻止后续写入，已泄露的凭据需到企微后台重新生成
+
 ## [v4.7.4] - 2026-09-11
 
 ### ✨ 新功能 (Features)
