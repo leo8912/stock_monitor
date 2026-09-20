@@ -186,9 +186,9 @@ def test_cache_persistence():
     print("✓ 缓存已加载")
 
     # 验证数据完整性
-    assert (
-        len(worker2._signal_states) == 2
-    ), f"应有2个状态，实际{len(worker2._signal_states)}"
+    assert len(worker2._signal_states) == 2, (
+        f"应有2个状态，实际{len(worker2._signal_states)}"
+    )
     assert ("sh600519", "日线:MACD底背离") in worker2._signal_states
     assert worker2._signal_states[("sh600519", "日线:MACD底背离")]["last_score"] == 3
 

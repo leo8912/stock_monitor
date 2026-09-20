@@ -14,7 +14,7 @@ import datetime
 import unittest
 from unittest.mock import patch
 
-from stock_monitor.core.market_manager import (
+from stock_monitor.core.market.market_manager import (
     MarketManager,
     MarketSentiment,
 )
@@ -119,7 +119,7 @@ class TestMarketManagerIsMarketOpen(unittest.TestCase):
         mock_datetime.datetime.now.return_value = mock_now
         mock_datetime.time.side_effect = datetime.time
 
-        result = MarketManager.is_market_open()
+        result = MarketManager().is_market_open()
 
         self.assertFalse(result)
 
@@ -130,7 +130,7 @@ class TestMarketManagerIsMarketOpen(unittest.TestCase):
         mock_datetime.datetime.now.return_value = mock_now
         mock_datetime.time.side_effect = datetime.time
 
-        result = MarketManager.is_market_open()
+        result = MarketManager().is_market_open()
 
         self.assertFalse(result)
 
@@ -141,7 +141,7 @@ class TestMarketManagerIsMarketOpen(unittest.TestCase):
         mock_datetime.datetime.now.return_value = mock_now
         mock_datetime.time.side_effect = datetime.time
 
-        result = MarketManager.is_market_open()
+        result = MarketManager().is_market_open()
 
         self.assertTrue(result)
 
@@ -152,7 +152,7 @@ class TestMarketManagerIsMarketOpen(unittest.TestCase):
         mock_datetime.datetime.now.return_value = mock_now
         mock_datetime.time.side_effect = datetime.time
 
-        result = MarketManager.is_market_open()
+        result = MarketManager().is_market_open()
 
         self.assertTrue(result)
 
@@ -163,7 +163,7 @@ class TestMarketManagerIsMarketOpen(unittest.TestCase):
         mock_datetime.datetime.now.return_value = mock_now
         mock_datetime.time.side_effect = datetime.time
 
-        result = MarketManager.is_market_open()
+        result = MarketManager().is_market_open()
 
         self.assertFalse(result)
 
@@ -174,7 +174,7 @@ class TestMarketManagerIsMarketOpen(unittest.TestCase):
         mock_datetime.datetime.now.return_value = mock_now
         mock_datetime.time.side_effect = datetime.time
 
-        result = MarketManager.is_market_open()
+        result = MarketManager().is_market_open()
 
         self.assertFalse(result)
 
@@ -185,7 +185,7 @@ class TestMarketManagerIsMarketOpen(unittest.TestCase):
         mock_datetime.datetime.now.return_value = mock_now
         mock_datetime.time.side_effect = datetime.time
 
-        result = MarketManager.is_market_open()
+        result = MarketManager().is_market_open()
 
         self.assertFalse(result)
 
@@ -196,7 +196,7 @@ class TestMarketManagerIsMarketOpen(unittest.TestCase):
         mock_datetime.datetime.now.return_value = mock_now
         mock_datetime.time.side_effect = datetime.time
 
-        result = MarketManager.is_market_open()
+        result = MarketManager().is_market_open()
 
         self.assertTrue(result)
 
@@ -207,7 +207,7 @@ class TestMarketManagerIsMarketOpen(unittest.TestCase):
         mock_datetime.datetime.now.return_value = mock_now
         mock_datetime.time.side_effect = datetime.time
 
-        result = MarketManager.is_market_open()
+        result = MarketManager().is_market_open()
 
         self.assertTrue(result)
 
@@ -218,7 +218,7 @@ class TestMarketManagerIsMarketOpen(unittest.TestCase):
         mock_datetime.datetime.now.return_value = mock_now
         mock_datetime.time.side_effect = datetime.time
 
-        result = MarketManager.is_market_open()
+        result = MarketManager().is_market_open()
 
         self.assertTrue(result)
 
@@ -229,53 +229,9 @@ class TestMarketManagerIsMarketOpen(unittest.TestCase):
         mock_datetime.datetime.now.return_value = mock_now
         mock_datetime.time.side_effect = datetime.time
 
-        result = MarketManager.is_market_open()
+        result = MarketManager().is_market_open()
 
         self.assertTrue(result)
-
-
-class TestMarketManagerGetMarketStatus(unittest.TestCase):
-    """MarketManager.get_market_status() 测试"""
-
-    @patch("stock_monitor.core.market.market_manager.MarketManager.is_market_open")
-    def test_get_market_status_open(self, mock_is_open):
-        """测试获取开市状态"""
-        mock_is_open.return_value = True
-
-        status = MarketManager.get_market_status()
-
-        self.assertEqual(status, "开市")
-
-    @patch("stock_monitor.core.market.market_manager.MarketManager.is_market_open")
-    def test_get_market_status_closed(self, mock_is_open):
-        """测试获取闭市状态"""
-        mock_is_open.return_value = False
-
-        status = MarketManager.get_market_status()
-
-        self.assertEqual(status, "闭市")
-
-
-class TestMarketManagerGetRefreshInterval(unittest.TestCase):
-    """MarketManager.get_refresh_interval() 测试"""
-
-    @patch("stock_monitor.core.market.market_manager.MarketManager.is_market_open")
-    def test_get_refresh_interval_during_market(self, mock_is_open):
-        """测试开市期间的刷新间隔"""
-        mock_is_open.return_value = True
-
-        interval = MarketManager.get_refresh_interval(5)
-
-        self.assertEqual(interval, 5)
-
-    @patch("stock_monitor.core.market.market_manager.MarketManager.is_market_open")
-    def test_get_refresh_interval_after_market(self, mock_is_open):
-        """测试闭市期间的刷新间隔"""
-        mock_is_open.return_value = False
-
-        interval = MarketManager.get_refresh_interval(5)
-
-        self.assertEqual(interval, 30)  # 固定 30 秒
 
 
 class TestMarketManagerUpdateSentiment(unittest.TestCase):

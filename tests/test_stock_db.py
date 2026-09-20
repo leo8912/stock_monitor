@@ -3,13 +3,27 @@ import sqlite3
 import unittest
 from unittest.mock import patch
 
-from stock_monitor.data.stock.stock_db import StockDatabase
+from stock_monitor.data.stock.stock_db import StockDatabase, get_db_pool
+
+
+def _safe_remove(path: str) -> None:
+    """清理测试产生的临时文件，忽略删除失败（句柄未释放等）。"""
+    if not os.path.exists(path):
+        return
+    try:
+        os.remove(path)
+    except OSError:
+        # 测试清理路径：删除失败不影响断言结果
+        pass
 
 
 class TestStockDatabase(unittest.TestCase):
     def setUp(self):
         # Use a temporary database file for testing, unique per test to avoid locking issues
         self.test_db_path = f"test_stocks_{self._testMethodName}.db"
+        # 预清理可能的残留文件（含 WAL/SHM），避免上一次运行的句柄干扰
+        for suffix in ("", "-wal", "-shm"):
+            _safe_remove(self.test_db_path + suffix)
         # Mock get_config_dir to return current directory
         self.patcher_config = patch(
             "stock_monitor.data.stock.stock_db.get_config_dir", return_value="."
@@ -34,22 +48,27 @@ class TestStockDatabase(unittest.TestCase):
         StockDatabase._instance = None
         self.db = StockDatabase()
 
-        # Force Clean - ensure database is empty regardless of auto-population
-        with sqlite3.connect(self.db.db_path) as conn:
+        # Force Clean - ensure database is empty regardless of auto-population.
+        # 注意：sqlite3.Connection 的 `with` 只提交事务、**不关闭连接**（G-4），
+        # 直接使用会占用文件句柄，导致 tearDown 的 os.remove 静默失败并在仓库根
+        # 残留 test_stocks_*.db。这里显式关闭。
+        conn = sqlite3.connect(self.db.db_path)
+        try:
             conn.execute("DELETE FROM stocks")
             conn.commit()
+        finally:
+            conn.close()
 
     def tearDown(self):
+        # 先关闭连接池释放文件句柄，否则 Windows 下 os.remove 会静默失败并在
+        # 仓库根残留 test_stocks_*.db（与 test_stock_db_concurrency.py 保持一致）。
+        get_db_pool().close_all()
         self.patcher_config.stop()
         self.patcher_db_file.stop()
         self.patcher_is_empty.stop()
         StockDatabase._instance = None
-        # Clean up the database file
-        if os.path.exists(self.test_db_path):
-            try:
-                os.remove(self.test_db_path)
-            except PermissionError:
-                pass
+        for suffix in ("", "-wal", "-shm"):
+            _safe_remove(self.test_db_path + suffix)
 
     def test_insert_stocks_batch(self):
         """Test inserting a batch of stocks"""
@@ -127,6 +146,24 @@ class TestStockDatabase(unittest.TestCase):
         self.assertEqual(count, 2)
 
         self.assertEqual(self.db.get_all_stocks_count(), 2)
+
+    def test_insert_stocks_skips_missing_fields(self):
+        """G-7: 上游缺 code/name 的记录被跳过，不触发慢速降级、不中断整批入库"""
+        stocks = [
+            {"code": "sh600000", "name": "Good", "pinyin": "g", "abbr": "g"},
+            {"name": "NoCode"},  # 缺 code
+            {"code": "sh600001"},  # 缺 name
+            {"code": "sh600002", "name": "Good2", "pinyin": "g2", "abbr": "g2"},
+        ]
+
+        with patch.object(self.db, "_insert_stocks_slow") as mock_slow:
+            count = self.db.insert_stocks(stocks)
+            mock_slow.assert_not_called()
+
+        self.assertEqual(count, 2)
+        self.assertIsNotNone(self.db.get_stock_by_code("sh600000"))
+        self.assertIsNotNone(self.db.get_stock_by_code("sh600002"))
+        self.assertIsNone(self.db.get_stock_by_code("sh600001"))
 
 
 if __name__ == "__main__":

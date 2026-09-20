@@ -6,6 +6,7 @@
 import os
 import sqlite3
 import threading
+from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any, Optional
 
@@ -35,12 +36,18 @@ def _escape_like_pattern(keyword: str) -> str:
 
 
 class ConnectionPool:
-    """SQLite 连接池（单例模式）"""
+    """SQLite 连接池（单例模式）
+
+    归属原则（关键）：任一 ``sqlite3.Connection`` 在任一时刻只归属**创建它的线程**。
+    全局结构 ``_all_conns`` 仅用于统计与统一关闭，**不再跨线程分发连接**。
+    这样可避免同一连接被多个线程并发复用导致的事务交错 / 脏读问题。
+    """
 
     _instance = None
     _lock = threading.Lock()
 
-    def __new__(cls):
+    def __new__(cls) -> "ConnectionPool":
+        """单例构造：全局仅创建一个 ConnectionPool 实例。"""
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
@@ -48,75 +55,76 @@ class ConnectionPool:
                     cls._instance._initialized = False
         return cls._instance
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """初始化连接池状态（线程本地连接映射、全局登记与写锁）。"""
         if self._initialized:
             return
 
+        # 线程本地存储：{db_path: sqlite3.Connection}，仅存本线程创建的连接
         self._local = threading.local()
-        self._pool = {}
-        self._pool_size = 5
+        # 全局连接登记：{id(conn): conn}，仅用于统计与统一关闭
+        self._all_conns: dict[int, sqlite3.Connection] = {}
         self._lock = threading.Lock()
+        # 全局写锁：串行化所有写事务，避免多连接写交错
+        self._write_lock = threading.RLock()
         self._stats = {"created": 0, "reused": 0, "closed": 0}
         self._initialized = True
         app_logger.info("数据库连接池初始化完成")
 
+    def _get_thread_conns(self) -> dict[str, sqlite3.Connection]:
+        """获取当前线程的连接映射（惰性创建）。"""
+        conns = getattr(self._local, "conns", None)
+        if conns is None:
+            conns = {}
+            self._local.conns = conns
+        return conns
+
+    def write_lock(self) -> threading.RLock:
+        """返回全局写锁，供写事务串行化使用。"""
+        return self._write_lock
+
     def get_connection(self, db_path: str) -> sqlite3.Connection:
-        """获取连接（优先复用线程本地连接）"""
-        # 先检查线程本地连接（无锁快速路径）
-        if hasattr(self._local, "conn") and self._local.conn_path == db_path:
-            if self._is_connection_valid(self._local.conn):
+        """获取当前线程在 ``db_path`` 上的连接。
+
+        优先复用本线程已创建且仍有效的连接；否则**由本线程新建**连接，
+        绝不从其它线程借还连接。
+        """
+        conns = self._get_thread_conns()
+        conn = conns.get(db_path)
+        if conn is not None and self._is_connection_valid(conn):
+            with self._lock:
                 self._stats["reused"] += 1
-                return self._local.conn
-
-        # 获取锁后再次检查，防止竞态条件
-        with self._lock:
-            # 双重检查：线程本地连接可能在等待锁期间被其他线程更新
-            if hasattr(self._local, "conn") and self._local.conn_path == db_path:
-                if self._is_connection_valid(self._local.conn):
-                    self._stats["reused"] += 1
-                    return self._local.conn
-
-            # 尝试从池中获取连接
-            if db_path in self._pool and self._pool[db_path]:
-                conn = self._pool[db_path].pop(0)
-                if self._is_connection_valid(conn):
-                    self._stats["reused"] += 1
-                    self._local.conn = conn
-                    self._local.conn_path = db_path
-                    return conn
-                else:
-                    self._stats["closed"] += 1
-                    try:
-                        conn.close()
-                    except Exception:
-                        app_logger.debug("关闭无效连接失败")
-
-            # 创建新连接
-            conn = self._create_connection(db_path)
-            self._stats["created"] += 1
-            self._local.conn = conn
-            self._local.conn_path = db_path
             return conn
 
+        # 本线程新建连接并登记
+        conn = self._create_connection(db_path)
+        conns[db_path] = conn
+        with self._lock:
+            self._all_conns[id(conn)] = conn
+            self._stats["created"] += 1
+        return conn
+
     def return_connection(self, db_path: str, conn: sqlite3.Connection) -> None:
-        """归还连接到池中"""
-        if not self._is_connection_valid(conn):
-            try:
-                conn.close()
-                self._stats["closed"] += 1
-            except Exception:
-                pass
+        """归还连接。
+
+        若调用线程正是该连接的创建线程（连接仍在本线程映射中），则保留连接以供
+        本线程复用；否则视为异常跨线程路径，关闭连接并从全局登记中移除。
+        """
+        conns = self._get_thread_conns()
+        if conns.get(db_path) is conn and self._is_connection_valid(conn):
+            # 连接留在创建它的线程，无需归还
             return
 
+        # 非归属线程或连接已失效：关闭并注销
+        conns.pop(db_path, None)
+        try:
+            conn.close()
+        except Exception:
+            # 退出/异常清理路径：关闭失败不阻塞，记录后继续
+            app_logger.debug("关闭无效数据库连接失败", exc_info=True)
         with self._lock:
-            if db_path not in self._pool:
-                self._pool[db_path] = []
-
-            if len(self._pool[db_path]) < self._pool_size:
-                self._pool[db_path].append(conn)
-            else:
-                conn.close()
-                self._stats["closed"] += 1
+            self._all_conns.pop(id(conn), None)
+            self._stats["closed"] += 1
 
     def _create_connection(self, db_path: str) -> sqlite3.Connection:
         """创建新连接并应用优化配置"""
@@ -136,24 +144,29 @@ class ConnectionPool:
             return False
 
     def close_all(self) -> None:
-        """关闭所有连接"""
+        """关闭所有已登记连接，并重置线程本地存储。"""
         with self._lock:
-            for conns in self._pool.values():
-                for conn in conns:
-                    try:
-                        conn.close()
-                        self._stats["closed"] += 1
-                    except Exception:
-                        pass
-            self._pool.clear()
+            conns = list(self._all_conns.values())
+            self._all_conns.clear()
+            for conn in conns:
+                try:
+                    conn.close()
+                    self._stats["closed"] += 1
+                except Exception:
+                    # 退出清理路径：单个连接关闭失败不阻塞其它连接关闭
+                    app_logger.debug("关闭数据库连接失败", exc_info=True)
+            # 重置线程本地存储，避免残留已关闭连接
+            self._local = threading.local()
 
     def get_stats(self) -> dict:
-        """获取连接池统计"""
-        return {
-            **self._stats,
-            "active_pools": len(self._pool),
-            "total_cached": sum(len(c) for c in self._pool.values()),
-        }
+        """获取连接池统计（active_pools/total_cached 基于全局登记连接数）。"""
+        with self._lock:
+            active = len(self._all_conns)
+            return {
+                **self._stats,
+                "active_pools": active,
+                "total_cached": active,
+            }
 
 
 _db_pool = None
@@ -173,14 +186,15 @@ class StockDatabase(StockDataSource):
     _instance = None
     _lock = threading.Lock()
 
-    def __new__(cls):
+    def __new__(cls) -> "StockDatabase":
+        """单例构造：全局仅创建一个 StockDatabase 实例。"""
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self):
+    def __init__(self) -> None:
         """初始化数据库连接"""
         with self._lock:
             if not hasattr(self, "_initialized"):
@@ -197,7 +211,7 @@ class StockDatabase(StockDataSource):
                     app_logger.info("检测到空数据库，正在初始化...")
                     self._populate_base_data()
 
-    def close(self):
+    def close(self) -> None:
         """关闭数据库连接池"""
         try:
             pool = get_db_pool()
@@ -207,19 +221,50 @@ class StockDatabase(StockDataSource):
             app_logger.warning(f"关闭数据库连接池失败: {e}")
 
     @contextmanager
-    def _get_connection(self):
-        """获取数据库连接（上下文管理器，自动归还到连接池）"""
+    def _get_connection(self) -> Iterator[sqlite3.Connection]:
+        """获取数据库连接（上下文管理器，自动归还到连接池）。
+
+        读路径：异常时回滚，避免脏事务随复用连接带到下一次调用。
+        """
         pool = get_db_pool()
         conn = pool.get_connection(self.db_path)
         try:
             yield conn
+        except Exception:
+            # 读路径异常：回滚未提交的隐式事务，防止污染后续复用
+            try:
+                conn.rollback()
+            except Exception:
+                app_logger.debug("回滚读事务失败", exc_info=True)
+            raise
         finally:
             pool.return_connection(self.db_path, conn)
 
-    def _initialize_database(self):
+    @contextmanager
+    def _write_connection(self) -> Iterator[sqlite3.Connection]:
+        """获取写数据库连接（上下文管理器）。
+
+        在全局写锁内串行化写入，正常结束时提交，异常时回滚并向上抛出。
+        """
+        pool = get_db_pool()
+        with pool.write_lock():
+            conn = pool.get_connection(self.db_path)
+            try:
+                yield conn
+                conn.commit()
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    app_logger.debug("回滚写事务失败", exc_info=True)
+                raise
+            finally:
+                pool.return_connection(self.db_path, conn)
+
+    def _initialize_database(self) -> None:
         """初始化数据库表结构"""
         try:
-            with self._get_connection() as conn:
+            with self._write_connection() as conn:
                 cursor = conn.cursor()
 
                 # 创建股票表
@@ -298,13 +343,12 @@ class StockDatabase(StockDataSource):
 
                 # PRAGMA 优化已统一在 _get_connection 中配置
 
-                conn.commit()
                 app_logger.info("股票数据库初始化完成")
         except Exception as e:
             app_logger.error(f"初始化股票数据库失败: {e}")
             raise
 
-    def _populate_base_data(self):
+    def _populate_base_data(self) -> None:
         """填充基础数据"""
         base_db = resource_path("stocks_base.db")
         if os.path.exists(base_db):
@@ -320,7 +364,7 @@ class StockDatabase(StockDataSource):
             app_logger.warning("未找到基础数据库文件，将在后台更新")
             self._trigger_background_update()
 
-    def _import_from_base_db(self, base_db_path: str):
+    def _import_from_base_db(self, base_db_path: str) -> None:
         """从基础数据库导入数据"""
         base_conn = None
         try:
@@ -339,7 +383,7 @@ class StockDatabase(StockDataSource):
                 return
 
             # 批量插入到当前数据库
-            with self._get_connection() as conn:
+            with self._write_connection() as conn:
                 cursor = conn.cursor()
                 cursor.executemany(
                     """
@@ -349,7 +393,6 @@ class StockDatabase(StockDataSource):
                 """,
                     stocks,
                 )
-                conn.commit()
 
             app_logger.info(f"成功导入 {len(stocks)} 只股票数据")
         except Exception as e:
@@ -362,7 +405,7 @@ class StockDatabase(StockDataSource):
                 except Exception:
                     pass
 
-    def _trigger_background_update(self):
+    def _trigger_background_update(self) -> None:
         """触发后台数据库更新"""
         try:
             # 导入并触发更新（避免循环导入）
@@ -371,7 +414,8 @@ class StockDatabase(StockDataSource):
             from stock_monitor.data.stock.stock_updater import update_stock_database
             from stock_monitor.utils.worker import WorkerRunnable
 
-            def update_task():
+            def update_task() -> None:
+                """在 Qt 线程池中执行的实际更新任务。"""
                 app_logger.info("开始后台更新股票数据库...")
                 update_stock_database()
 
@@ -395,14 +439,21 @@ class StockDatabase(StockDataSource):
             return 0
 
         try:
-            with self._get_connection() as conn:
+            with self._write_connection() as conn:
                 cursor = conn.cursor()
 
-                # 准备数据
+                # 准备数据（G-7: 上游字段缺失时跳过该条，不因 KeyError 中断整批入库）
                 data_to_insert = []
+                skipped = 0
                 for stock in stocks:
-                    code = stock["code"]
-                    name = stock["name"]
+                    code = stock.get("code")
+                    name = stock.get("name")
+                    if not code or not name:
+                        skipped += 1
+                        app_logger.warning(
+                            f"跳过字段缺失的股票记录: code={code!r} name={name!r}"
+                        )
+                        continue
                     pinyin = stock.get("pinyin", "")
                     abbr = stock.get("abbr", "")
 
@@ -435,12 +486,11 @@ class StockDatabase(StockDataSource):
 
                 cursor.executemany(sql, data_to_insert)
 
-                conn.commit()
-
                 # cursor.rowcount 在某些驱动/配置下可能返回-1或不准确
                 # 既然我们使用了事务且未抛出异常，可以认为所有数据都已处理
                 app_logger.info(
-                    f"股票数据批量更新完成: 处理了 {len(data_to_insert)} 条记录"
+                    f"股票数据批量更新完成: 处理了 {len(data_to_insert)} 条记录，"
+                    f"跳过 {skipped} 条"
                 )
                 return len(data_to_insert)
 
@@ -452,14 +502,20 @@ class StockDatabase(StockDataSource):
     def _insert_stocks_slow(self, stocks: list[dict[str, Any]]) -> int:
         """慢速插入模式（兼容旧版SQLite或作为降级方案）"""
         try:
-            with self._get_connection() as conn:
+            with self._write_connection() as conn:
                 cursor = conn.cursor()
                 app_logger.warning("正在使用慢速逐条插入模式...")
                 updated_count = 0
                 for stock in stocks:
                     try:
-                        code = stock["code"]
-                        name = stock["name"]
+                        code = stock.get("code")
+                        name = stock.get("name")
+                        if not code or not name:
+                            app_logger.warning(
+                                "慢速模式：跳过字段缺失的股票记录 "
+                                f"code={code!r} name={name!r}"
+                            )
+                            continue
                         pinyin = stock.get("pinyin", "")
                         abbr = stock.get("abbr", "")
                         # 确定市场类型
@@ -482,7 +538,6 @@ class StockDatabase(StockDataSource):
                         app_logger.error(
                             f"慢速模式：单条写入股票 {stock.get('code', '未知')} 失败: {e}"
                         )
-                conn.commit()
                 return updated_count
         except Exception as e:
             app_logger.error(f"慢速插入失败: {e}")

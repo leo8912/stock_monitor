@@ -23,7 +23,8 @@ class StockTableModel(QtCore.QAbstractTableModel):
     COL_SEAL = 3
     COL_DARK_FLOW = 4  # 暗盘净流入（常显示）
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None) -> None:
+        """初始化表格模型（空数据、默认字体与列配置）。"""
         super().__init__(parent)
         self._data: list = []  # list of StockRowData
         self._header_labels = ["名称", "价格", "涨跌幅", "封单", "暗盘流"]
@@ -33,11 +34,13 @@ class StockTableModel(QtCore.QAbstractTableModel):
         self._cached_font = None
 
     def rowCount(self, parent=None) -> int:
+        """返回当前数据行数。"""
         if parent is None:
             parent = QtCore.QModelIndex()
         return len(self._data)
 
     def columnCount(self, parent=None) -> int:
+        """返回当前可见列数（封单列可隐藏，暗盘列始终显示）。"""
         if parent is None:
             parent = QtCore.QModelIndex()
         count = 3  # 名称, 价格, 涨跌幅
@@ -49,6 +52,7 @@ class StockTableModel(QtCore.QAbstractTableModel):
     def data(
         self, index: QtCore.QModelIndex, role: int = QtCore.Qt.ItemDataRole.DisplayRole
     ) -> Any:
+        """返回指定单元格在给定 role 下的显示文本/颜色/对齐等数据。"""
         if not index.isValid() or index.row() >= len(self._data):
             return None
 
@@ -102,7 +106,7 @@ class StockTableModel(QtCore.QAbstractTableModel):
                 sign = "+" if v >= 0 else ""
                 # 将小数按量级显示：>1万显整数，小数显1位
                 if abs(v) >= 10000:
-                    return f" {sign}{v/10000:.1f}亿 "
+                    return f" {sign}{v / 10000:.1f}亿 "
                 elif abs(v) >= 1000:
                     return f" {sign}{v:.0f}万 "
                 else:
@@ -182,6 +186,7 @@ class StockTableModel(QtCore.QAbstractTableModel):
         orientation: QtCore.Qt.Orientation,
         role: int = QtCore.Qt.ItemDataRole.DisplayRole,
     ) -> Any:
+        """返回水平表头在给定 role 下的列名。"""
         if (
             orientation == QtCore.Qt.Orientation.Horizontal
             and role == QtCore.Qt.ItemDataRole.DisplayRole
@@ -190,8 +195,12 @@ class StockTableModel(QtCore.QAbstractTableModel):
                 return self._header_labels[section]
         return None
 
-    def update_data(self, new_data: list):
-        """更新数据 - 优化为增量更新"""
+    def update_data(self, new_data: list) -> bool:
+        """更新数据 - 优化为增量更新。
+
+        Returns:
+            bool: 布局或行数是否发生变化（True 表示发生了全量重置）。
+        """
         # 检查是否需要显示封单列
         has_seal = any(item.seal_type for item in new_data) if new_data else False
 
@@ -221,14 +230,15 @@ class StockTableModel(QtCore.QAbstractTableModel):
             self.endResetModel()
             return layout_changed or row_count_changed
 
-    def set_font_size(self, font_family: str, size: int):
+    def set_font_size(self, font_family: str, size: int) -> None:
+        """设置字体族与字号，并使字体缓存失效后强制刷新。"""
         self._font_family = font_family
         self._font_size = size
         self._cached_font = None  # 使缓存失效
         # 字体改变需要重绘
         self.force_refresh()
 
-    def force_refresh(self):
+    def force_refresh(self) -> None:
         """强制刷新所有视图"""
         if self._data:
             self.dataChanged.emit(

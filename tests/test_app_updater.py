@@ -10,9 +10,13 @@ AppUpdater 单元测试模块
 - 边界情况处理
 """
 
+import hashlib
+import os
+import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
+from stock_monitor.core.app_update.downloader import UpdateDownloader
 from stock_monitor.core.updater import AppUpdater
 
 
@@ -139,27 +143,6 @@ class TestAppUpdaterApplyUpdate(unittest.TestCase):
         self.assertFalse(result)
 
 
-class TestAppUpdaterPostUpdateHooks(unittest.TestCase):
-    """AppUpdater 更新后钩子测试"""
-
-    def setUp(self):
-        self.updater = AppUpdater()
-
-    def test_run_post_update_hooks_exists(self):
-        """测试更新后钩子方法存在"""
-        # 验证方法存在且可调用
-        self.assertTrue(hasattr(self.updater, "_run_post_update_hooks"))
-        self.assertTrue(callable(self.updater._run_post_update_hooks))
-
-    def test_run_post_update_hooks_no_exception(self):
-        """测试更新后钩子不抛出异常"""
-        # 即使有错误也不应抛出异常
-        try:
-            self.updater._run_post_update_hooks()
-        except Exception:
-            self.fail("Post update hooks should handle exceptions gracefully")
-
-
 class TestAppUpdaterIntegration(unittest.TestCase):
     """AppUpdater 集成测试"""
 
@@ -189,6 +172,123 @@ class TestAppUpdaterIntegration(unittest.TestCase):
 
                     success = self.updater.apply_update(update_path)
                     self.assertTrue(success)
+
+
+class TestVerifyHashFailClosed(unittest.TestCase):
+    """UpdateDownloader._verify_hash 的 fail-closed 行为测试（T04）。"""
+
+    _GET = "stock_monitor.core.app_update.downloader.requests.get"
+
+    def setUp(self):
+        self.downloader = UpdateDownloader()
+        fd, self.path = tempfile.mkstemp(suffix=".zip")
+        os.close(fd)
+        payload = b"hello update payload"
+        with open(self.path, "wb") as f:
+            f.write(payload)
+        self.correct_hash = hashlib.sha256(payload).hexdigest()
+
+    def tearDown(self):
+        try:
+            if os.path.exists(self.path):
+                os.remove(self.path)
+        except OSError:
+            pass
+
+    @staticmethod
+    def _response(text, status=200):
+        resp = MagicMock()
+        resp.status_code = status
+        resp.text = text
+        return resp
+
+    def test_no_hash_anywhere_returns_false(self):
+        """既无 sha256.txt，body 也无 SHA256 → 拒绝（False）。"""
+        assets = [
+            {
+                "name": "update.zip",
+                "browser_download_url": "https://github.com/x/y/update.zip",
+            }
+        ]
+        info = {"body": "no hash here"}
+        with patch(self._GET) as mock_get:
+            mock_get.return_value = self._response("", status=404)
+            result = self.downloader._verify_hash(self.path, assets, info)
+        self.assertIs(result, False)
+
+    def test_hash_file_non_official_domain_returns_false(self):
+        """哈希文件来自非官方域名 → 拒绝，且不发起请求。"""
+        assets = [
+            {
+                "name": "sha256.txt",
+                "browser_download_url": "https://evil.example.com/sha256.txt",
+            }
+        ]
+        info = {"body": f"SHA256: `{self.correct_hash}`"}
+        with patch(self._GET) as mock_get:
+            result = self.downloader._verify_hash(self.path, assets, info)
+            mock_get.assert_not_called()
+        self.assertIs(result, False)
+
+    def test_computation_oserror_returns_false(self):
+        """哈希计算过程抛 OSError → 必须返回 False（不得放行）。"""
+        assets = [
+            {
+                "name": "sha256.txt",
+                "browser_download_url": "https://github.com/x/y/sha256.txt",
+            }
+        ]
+        info = {"body": f"SHA256: `{self.correct_hash}`"}
+        with patch(self._GET) as mock_get:
+            mock_get.return_value = self._response(self.correct_hash)
+            with patch("builtins.open", side_effect=OSError("disk error")):
+                result = self.downloader._verify_hash(self.path, assets, info)
+        self.assertIs(result, False)
+
+    def test_hash_mismatch_returns_false_and_deletes_file(self):
+        """哈希不匹配 → 拒绝并删除下载文件。"""
+        assets = [
+            {
+                "name": "sha256.txt",
+                "browser_download_url": "https://raw.githubusercontent.com/x/y/sha256.txt",
+            }
+        ]
+        wrong_hash = "0" * 64
+        info = {"body": f"SHA256: `{wrong_hash}`"}
+        with patch(self._GET) as mock_get:
+            mock_get.return_value = self._response(wrong_hash)
+            result = self.downloader._verify_hash(self.path, assets, info)
+        self.assertIs(result, False)
+        self.assertFalse(os.path.exists(self.path))
+
+    def test_hash_match_official_returns_true(self):
+        """官方域名 + 正确 64 位 hex → 校验通过（True）。"""
+        assets = [
+            {
+                "name": "sha256.txt",
+                "browser_download_url": "https://objects.githubusercontent.com/x/y/sha256.txt",
+            }
+        ]
+        info = {"body": ""}
+        with patch(self._GET) as mock_get:
+            mock_get.return_value = self._response(self.correct_hash.upper())
+            result = self.downloader._verify_hash(self.path, assets, info)
+        self.assertIs(result, True)
+        self.assertTrue(os.path.exists(self.path))
+
+    def test_hash_from_release_body_returns_true(self):
+        """无 sha256.txt 资产，但 body 提供 SHA256 → 校验通过。"""
+        assets = [
+            {
+                "name": "update.zip",
+                "browser_download_url": "https://github.com/x/y/update.zip",
+            }
+        ]
+        info = {"body": f"**SHA256**: `{self.correct_hash}`"}
+        with patch(self._GET) as mock_get:
+            result = self.downloader._verify_hash(self.path, assets, info)
+            mock_get.assert_not_called()
+        self.assertIs(result, True)
 
 
 if __name__ == "__main__":

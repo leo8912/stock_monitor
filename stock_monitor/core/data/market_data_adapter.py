@@ -18,6 +18,8 @@
 
 from __future__ import annotations
 
+import threading
+
 import pandas as pd
 import requests
 
@@ -65,11 +67,45 @@ def _tencent_kline_url(symbol: str, market: int, period: str, count: int = 250) 
     )
 
 
-def _safe_float(val, default=0.0):
+def _safe_float(val, default: float = 0.0) -> float:
+    """尽力将 val 转为 float，失败（None/非数值）时返回 default，不抛异常。"""
     try:
         return float(val)
     except (ValueError, TypeError):
         return default
+
+
+class _ThreadLocalSession:
+    """每线程独立的 ``requests.Session`` 代理（用于替换第三方共享 Session）。
+
+    依据（A4）：``easyquotation`` 的 ``Sina`` 客户端在
+    ``basequotation.BaseQuotation.__init__`` 中创建单个 ``requests.Session``
+    （``self._session = requests.session()``）并跨请求复用；该 Session 非线程安全，
+    却被本项目的量化线程池并发调用。本代理把 ``get``/``post`` 转发到「当前线程」
+    的独立 Session，在不改动 easyquotation 调用方式的前提下消除共享竞态。
+    """
+
+    def __init__(self, base_headers: dict) -> None:
+        """初始化线程本地 Session 代理并保存基础请求头。"""
+        self._local = threading.local()
+        self._base_headers = dict(base_headers)
+
+    def _current_session(self) -> requests.Session:
+        """获取（惰性创建）当前线程绑定的 Session。"""
+        session = getattr(self._local, "session", None)
+        if session is None:
+            session = requests.Session()
+            session.headers.update(self._base_headers)
+            self._local.session = session
+        return session
+
+    def get(self, *args, **kwargs) -> requests.Response:
+        """转发 GET 请求到当前线程的 Session。"""
+        return self._current_session().get(*args, **kwargs)
+
+    def post(self, *args, **kwargs) -> requests.Response:
+        """转发 POST 请求到当前线程的 Session。"""
+        return self._current_session().post(*args, **kwargs)
 
 
 class MarketDataAdapter:
@@ -78,12 +114,37 @@ class MarketDataAdapter:
     使用 easyquotation (新浪) 获取实时行情，腾讯 K线 API 获取历史 K线。
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """初始化适配器：创建 easyquotation Sina 客户端并线程本地化其 Session。"""
         import easyquotation
 
         self._sina = easyquotation.use("sina")
-        self._session = requests.Session()
-        self._session.headers.update(_DEFAULT_HEADERS)
+        # A4：easyquotation 的 Sina 客户端内部复用一个 requests.Session
+        # （basequotation.BaseQuotation.__init__ → self._session = requests.session()），
+        # 非线程安全，却被量化线程池（2~32 线程）并发调用。这里把其 session 换成
+        # 「每线程独立」代理，与 G-10 的 _session 处理保持一致。
+        sina_session = getattr(self._sina, "_session", None)
+        if isinstance(sina_session, requests.Session):
+            self._sina._session = _ThreadLocalSession(_DEFAULT_HEADERS)
+        else:
+            app_logger.warning(
+                "easyquotation Sina 未暴露预期的 _session 属性，"
+                "跳过线程本地化，请复核其线程安全性"
+            )
+        # G-10：requests.Session 非线程安全，被量化线程池（2~32 线程）并发使用
+        # 会导致连接池竞态、响应解析错乱。改为「每线程独立 Session」，
+        # 通过 threading.local 惰性创建。
+        self._session_local = threading.local()
+
+    @property
+    def _session(self) -> requests.Session:
+        """返回当前线程绑定的 requests.Session（G-10：每线程一个）。"""
+        session = getattr(self._session_local, "session", None)
+        if session is None:
+            session = requests.Session()
+            session.headers.update(_DEFAULT_HEADERS)
+            self._session_local.session = session
+        return session
 
     # ------------------------------------------------------------------
     #  K线接口（bars / index）
@@ -453,8 +514,8 @@ class MarketDataAdapter:
         # 尝试 akshare 逐笔接口（东方财富分钟成交）
         try:
             return self._fetch_akshare_transaction(symbol, market, start, count)
-        except Exception:
-            pass
+        except Exception as e:
+            app_logger.debug(f"逐笔成交获取失败 [{symbol}]: {e}", exc_info=True)
 
         return pd.DataFrame()
 

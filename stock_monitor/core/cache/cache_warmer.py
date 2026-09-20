@@ -18,7 +18,7 @@ class CacheWarmer:
     3. 监测缓存预热进度
     """
 
-    def __init__(self, quant_engine, stock_fetcher, max_workers: int = 4):
+    def __init__(self, quant_engine, stock_fetcher, max_workers: int = 4) -> None:
         """初始化缓存预热器
 
         Args:
@@ -126,14 +126,20 @@ class CacheWarmer:
                     # 1. RSRS指标（快速计算，缓存结果）
                     try:
                         rsrs_z, _ = self.engine.calculate_rsrs(bars_df)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        app_logger.debug(
+                            f"预热 {symbol} 周期 {category} RSRS 计算失败：{e}",
+                            exc_info=True,
+                        )
 
                     # 2. OBV指标
                     try:
                         self.engine.detect_obv_accumulation(symbol, bars_df)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        app_logger.debug(
+                            f"预热 {symbol} 周期 {category} OBV 计算失败：{e}",
+                            exc_info=True,
+                        )
 
                 except Exception as e:
                     app_logger.debug(f"预热 {symbol} 周期 {category} 时出错：{e}")
@@ -145,7 +151,7 @@ class CacheWarmer:
             app_logger.error(f"符号 {symbol} 缓存预热失败：{e}")
             return False
 
-    def clear_caches(self):
+    def clear_caches(self) -> bool:
         """清空所有缓存
 
         用于测试或手动重置缓存
@@ -194,13 +200,13 @@ class CacheWarmer:
 class PerformanceMonitor:
     """性能监测器 - 跟踪扫描速度和缓存效果"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """初始化性能监测器"""
         self.scan_times = []  # 最近的扫描耗时记录
         self.cache_hits_trend = []  # 缓存命中率趋势
         self.max_records = 100  # 保留最多100条记录
 
-    def record_scan_time(self, duration_seconds: float):
+    def record_scan_time(self, duration_seconds: float) -> None:
         """记录一次扫描的耗时
 
         Args:
@@ -210,7 +216,7 @@ class PerformanceMonitor:
         if len(self.scan_times) > self.max_records:
             self.scan_times.pop(0)
 
-    def record_cache_hits(self, hit_rate: float):
+    def record_cache_hits(self, hit_rate: float) -> None:
         """记录缓存命中率
 
         Args:

@@ -5,7 +5,7 @@ from stock_monitor.core.workers import MarketStatsWorker
 
 class TestMarketStatsWorker:
     @patch("stock_monitor.core.market.stock_manager.stock_manager")
-    @patch("stock_monitor.core.workers.market_worker.MarketManager.is_market_open")
+    @patch("stock_monitor.core.workers.market_worker.market_manager.is_market_open")
     def test_calculate_stats(self, mock_is_market_open, mock_stock_manager):
         worker = MarketStatsWorker()
 

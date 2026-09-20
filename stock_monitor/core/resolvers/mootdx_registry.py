@@ -11,27 +11,30 @@ from stock_monitor.utils.logger import app_logger
 from .symbol_resolver import SymbolResolver, SymbolType
 
 
-def safe_log_info(msg: str):
-    """安全的日志 info 方法，防止日志系统关闭导致异常"""
+def safe_log_info(msg: str) -> None:
+    """安全的日志 info 方法，防止日志系统关闭导致异常。"""
     try:
         app_logger.info(msg)
     except Exception:
+        # 日志系统不可用时的最后兜底输出（非普通日志，刻意用 print，故不替换）
         print(f"INFO: {msg}")
 
 
-def safe_log_warning(msg: str):
-    """安全的日志 warning 方法，防止日志系统关闭导致异常"""
+def safe_log_warning(msg: str) -> None:
+    """安全的日志 warning 方法，防止日志系统关闭导致异常。"""
     try:
         app_logger.warning(msg)
     except Exception:
+        # 日志系统不可用时的最后兜底输出（非普通日志，刻意用 print，故不替换）
         print(f"WARNING: {msg}")
 
 
-def safe_log_error(msg: str):
-    """安全的日志 error 方法，防止日志系统关闭导致异常"""
+def safe_log_error(msg: str) -> None:
+    """安全的日志 error 方法，防止日志系统关闭导致异常。"""
     try:
         app_logger.error(msg)
     except Exception:
+        # 日志系统不可用时的最后兜底输出（非普通日志，刻意用 print，故不替换）
         print(f"ERROR: {msg}")
 
 
@@ -42,12 +45,18 @@ class MootdxNameRegistry:
     缓存文件仍使用 mootdx_names.json 以保持向后兼容。
     """
 
-    def __init__(self, mootdx_client=None, parent=None):
+    def __init__(self, mootdx_client=None, parent=None) -> None:
+        """初始化名称登记表。
+
+        Args:
+            mootdx_client: 数据适配器 client，可为 None（后续通过 update_client 注入）。
+            parent: 持有该登记表的父对象，用于延迟获取 client。
+        """
         self.mootdx_client = mootdx_client
         self._parent = parent  # 持有父对象引用以访问延迟初始化的 client
         self._name_cache = self._load_name_cache()
 
-    def update_client(self, client):
+    def update_client(self, client) -> None:
         """更新 MarketDataAdapter client 引用"""
         self.mootdx_client = client
 
@@ -62,10 +71,12 @@ class MootdxNameRegistry:
             return getattr(self._parent, "mootdx_client", None)
         return self.mootdx_client
 
-    def _get_name_cache_file(self):
+    def _get_name_cache_file(self) -> str:
+        """返回名称缓存文件的绝对路径。"""
         return os.path.join(get_config_dir(), "mootdx_names.json")
 
-    def _load_name_cache(self):
+    def _load_name_cache(self) -> dict:
+        """从磁盘加载名称缓存，失败时返回空字典。"""
         cache_file = self._get_name_cache_file()
         if os.path.exists(cache_file):
             try:
@@ -79,7 +90,8 @@ class MootdxNameRegistry:
                 pass
         return {}
 
-    def _save_name_cache(self):
+    def _save_name_cache(self) -> None:
+        """将名称缓存写入磁盘，失败时记录错误但不抛出。"""
         cache_file = self._get_name_cache_file()
         try:
             with open(cache_file, "w", encoding="utf-8") as f:
@@ -88,7 +100,7 @@ class MootdxNameRegistry:
             # 使用安全的日志方法
             safe_log_error(f"保存缓存失败：{e}")
 
-    def sync_mootdx_names(self):
+    def sync_mootdx_names(self) -> None:
         """全量同步名称字典（使用 MarketDataAdapter stocks() 方法）"""
         client = self._get_client()
 
@@ -188,7 +200,7 @@ class MootdxNameRegistry:
             normalized_key, self._name_cache.get(symbol, symbol)
         )
 
-    def resolve_missing(self, missing_codes: list[str]):
+    def resolve_missing(self, missing_codes: list[str]) -> None:
         """若存在缺失则批量挂起同步，并设置兜底"""
         if not missing_codes:
             return

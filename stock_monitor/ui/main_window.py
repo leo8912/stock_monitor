@@ -40,10 +40,13 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
 
     update_table_signal = pyqtSignal(list)
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """初始化主窗口：基类、ViewModel、界面组件与退出资源标志。"""
         QtWidgets.QWidget.__init__(self)
         DraggableWindowMixin.__init__(self)
         self._topmost_restore_pending = False
+        # 退出资源释放标志（保证 _shutdown_resources 幂等）
+        self._shutdown_done = False
         # 初始化依赖注入容器
         self._container = container
         # 初始化ViewModel
@@ -66,6 +69,7 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         )
         self.viewModel.stock_data_updated.connect(self._handle_refresh_data)
         self.viewModel.refresh_error_occurred.connect(self._handle_refresh_error)
+        self.viewModel.daily_report_ready.connect(self._handle_daily_report_ready)
 
         # 订阅配置变更事件，统一处理配置修改后的 UI 刷新（幂等）
         event_bus.subscribe(Topics.CONFIG_CHANGED, self._on_config_changed_event)
@@ -86,7 +90,7 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         # 这里的 start_workers 会在 setup_refresh_worker 中被调用，或者我们可以在这里调用
         # 但考虑到 setup_refresh_worker 可能会用到 config，我们稍后在 setup_refresh_worker 中统一启动
 
-    def _show_main_window(self):
+    def _show_main_window(self) -> None:
         """从任务栏行情条右键菜单显示主界面。"""
         self.show()
         self.load_position()
@@ -95,8 +99,13 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         if hasattr(self, "_ensure_topmost"):
             self._ensure_topmost()
 
-    def quit_application(self):
-        """退出应用程序"""
+    def quit_application(self) -> None:
+        """退出应用程序（托盘菜单或快捷键触发）。
+
+        只负责保存会话、隐藏窗口并请求 Qt 退出；真正的资源释放由
+        ``QApplication.aboutToQuit`` 连接到 :meth:`_shutdown_resources` 统一完成。
+        这里刻意 **不** 销毁托盘，避免进程悬停（僵尸进程）。
+        """
         try:
             # 1. 保存会话缓存 (包含位置和数据)
             try:
@@ -108,29 +117,10 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
                 # Fallback to simple position save if cache fails
                 self.save_position()
 
-            # 2. 隐藏界面
+            # 2. 隐藏界面（保留托盘，交由 aboutToQuit 统一清理）
             self.hide()
-            if hasattr(self, "tray_icon") and self.tray_icon:
-                self.tray_icon.hide()
 
-            # 2b. 停止任务栏行情条
-            if getattr(self, "taskbar_quote_bar", None) is not None:
-                try:
-                    self.taskbar_quote_bar.stop()
-                except Exception as e:
-                    app_logger.debug(f"停止任务栏行情条失败: {e}")
-
-            # 3. 停止所有工作线程
-            self.viewModel.stop_workers()
-
-            # 4. 清理快捷键
-            if hasattr(self, "shortcuts"):
-                for shortcut in self.shortcuts:
-                    shortcut.setEnabled(False)
-                    shortcut.setParent(None)
-
-            # 5. 优雅退出应用
-            # 使用 QApplication.quit() 替代 os._exit(0)，允许 Qt 清理资源
+            # 3. 请求应用退出；aboutToQuit 会调用 _shutdown_resources()
             QtWidgets.QApplication.instance().quit()
         except Exception as e:
             app_logger.error(f"退出程序时出错: {e}")
@@ -138,7 +128,80 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
 
             sys.exit(1)
 
-    def setup_ui(self):
+    def _safe_disconnect(self, signal, name: str) -> None:
+        """安全断开信号，忽略未连接或对象已销毁的情况。"""
+        try:
+            signal.disconnect()
+        except (TypeError, RuntimeError):
+            # 信号本就未连接或底层对象已释放，属正常清理场景
+            app_logger.debug(f"信号 {name} 断开失败或本就未连接", exc_info=True)
+
+    def _shutdown_resources(self) -> None:
+        """集中释放应用退出资源（幂等，可安全重复调用）。
+
+        汇聚原 ``closeEvent`` 中的破坏性清理：停止计时器、断开 ViewModel 与自定义
+        信号、停止任务栏行情条与工作线程、销毁系统托盘、关闭数据库连接池。
+        由 ``QApplication.aboutToQuit`` 触发。
+        """
+        if getattr(self, "_shutdown_done", False):
+            return
+        self._shutdown_done = True
+
+        app_logger.info("开始释放退出资源...")
+        try:
+            # 1. 停止加载超时计时器
+            if getattr(self, "_loading_timer", None) is not None:
+                self._loading_timer.stop()
+                self._loading_timer.deleteLater()
+
+            # 2. 断开 ViewModel 信号连接
+            if hasattr(self, "viewModel"):
+                self._safe_disconnect(
+                    self.viewModel.market_stats_updated, "market_stats_updated"
+                )
+                self._safe_disconnect(
+                    self.viewModel.stock_data_updated, "stock_data_updated"
+                )
+                self._safe_disconnect(
+                    self.viewModel.refresh_error_occurred, "refresh_error_occurred"
+                )
+
+            # 3. 断开自定义信号
+            self._safe_disconnect(self.update_table_signal, "update_table_signal")
+
+            # 4. 停止任务栏行情条
+            if getattr(self, "taskbar_quote_bar", None) is not None:
+                try:
+                    self.taskbar_quote_bar.stop()
+                except Exception:
+                    app_logger.debug("停止任务栏行情条失败", exc_info=True)
+
+            # 5. 停止工作线程（轮询式停止，不会长阻塞或误导关闭连接池）
+            if hasattr(self, "viewModel"):
+                try:
+                    self.viewModel.stop_workers()
+                except Exception:
+                    app_logger.error("停止工作线程失败", exc_info=True)
+
+            # 6. 销毁系统托盘
+            if getattr(self, "tray_icon", None) is not None:
+                self.tray_icon.hide()
+                self.tray_icon.deleteLater()
+                self.tray_icon = None
+
+            # 7. 关闭数据库连接池
+            if hasattr(self, "viewModel"):
+                try:
+                    self.viewModel.close_database()
+                except Exception:
+                    app_logger.error("关闭数据库连接池失败", exc_info=True)
+
+            app_logger.info("退出资源释放完成")
+        except Exception:
+            # 退出清理路径：任何失败都不应阻止进程退出
+            app_logger.error("释放退出资源失败", exc_info=True)
+
+    def setup_ui(self) -> None:
         """设置主窗口UI"""
         self._setup_window_properties()
         self._setup_ui_components()
@@ -146,7 +209,7 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         # 初始化数据缓存，用于即时重排交互
         self._last_data = []
 
-    def _setup_taskbar_quote_bar(self):
+    def _setup_taskbar_quote_bar(self) -> None:
         """根据配置初始化任务栏行情条（仅 Windows 有效）。"""
         from stock_monitor.core.config_center import config_center
 
@@ -189,7 +252,7 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
             app_logger.error(f"初始化任务栏行情条失败: {e}")
             self.taskbar_quote_bar = None
 
-    def _on_taskbar_embed_failed(self, reason: str):
+    def _on_taskbar_embed_failed(self, reason: str) -> None:
         """任务栏嵌入失败回调：记录并交由托盘降级。"""
         app_logger.warning(f"任务栏行情条嵌入失败: {reason}")
         if hasattr(self, "tray_icon") and self.tray_icon:
@@ -201,7 +264,7 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
                 except Exception as e:
                     app_logger.error(f"托盘降级失败: {e}")
 
-    def _setup_window_properties(self):
+    def _setup_window_properties(self) -> None:
         """设置窗口属性"""
         self.setWindowTitle("A股行情监控")
         self.setup_draggable_window()
@@ -220,7 +283,7 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         # 启动日志定期清理任务
         schedule_log_cleanup(days_to_keep=7, interval_hours=24)
 
-    def _setup_ui_components(self):
+    def _setup_ui_components(self) -> None:
         """初始化UI组件"""
         # 初始化股市状态条，初始隐藏
         self.market_status_bar = MarketStatusBar(self)
@@ -329,13 +392,13 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         app_logger.info("主窗口初始化完成")
         app_logger.debug("主窗口UI组件初始化完成")
 
-    def setup_refresh_worker(self):
+    def setup_refresh_worker(self) -> None:
         """设置刷新工作线程"""
         # 启动后台刷新线程 (通过 ViewModel)，数据由后台线程获取后通过信号推送
         # 注意：不在主线程中同步调用 refresh_now()，避免阻塞界面弹出
         self.viewModel.start_workers(self.current_user_stocks, self.refresh_interval)
 
-    def _handle_refresh_error(self):
+    def _handle_refresh_error(self) -> None:
         """处理刷新错误 - 在主线程中执行"""
         try:
             app_logger.error("连续多次刷新失败")
@@ -360,7 +423,7 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         except Exception as e:
             app_logger.error(f"处理刷新错误时出错: {e}")
 
-    def _handle_refresh_data(self, data, all_failed=False):
+    def _handle_refresh_data(self, data, all_failed=False) -> None:
         """
         处理刷新数据更新 - 在主线程中执行
 
@@ -434,8 +497,8 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         except Exception as e:
             app_logger.error(f"刷新更新处理失败: {e}")
 
-    def _try_load_session_cache(self):
-        """尝试加载会话缓存以加快启动速度"""
+    def _try_load_session_cache(self) -> bool:
+        """尝试加载会话缓存以加快启动速度；命中缓存返回 True，否则 False。"""
         try:
             cached_session = self.viewModel.load_session()
             if cached_session:
@@ -480,14 +543,14 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
 
         return False
 
-    def save_position(self):
+    def save_position(self) -> None:
         """保存窗口位置到配置文件"""
         pos = self.pos()
         config_center.set(
             ConfigKeys.WINDOW_POS, [pos.x(), pos.y()], publish_event=False
         )
 
-    def load_position(self):
+    def load_position(self) -> None:
         """从配置文件加载窗口位置"""
         pos = self._config_helper.get("window_pos")
         if pos and isinstance(pos, list) and len(pos) == 2:
@@ -495,7 +558,7 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         else:
             self.move_to_bottom_right()
 
-    def open_settings(self):
+    def open_settings(self) -> None:
         """打开设置对话框"""
         if self.settings_dialog is None:
             self.settings_dialog = NewSettingsDialog(main_window=self)
@@ -547,7 +610,7 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         event.accept()
         return True
 
-    def show_wave_chart_dialog(self, symbol: str, name: str):
+    def show_wave_chart_dialog(self, symbol: str, name: str) -> None:
         """显示波浪理论及斐波那契分析图弹窗"""
         # 确保 symbol 格式正确
         if not symbol.startswith(("sh", "sz", "bj", "hk")):
@@ -569,11 +632,22 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
             app_logger.error(f"打开波浪图弹窗失败: {e}", exc_info=True)
             QtWidgets.QMessageBox.warning(self, "错误", f"打开波浪图弹窗失败: {e}")
 
-    def on_manual_report_requested(self):
+    def on_manual_report_requested(self) -> None:
         """处理来自设置界面的手动复盘请求"""
         self.viewModel.trigger_manual_report()
 
-    def on_config_changed(self, stocks, refresh_interval):
+    def _handle_daily_report_ready(self, report_type: str) -> None:
+        """后台复盘报告生成完成后的 UI 反馈。
+
+        报告已在 QuantWorker 后台线程生成完毕，此处仅回到 UI 线程提示用户，
+        不再阻塞主线程。
+        """
+        if report_type == "manual":
+            QtWidgets.QMessageBox.information(
+                self, "复盘报告", "全量复盘报告已生成并推送至企业微信。"
+            )
+
+    def on_config_changed(self, stocks, refresh_interval) -> None:
         """当配置更改时的处理函数"""
         app_logger.info(
             f"接收到配置更改信号: 股票列表={stocks}, 刷新间隔={refresh_interval}"
@@ -638,7 +712,7 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         # 同步任务栏行情条配置（每页数量/轮播间隔/显示字段实时生效）
         self._reconfigure_taskbar_quote_bar()
 
-    def _reconfigure_taskbar_quote_bar(self):
+    def _reconfigure_taskbar_quote_bar(self) -> None:
         """将最新配置应用到运行中的任务栏行情条，无需重启。"""
         bar = getattr(self, "taskbar_quote_bar", None)
         if bar is None:
@@ -663,7 +737,7 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         except Exception as e:
             app_logger.warning(f"更新任务栏行情条配置失败: {e}")
 
-    def request_update(self):
+    def request_update(self) -> None:
         """请求 UI 更新（节流模式，合并 50ms 内的多次请求）"""
         # [SAFETY] 检查属性是否已初始化，避免初始化顺序问题
         if not hasattr(self, "_pending_update"):
@@ -673,7 +747,7 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
             self._pending_update = True
             self._update_timer.start()
 
-    def _do_update(self):
+    def _do_update(self) -> None:
         """执行实际的 UI 更新（由节流计时器触发）"""
         # [SAFETY] 检查属性是否已初始化
         if hasattr(self, "_pending_update"):
@@ -700,7 +774,7 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         except Exception as e:
             app_logger.warning(f"处理配置变更事件失败: {e}")
 
-    def update_font_size(self):
+    def update_font_size(self) -> None:
         """更新主窗口字体大小"""
         try:
             # 优先使用内存预览值，避免取消时也落盘
@@ -752,24 +826,27 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         except Exception as e:
             app_logger.error(f"更新主窗口字体大小失败: {e}")
 
-    def _schedule_topmost_restore(self, delay_ms: int = 0):
+    def _schedule_topmost_restore(self, delay_ms: int = 0) -> None:
         """合并置顶修正请求，避免重复抢占。"""
         if getattr(self, "_topmost_restore_pending", False):
             return
 
         self._topmost_restore_pending = True
 
-        def _restore():
+        def _restore() -> None:
+            """延迟回调：清除待办标志并执行置顶修正。"""
             self._topmost_restore_pending = False
             self._ensure_topmost()
 
         QtCore.QTimer.singleShot(delay_ms, _restore)
 
-    def showEvent(self, event: QtGui.QShowEvent):
+    def showEvent(self, event: QtGui.QShowEvent) -> None:
+        """窗口显示事件：调度一次置顶修正。"""
         super().showEvent(event)
         self._schedule_topmost_restore()
 
-    def changeEvent(self, event: QtCore.QEvent):
+    def changeEvent(self, event: QtCore.QEvent) -> None:
+        """窗口状态变化事件：失去激活时延迟调度置顶修正。"""
         super().changeEvent(event)
         if (
             event.type() == QtCore.QEvent.Type.ActivationChange
@@ -777,21 +854,28 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         ):
             self._schedule_topmost_restore(100)
 
-    def moveEvent(self, event: QtGui.QMoveEvent):
+    def moveEvent(self, event: QtGui.QMoveEvent) -> None:
+        """窗口移动事件：调度一次置顶修正。"""
         super().moveEvent(event)
         self._schedule_topmost_restore()
 
-    def resizeEvent(self, event: QtGui.QResizeEvent):
+    def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
+        """窗口尺寸变化事件：调度一次置顶修正。"""
         super().resizeEvent(event)
         self._schedule_topmost_restore()
 
-    def nativeEvent(self, event_type, message):
+    def nativeEvent(self, event_type, message) -> tuple:
+        """原生事件钩子：委托 DraggableWindowMixin 处理标题栏拖拽。
+
+        Returns:
+            tuple: (handled, result)；未处理时返回 (False, 0)。
+        """
         handled, result = DraggableWindowMixin.nativeEvent(self, event_type, message)
         if handled:
             return handled, result
         return False, 0
 
-    def refresh_now(self, stocks_list=None, skip_placeholders=False):
+    def refresh_now(self, stocks_list=None, skip_placeholders=False) -> None:
         """
         发起立即刷新请求（异步）
         不再阻塞 UI 线程，实际更新由 _handle_refresh_data 信号处理器完成
@@ -835,13 +919,13 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
             self.loading_label.hide()
             self._loading_timer.stop()
 
-    def _on_loading_timeout(self):
+    def _on_loading_timeout(self) -> None:
         """加载状态超时处理"""
         if hasattr(self, "loading_label") and self.loading_label.isVisible():
             self.loading_label.hide()
             app_logger.warning("刷新请求超时 (10s)，强制收敛加载状态")
 
-    def paintEvent(self, event):
+    def paintEvent(self, event) -> None:
         """窗口绘制事件，用于绘制半透明背景"""
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)  # type: ignore
@@ -860,7 +944,7 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         painter.setPen(QtCore.Qt.PenStyle.NoPen)  # type: ignore
         painter.drawRect(rect)
 
-    def adjust_window_height(self):
+    def adjust_window_height(self) -> None:
         """根据内容调整窗口高度和宽度"""
         if self.table.rowCount() == 0:
             return  # 无数据时不调整，避免窗口高度异常
@@ -887,67 +971,19 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         self.request_update()  # 节流布局更新
         self.updateGeometry()
 
-    def closeEvent(self, event: QtGui.QCloseEvent):
+    def closeEvent(self, event: QtGui.QCloseEvent) -> None:
+        """窗口关闭事件处理：点 X（或 Alt+F4）仅最小化到系统托盘。
+
+        资源释放在应用退出流程中由 :meth:`_shutdown_resources` 统一执行，因此
+        这里不做任何破坏性清理（不断信号、不销毁托盘、不停止工作线程、不关库），
+        否则关闭窗口即销毁托盘 + ``setQuitOnLastWindowClosed(False)`` 会导致进程
+        变成无法退出的僵尸进程。
         """
-        窗口关闭事件处理
-        清理 Qt 对象、断开信号连接、保存状态
-        """
-        try:
-            # 记录关闭来源：spontaneous()=True 表示用户操作(X按钮/Alt+F4)，False 表示代码调用 close()
-            is_user_action = event.spontaneous()
-            source = (
-                "用户操作(点击X/Alt+F4)"
-                if is_user_action
-                else "程序内部触发(代码调用close())"
-            )
-            app_logger.info(f"主窗口关闭事件触发，来源: {source}，开始清理资源...")
+        app_logger.info("主窗口关闭事件触发：最小化到系统托盘")
+        event.ignore()
+        self.hide()
 
-            # 1. 停止所有计时器
-            if hasattr(self, "_loading_timer") and self._loading_timer:
-                self._loading_timer.stop()
-                self._loading_timer.deleteLater()
-
-            # 2. 断开 ViewModel 信号连接
-            if hasattr(self, "viewModel"):
-                self.viewModel.market_stats_updated.disconnect()
-                self.viewModel.stock_data_updated.disconnect()
-                self.viewModel.refresh_error_occurred.disconnect()
-
-            # 3. 清理自定义信号
-            self.update_table_signal.disconnect()
-
-            # 4. 保存会话缓存和位置
-            try:
-                self.viewModel.save_session(
-                    [self.x(), self.y()], self.viewModel.get_latest_stock_data()
-                )
-            except Exception as e:
-                app_logger.warning(f"保存会话缓存失败：{e}")
-                self.save_position()
-
-            # 5. 隐藏系统托盘
-            if hasattr(self, "tray_icon") and self.tray_icon:
-                self.tray_icon.hide()
-                self.tray_icon.deleteLater()
-
-            # 6. 停止 Workers
-            if hasattr(self, "viewModel"):
-                self.viewModel.stop_workers()
-
-            # 7. 关闭数据库连接池
-            if hasattr(self, "viewModel"):
-                self.viewModel.close_database()
-
-            app_logger.info("主窗口资源清理完成")
-
-        except Exception as e:
-            app_logger.error(f"closeEvent 清理失败：{e}")
-
-        finally:
-            # 调用父类实现
-            super().closeEvent(event)
-
-    def hideEvent(self, event: QtGui.QHideEvent):
+    def hideEvent(self, event: QtGui.QHideEvent) -> None:
         """
         窗口隐藏事件处理
         保存当前状态以便快速恢复

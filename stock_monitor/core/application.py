@@ -36,7 +36,7 @@ class StockMonitorApp:
     - 运行事件循环
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """初始化应用程序"""
         self._app = None
         self._window = None
@@ -50,16 +50,17 @@ class StockMonitorApp:
 
         app_logger.info("应用程序启动")
 
-    def _setup_exception_hook(self):
+    def _setup_exception_hook(self) -> None:
         """设置全局异常钩子，记录未捕获的异常"""
 
-        def exception_hook(exctype, value, traceback):
+        def exception_hook(exctype, value, traceback) -> None:
+            """未捕获异常的全局兜底钩子：记录后交给默认钩子处理。"""
             app_logger.critical("未捕获的异常", exc_info=(exctype, value, traceback))
             sys.__excepthook__(exctype, value, traceback)
 
         sys.excepthook = exception_hook
 
-    def _fix_ssl_cert_path(self):
+    def _fix_ssl_cert_path(self) -> None:
         """修复 SSL 证书路径 (PyInstaller 环境)"""
         if hasattr(sys, "_MEIPASS"):
             import os
@@ -72,7 +73,7 @@ class StockMonitorApp:
             else:
                 app_logger.warning(f"未找到 SSL 证书文件: {ssl_cert_path}")
 
-    def _init_database(self):
+    def _init_database(self) -> None:
         """确保数据库已初始化"""
         _ = container.get(StockDatabase)
 
@@ -110,7 +111,7 @@ class StockMonitorApp:
 
         return app
 
-    def _log_config_info(self):
+    def _log_config_info(self) -> None:
         """记录配置信息"""
         from stock_monitor.core.config_center import config_center
 
@@ -127,7 +128,7 @@ class StockMonitorApp:
         tray_icon.show()
         return tray_icon
 
-    def _run_health_check(self):
+    def _run_health_check(self) -> None:
         """启动时执行健康检查"""
         try:
             from stock_monitor.utils.health_check import HealthStatus, run_health_check
@@ -139,7 +140,7 @@ class StockMonitorApp:
         except Exception as e:
             app_logger.warning(f"健康检查执行失败: {e}")
 
-    def _show_update_status_notification(self):
+    def _show_update_status_notification(self) -> None:
         """检查更新状态并显示相应提示"""
         try:
             from stock_monitor.version import __version__
@@ -148,7 +149,8 @@ class StockMonitorApp:
 
             if status == "success":
 
-                def show_success():
+                def show_success() -> None:
+                    """弹出"更新完成"提示。"""
                     QMessageBox.information(
                         self._window,
                         "更新完成",
@@ -160,7 +162,8 @@ class StockMonitorApp:
 
             elif status == "failed":
 
-                def show_failure():
+                def show_failure() -> None:
+                    """弹出"更新失败"提示。"""
                     QMessageBox.warning(
                         self._window,
                         "更新失败",
@@ -173,9 +176,31 @@ class StockMonitorApp:
         except Exception as e:
             app_logger.error(f"显示更新状态通知失败: {e}")
 
-    def _schedule_auto_start_setup(self):
+    def _schedule_auto_start_setup(self) -> None:
         """延迟设置开机自启动，避免阻塞启动"""
         QTimer.singleShot(2000, setup_auto_start)
+
+    def _on_about_to_quit(self) -> None:
+        """应用退出前置处理：释放主窗口资源并停止后台常驻服务。"""
+        if self._window is not None:
+            self._window._shutdown_resources()
+        self._stop_background_services()
+
+    def _stop_background_services(self) -> None:
+        """停止后台常驻服务（暗盘资金服务等）。
+
+        修复 G-8：``DarkTradeService.stop_service()`` 此前全项目无调用点，
+        退出时服务线程会随进程被强制终止。这里在 ``aboutToQuit`` 阶段显式停止。
+        """
+        try:
+            from stock_monitor.services.dark_trade.service import (
+                get_dark_trade_service,
+            )
+
+            get_dark_trade_service().stop_service()
+            app_logger.info("暗盘资金服务已停止")
+        except Exception as e:
+            app_logger.error(f"停止暗盘资金服务失败: {e}", exc_info=True)
 
     def run(self) -> int:
         """
@@ -209,6 +234,9 @@ class StockMonitorApp:
             # 创建系统托盘
             self._tray_icon = self._create_system_tray(self._window)
             self._window.tray_icon = self._tray_icon
+
+            # 退出流程统一接线（T03/G-8）：aboutToQuit 时释放主窗口资源并停止后台服务
+            self._app.aboutToQuit.connect(self._on_about_to_quit)
 
             # 发布启动完成事件
             from stock_monitor.core.event_bus import Topics, event_bus

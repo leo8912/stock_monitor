@@ -3,6 +3,7 @@ import os
 from PyQt6 import QtGui, QtWidgets
 
 from stock_monitor.utils.helpers import resource_path
+from stock_monitor.utils.logger import app_logger
 
 ICON_FILE = resource_path("icon.ico")
 
@@ -13,7 +14,12 @@ class SystemTray(QtWidgets.QSystemTrayIcon):
     负责处理系统托盘图标和相关菜单
     """
 
-    def __init__(self, main_window):
+    def __init__(self, main_window) -> None:
+        """初始化系统托盘图标与右键菜单。
+
+        Args:
+            main_window: 主窗口引用，用于显示/设置/退出等动作转发。
+        """
         icon = (
             QtGui.QIcon(ICON_FILE)
             if os.path.exists(ICON_FILE)
@@ -38,7 +44,7 @@ class SystemTray(QtWidgets.QSystemTrayIcon):
         # 托盘行情降级面板（任务栏嵌入失败时启用）
         self._quote_fallback = None
 
-    def enable_quote_fallback(self, stocks=None):
+    def enable_quote_fallback(self, stocks=None) -> None:
         """启用托盘行情轮播降级方案。"""
         try:
             from stock_monitor.core.config_center import config_center
@@ -54,15 +60,15 @@ class SystemTray(QtWidgets.QSystemTrayIcon):
                     ),
                 )
             self._quote_fallback.start(stocks)
-        except Exception:
-            pass
+        except Exception as e:
+            app_logger.warning(f"启用托盘行情降级面板失败: {e}", exc_info=True)
 
-    def update_quote_fallback(self, stocks):
+    def update_quote_fallback(self, stocks) -> None:
         """向托盘降级面板推送最新行情。"""
         if self._quote_fallback is not None:
             self._quote_fallback.set_stocks(stocks)
 
-    def show_main_window(self):
+    def show_main_window(self) -> None:
         """显示主窗口"""
         self.main_window.show()
         self.main_window.raise_()
@@ -71,16 +77,16 @@ class SystemTray(QtWidgets.QSystemTrayIcon):
         if hasattr(self.main_window, "_ensure_topmost"):
             self.main_window._ensure_topmost()
 
-    def open_settings(self):
+    def open_settings(self) -> None:
         """打开设置窗口"""
         self.main_window.open_settings()
 
-    def quit_application(self):
+    def quit_application(self) -> None:
         """退出应用程序"""
         # 调用主窗口的退出方法
         self.main_window.quit_application()
 
-    def on_activated(self, reason):
+    def on_activated(self, reason) -> None:
         """
         托盘图标激活事件处理
 

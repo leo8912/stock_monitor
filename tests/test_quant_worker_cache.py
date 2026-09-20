@@ -67,10 +67,16 @@ class TestQuantWorkerCachePersistence(unittest.TestCase):
             with patch("stock_monitor.data.stock.stock_db.StockDatabase"):
                 worker = QuantWorker(mock_fetcher, "https://test.webhook")
 
-            # 手动添加一些信号缓存
+            # 手动添加信号状态（持久化的权威来源是 _signal_states）
             now = time.time()
-            worker._last_signal_time[("SH600000", "Daily:MACD底背离")] = now
-            worker._last_signal_time[("SZ000001", "Daily:RSI超卖")] = now - 100
+            worker._signal_states[("SH600000", "Daily:MACD底背离")] = {
+                "last_score": 3,
+                "last_push_ts": now,
+            }
+            worker._signal_states[("SZ000001", "Daily:RSI超卖")] = {
+                "last_score": 2,
+                "last_push_ts": now - 100,
+            }
 
             # 保存缓存
             worker._save_signal_cache()
@@ -168,9 +174,12 @@ class TestQuantWorkerCachePersistence(unittest.TestCase):
             with patch("stock_monitor.data.stock.stock_db.StockDatabase"):
                 worker = QuantWorker(mock_fetcher, "https://test.webhook")
 
-            # 添加信号缓存
+            # 添加信号状态
             now = time.time()
-            worker._last_signal_time[("SH600000", "Daily:MACD底背离")] = now
+            worker._signal_states[("SH600000", "Daily:MACD底背离")] = {
+                "last_score": 3,
+                "last_push_ts": now,
+            }
 
             # 启动worker（设置_is_running为True）
             worker._is_running = True
@@ -205,18 +214,22 @@ class TestQuantWorkerCachePersistence(unittest.TestCase):
             with patch("stock_monitor.data.stock.stock_db.StockDatabase"):
                 worker1 = QuantWorker(mock_fetcher, "https://test.webhook")
 
-            # 添加数据并保存
+            # 添加数据并保存（新格式：状态对象，权威来源是 _signal_states）
             now = time.time()
             test_key = ("SH600000", "Daily:MACD底背离")
-            worker1._last_signal_time[test_key] = now
+            worker1._signal_states[test_key] = {
+                "last_score": 3,
+                "last_push_ts": now,
+            }
             worker1._save_signal_cache()
 
             # 加载和验证
             with patch("stock_monitor.data.stock.stock_db.StockDatabase"):
                 worker2 = QuantWorker(mock_fetcher, "https://test.webhook")
 
-            # 验证数据被正确恢复
-            self.assertIn(test_key, worker2._last_signal_time)
+            # 验证数据被正确恢复（_signal_states 及派生的 _last_signal_time）
+            self.assertIn(test_key, worker2._signal_states)
+            self.assertEqual(worker2._signal_states[test_key]["last_push_ts"], now)
             self.assertEqual(worker2._last_signal_time[test_key], now)
 
 

@@ -2,6 +2,7 @@ import datetime
 import json
 import os
 import threading
+from typing import Optional
 
 from stock_monitor.config.manager import get_config_dir
 from stock_monitor.core.engine.quant_engine import QuantEngine
@@ -17,7 +18,12 @@ class BacktestEngine:
     策略回测引擎 — 真实历史胜率计算
     """
 
-    def __init__(self, quant_engine: QuantEngine):
+    def __init__(self, quant_engine: QuantEngine) -> None:
+        """初始化回测引擎并加载持久化缓存。
+
+        Args:
+            quant_engine: 用于拉取 K 线与计算指标的 QuantEngine 实例。
+        """
         self.qe = quant_engine
         self.target_profit = BACKTEST_TARGET_PROFIT
         self.stop_loss = BACKTEST_STOP_LOSS
@@ -32,7 +38,7 @@ class BacktestEngine:
 
     def get_strategy_stats(
         self, symbol: str, market: int, category: int, days: int = 250
-    ):
+    ) -> Optional[dict]:
         """
         分周期历史回测。
         - 15m (cat=1): 拉 800 根 ≈ 50 个交易日，约 2.5 个月
@@ -90,6 +96,8 @@ class BacktestEngine:
             total_profit = 0.0
             for idx in signal_points:
                 entry_price = df.loc[idx, "close"]
+                if entry_price <= 0:  # 除零防护（T12）
+                    continue
                 future_df = df.iloc[idx + 1 : idx + 1 + hold_len]
                 if future_df.empty:
                     continue
@@ -122,7 +130,7 @@ class BacktestEngine:
 
     def get_rsrs_strategy_stats(
         self, symbol: str, market: int, category: int = 9, z_threshold: float = 0.7
-    ):
+    ) -> Optional[dict]:
         """
         专门针对 RSRS 指标的择时回测
         - 买入: RSRS Z-Score > z_threshold (通常 0.7)
@@ -166,6 +174,8 @@ class BacktestEngine:
             total_profit = 0.0
             for idx in signal_points:
                 entry_price = df.loc[idx, "close"]
+                if entry_price <= 0:  # 除零防护（T12）
+                    continue
                 future_df = df.iloc[idx + 1 : idx + 1 + hold_len]
                 max_high = future_df["high"].max()
                 min_low = future_df["low"].min()
@@ -194,7 +204,7 @@ class BacktestEngine:
 
     def get_confluence_strategy_stats(
         self, symbol: str, market: int, category: int = 9, z_threshold: float = 0.7
-    ):
+    ) -> Optional[dict]:
         """
         [最强策略] MACD 底背离 + RSRS 走强 共振回测
         """
@@ -242,6 +252,8 @@ class BacktestEngine:
             total_profit = 0.0
             for idx in signal_points:
                 entry_price = df.loc[idx, "close"]
+                if entry_price <= 0:  # 除零防护（T12）
+                    continue
                 future_df = df.iloc[idx + 1 : idx + 1 + hold_len]
                 max_high = future_df["high"].max()
                 min_low = future_df["low"].min()
@@ -271,7 +283,7 @@ class BacktestEngine:
 
     def get_score_stats(
         self, symbol: str, market: int, category: int = 9, min_score: int = 3
-    ):
+    ) -> Optional[dict]:
         """
         基于评分的高频表现回测。
         默认回测日线周期下，评分 >= 3 时的表现。
@@ -322,6 +334,8 @@ class BacktestEngine:
             total_profit = 0.0
             for idx in signal_points:
                 entry_price = df.loc[idx, "close"]
+                if entry_price <= 0:  # 除零防护（T12）
+                    continue
                 future_df = df.iloc[idx + 1 : idx + 1 + hold_len]
                 max_high = future_df["high"].max()
                 exit_price = future_df["close"].iloc[-1]
@@ -373,7 +387,7 @@ class BacktestEngine:
             app_logger.error(f"加载回测缓存失败: {e}")
             return {}
 
-    def _save_cache(self):
+    def _save_cache(self) -> None:
         """保存缓存到文件"""
         try:
             with self._lock:

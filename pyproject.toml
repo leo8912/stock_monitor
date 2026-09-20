@@ -79,7 +79,10 @@ multi_line_output = 3
 qt_api = "pyqt6"
 pythonpath = ["."]
 testpaths = ["tests"]
-addopts = "-v --tb=short"
+addopts = "-v --tb=short -m 'not gui'"
+markers = [
+    "gui: 需要交互桌面会话（会构造真实原生窗口/嵌入任务栏），默认排除；用 -m gui 单独运行",
+]
 filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::UserWarning",

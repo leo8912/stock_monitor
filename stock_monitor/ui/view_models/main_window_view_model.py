@@ -23,8 +23,10 @@ class MainWindowViewModel(QObject):
     market_stats_updated = pyqtSignal(int, int, int, float)
     refresh_error_occurred = pyqtSignal()
     error_occurred = pyqtSignal(str)
+    # 后台复盘报告生成完成（emit: report_type）
+    daily_report_ready = pyqtSignal(str)
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self._container = container
         self._stock_db = self._container.get(StockDatabase)
@@ -64,11 +66,13 @@ class MainWindowViewModel(QObject):
         self._refresh_worker.data_updated.connect(self._on_data_updated)
         self._refresh_worker.refresh_error.connect(self.refresh_error_occurred.emit)
         self._market_stats_worker.stats_updated.connect(self.market_stats_updated.emit)
+        # 后台复盘报告完成 → 转发给 UI
+        self._quant_worker.daily_report_ready.connect(self.daily_report_ready.emit)
 
         self._stocks = []
         self._latest_stock_data = []
 
-    def _on_data_updated(self, stocks, all_failed):
+    def _on_data_updated(self, stocks, all_failed) -> None:
         """Intercept local data updates to cache the latest data"""
         if not all_failed:
             # Inject dark trade data into stock rows
@@ -84,7 +88,7 @@ class MainWindowViewModel(QObject):
             )
         self.stock_data_updated.emit(stocks, all_failed)
 
-    def _inject_dark_trade_data(self, stocks):
+    def _inject_dark_trade_data(self, stocks) -> None:
         """将暗盘资金数据注入到股票行数据中"""
         try:
             for stock in stocks:
@@ -97,7 +101,7 @@ class MainWindowViewModel(QObject):
             # 静默失败，不影响主数据显示
             app_logger.debug(f"注入暗盘数据失败: {e}")
 
-    def _on_dark_trade_cache_updated(self, update_time: str):
+    def _on_dark_trade_cache_updated(self, update_time: str) -> None:
         """暗盘缓存更新后，重新注入数据并刷新UI"""
         if self._latest_stock_data:
             self._inject_dark_trade_data(self._latest_stock_data)
@@ -110,7 +114,7 @@ class MainWindowViewModel(QObject):
         """Get the most recently fetched/cached stock data"""
         return self._latest_stock_data
 
-    def set_latest_stock_data(self, data: list):
+    def set_latest_stock_data(self, data: list) -> None:
         """Manually set the latest stock data, e.g. from session cache"""
         self._latest_stock_data = data
 
@@ -118,7 +122,7 @@ class MainWindowViewModel(QObject):
         """获取量化引擎实例"""
         return self._quant_worker.engine
 
-    def close_database(self):
+    def close_database(self) -> None:
         """关闭数据库连接池"""
         try:
             self._stock_db.close()
@@ -178,7 +182,7 @@ class MainWindowViewModel(QObject):
         """Get formatted stock data for display"""
         return self._stock_manager.get_stock_list_data(stock_codes)
 
-    def start_workers(self, user_stocks: list[str], refresh_interval: int):
+    def start_workers(self, user_stocks: list[str], refresh_interval: int) -> None:
         """Start background workers"""
         self._refresh_worker.start_refresh(user_stocks, refresh_interval)
         self._market_stats_worker.start_worker()
@@ -202,7 +206,7 @@ class MainWindowViewModel(QObject):
         if not self._close_export_scheduler.isRunning():
             self._close_export_scheduler.start_scheduler()
 
-    def request_immediate_refresh(self, user_stocks: list[str] = None):
+    def request_immediate_refresh(self, user_stocks: list[str] = None) -> None:
         """
         请求立即刷新行情（异步）
 
@@ -225,7 +229,7 @@ class MainWindowViewModel(QObject):
         else:
             self._refresh_worker.trigger_now()
 
-    def stop_workers(self):
+    def stop_workers(self) -> None:
         """Stop background workers"""
         if self._refresh_worker.isRunning():
             self._refresh_worker.stop_refresh()
@@ -238,7 +242,7 @@ class MainWindowViewModel(QObject):
 
     def update_workers_config(
         self, user_stocks: list[str] = None, refresh_interval: int = None
-    ):
+    ) -> None:
         """Update worker configuration on the fly"""
         if user_stocks is not None:
             self._refresh_worker.update_stocks(user_stocks)
@@ -286,7 +290,7 @@ class MainWindowViewModel(QObject):
             app_logger.warning(f"Failed to load session cache: {e}")
             return {}
 
-    def save_session(self, position: list[int], stock_data: list):
+    def save_session(self, position: list[int], stock_data: list) -> None:
         """Save session cache"""
         try:
             import dataclasses
@@ -306,7 +310,7 @@ class MainWindowViewModel(QObject):
         except Exception as e:
             app_logger.warning(f"Failed to save session cache: {e}")
 
-    def check_and_update_database(self):
+    def check_and_update_database(self) -> None:
         """检查并更新数据库（异步）"""
         try:
             import time
@@ -339,13 +343,17 @@ class MainWindowViewModel(QObject):
         except Exception as e:
             app_logger.error(f"启动时数据库更新检查失败: {e}")
 
-    def trigger_manual_report(self):
-        """立即触发手动汇总复盘报告"""
-        if self._quant_worker:
-            app_logger.info("触发手动复盘报告生成...")
-            self._quant_worker.generate_daily_summary_report("manual")
+    def trigger_manual_report(self) -> None:
+        """立即触发手动汇总复盘报告（在 QuantWorker 后台线程内执行，不阻塞 UI）"""
+        if not self._quant_worker:
+            return
+        app_logger.info("触发手动复盘报告生成（后台异步）...")
+        # 若后台线程未运行（如量化开关关闭），先启动以便异步消费请求
+        if not self._quant_worker.isRunning():
+            self._quant_worker.start_worker()
+        self._quant_worker.run_report("manual")
 
-    def trigger_manual_dark_trade_fetch(self):
+    def trigger_manual_dark_trade_fetch(self) -> None:
         """手动触发暗盘数据抓取"""
         try:
             app_logger.info("[MainWindowViewModel] 手动触发暗盘数据抓取")

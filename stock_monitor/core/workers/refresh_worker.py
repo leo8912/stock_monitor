@@ -7,6 +7,8 @@ from stock_monitor.core.market.market_manager import MarketManager
 from stock_monitor.utils.logger import app_logger
 from stock_monitor.utils.stock_utils import StockCodeProcessor
 
+from .base import DEFAULT_STOP_TIMEOUT_MS, wait_for_thread_stop
+
 
 class RefreshWorker(QtCore.QThread):
     """
@@ -28,7 +30,7 @@ class RefreshWorker(QtCore.QThread):
     data_updated = QtCore.pyqtSignal(list, bool)  # 数据列表, 是否全部失败
     refresh_error = QtCore.pyqtSignal()
 
-    def __init__(self):
+    def __init__(self) -> None:
         """初始化刷新工作线程"""
         super().__init__()
         self._is_running = False
@@ -50,7 +52,7 @@ class RefreshWorker(QtCore.QThread):
         self._wait_condition = QtCore.QWaitCondition()
         self._manual_trigger_flag = False
 
-    def start_refresh(self, user_stocks: list[str], refresh_interval: int):
+    def start_refresh(self, user_stocks: list[str], refresh_interval: int) -> None:
         """
         启动刷新
 
@@ -69,27 +71,30 @@ class RefreshWorker(QtCore.QThread):
 
         app_logger.info_ctx("后台刷新线程已启动", interval=self.refresh_interval)
 
-    def stop_refresh(self):
-        """停止刷新线程"""
+    def stop_refresh(self) -> None:
+        """停止刷新线程（轮询等待线程真正结束，避免固定 wait 误判）。"""
         self._is_running = False
-        self.wait(2000)  # 等待线程结束
+        if not wait_for_thread_stop(self):
+            app_logger.warning(
+                f"后台刷新线程停止超时（>{DEFAULT_STOP_TIMEOUT_MS}ms），线程可能仍在收尾"
+            )
         app_logger.info("后台刷新线程已停止")
 
-    def update_stocks(self, user_stocks: list[str]):
+    def update_stocks(self, user_stocks: list[str]) -> None:
         """更新用户股票列表"""
         self._lock.lock()
         self.current_user_stocks = user_stocks
         self._lock.unlock()
         app_logger.info(f"刷新线程股票列表已更新: {user_stocks}")
 
-    def update_interval(self, refresh_interval: int):
+    def update_interval(self, refresh_interval: int) -> None:
         """更新刷新间隔"""
         self._lock.lock()
         self.refresh_interval = refresh_interval
         self._lock.unlock()
         app_logger.info(f"刷新线程间隔已更新: {refresh_interval}")
 
-    def trigger_now(self):
+    def trigger_now(self) -> None:
         """立即触发一次刷新（中断当前的休眠）"""
         self._lock.lock()
         self._manual_trigger_flag = True
@@ -97,7 +102,7 @@ class RefreshWorker(QtCore.QThread):
         self._lock.unlock()
         app_logger.debug("收到手动刷新请求，已唤醒刷新线程")
 
-    def run(self):
+    def run(self) -> None:
         """线程执行入口"""
         # 快速预热，首次数据获取时自然完成初始化
         app_logger.info("后台刷新线程启动...")
@@ -243,7 +248,7 @@ class RefreshWorker(QtCore.QThread):
                 else:
                     self._smart_sleep(5)
 
-    def _smart_sleep(self, duration, check_interval=False):
+    def _smart_sleep(self, duration, check_interval=False) -> None:
         """
         智能休眠，支持快速响应停止信号和配置变更
 
@@ -285,13 +290,13 @@ class RefreshWorker(QtCore.QThread):
 
     def _exponential_backoff_sleep(
         self, attempt: int, base_delay: float = 1.0, max_delay: float = 60.0
-    ):
+    ) -> None:
         """指数退避休眠（网络异常场景使用）"""
         delay = min(base_delay * (2**attempt), max_delay)
         app_logger.debug(f"网络异常，指数退避：{delay:.1f}s (attempt={attempt})")
         return self._smart_sleep(delay)
 
-    def _get_pre_market_sleep_time(self):
+    def _get_pre_market_sleep_time(self) -> int:
         """
         获取盘前休眠时间
 
@@ -320,7 +325,7 @@ class RefreshWorker(QtCore.QThread):
         # 其他时间使用正常休眠时间
         return 60
 
-    def _fetch_closing_data(self, user_stocks: list[str]):
+    def _fetch_closing_data(self, user_stocks: list[str]) -> None:
         """
         休市后获取收盘数据
 

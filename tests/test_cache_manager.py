@@ -4,6 +4,8 @@ import os
 import tempfile
 import time
 
+import pytest
+
 from stock_monitor.core.cache_manager import LRUCache, SQLiteCache, TwoLevelCache
 
 
@@ -199,3 +201,56 @@ class TestTwoLevelCache:
         cache.set("a", 1)
         cache.clear()
         assert cache.get("a") is None
+
+
+class TestSQLiteCacheRobustness:
+    """G-4 / G-5 回归测试：连接句柄关闭 + 表名白名单校验"""
+
+    def setup_method(self):
+        self.tmp = tempfile.mkdtemp()
+        self.db_path = os.path.join(self.tmp, "robust.db")
+
+    def test_connections_are_closed_after_operations(self, monkeypatch):
+        """G-4: 每次操作后 SQLite 连接必须关闭，不得泄漏句柄"""
+        from stock_monitor.core import cache_manager
+
+        opened = []
+        real_connect = cache_manager.sqlite3.connect
+
+        class _TrackedConn:
+            def __init__(self, conn):
+                self._conn = conn
+                self.closed = False
+
+            def __getattr__(self, name):
+                return getattr(self._conn, name)
+
+            def close(self):
+                self.closed = True
+                self._conn.close()
+
+        def _factory(*args, **kwargs):
+            tracked = _TrackedConn(real_connect(*args, **kwargs))
+            opened.append(tracked)
+            return tracked
+
+        monkeypatch.setattr(cache_manager.sqlite3, "connect", _factory)
+
+        cache = SQLiteCache(self.db_path)
+        cache.set("key", "value", ttl=60)
+        assert cache.get("key") == "value"
+        cache.delete("key")
+
+        assert opened, "应至少建立过一次连接"
+        assert all(c.closed for c in opened), "所有 SQLite 连接必须被关闭 (G-4)"
+
+    def test_invalid_table_name_rejected(self):
+        """G-5: 含 SQL 元字符的非法表名必须被拒绝（防注入）"""
+        with pytest.raises(ValueError):
+            SQLiteCache(self.db_path, table_name="bad; DROP TABLE x")
+
+    def test_valid_table_name_accepted(self):
+        """G-5: 合法标识符表名正常通过"""
+        cache = SQLiteCache(self.db_path, table_name="cache_demo_1")
+        cache.set("k", "v", ttl=60)
+        assert cache.get("k") == "v"

@@ -1,4 +1,8 @@
-"""CLI 入口 - 暗盘资金统计"""
+"""CLI 入口 - 暗盘资金统计
+
+注意：本模块内的 ``print`` 均为 CLI 标准输出（面向终端用户），非应用日志，
+故不替换为 ``app_logger``。
+"""
 
 from __future__ import annotations
 

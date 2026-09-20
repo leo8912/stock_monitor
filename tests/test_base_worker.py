@@ -89,17 +89,13 @@ class TestBaseWorkerStartStop(unittest.TestCase):
                 mock_start.assert_not_called()
 
     def test_stop_worker(self):
-        """测试停止工作线程"""
+        """测试停止工作线程（轮询式等待，不再使用固定 wait(2000)）"""
         self.worker._is_running = True
 
-        with patch.object(self.worker, "wait") as mock_wait:
-            mock_wait.return_value = True
+        self.worker.stop_worker()
 
-            self.worker.stop_worker()
-
-            # 验证状态变化
-            self.assertFalse(self.worker._is_running)
-            mock_wait.assert_called_once_with(2000)
+        # 验证状态变化
+        self.assertFalse(self.worker._is_running)
 
     def test_stop_worker_sets_flag(self):
         """测试停止标志设置"""

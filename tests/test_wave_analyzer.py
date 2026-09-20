@@ -61,13 +61,15 @@ class TestDetectZigzag:
         assert WaveAnalyzer.detect_zigzag(df, threshold=0.05) == []
 
     def test_uptrend(self):
-        # 明确的上升趋势：从 100 涨到 120
-        n = 50
-        prices = np.linspace(100, 120, n)
-        noise = np.random.RandomState(42).normal(0, 0.5, n)
-        highs = prices + 1.0 + noise
-        lows = prices - 1.0 + noise
-        closes = prices + noise
+        # 上升趋势且含一次超过阈值的回调：
+        # 100→112 上行形成 peak，回调至 105 形成 trough，末端再创新高形成 peak
+        seg1 = np.linspace(100, 112, 20)
+        seg2 = np.linspace(112, 105, 10)
+        seg3 = np.linspace(105, 118, 20)
+        prices = np.concatenate([seg1, seg2, seg3])
+        highs = prices + 0.5
+        lows = prices - 0.5
+        closes = prices
         df = _make_df(highs.tolist(), lows.tolist(), closes.tolist())
 
         swings = WaveAnalyzer.detect_zigzag(df, threshold=0.03)
@@ -78,12 +80,15 @@ class TestDetectZigzag:
         assert "trough" in types
 
     def test_current_point_always_present(self):
-        n = 30
-        prices = np.linspace(100, 110, n)
-        noise = np.random.RandomState(42).normal(0, 0.3, n)
-        highs = prices + 1.0 + noise
-        lows = prices - 1.0 + noise
-        closes = prices + noise
+        # 末端为非极值点：最后一个极值点（trough）早于末根 K 线，
+        # 因此应在末尾追加一个 current 点以连接最新价格
+        seg1 = np.linspace(100, 110, 20)
+        seg2 = np.linspace(110, 104, 25)
+        seg3 = np.linspace(104, 105.5, 5)  # 轻微反弹，未达阈值
+        prices = np.concatenate([seg1, seg2, seg3])
+        highs = prices + 0.5
+        lows = prices - 0.5
+        closes = prices
         df = _make_df(highs.tolist(), lows.tolist(), closes.tolist())
 
         swings = WaveAnalyzer.detect_zigzag(df, threshold=0.03)

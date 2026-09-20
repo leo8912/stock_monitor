@@ -52,13 +52,13 @@ class TestStockTableModel(unittest.TestCase):
     def test_row_column_count(self):
         self.model.update_data(self.test_data)
         self.assertEqual(self.model.rowCount(), 4)
-        self.assertEqual(
-            self.model.columnCount(), 4
-        )  # 名称，价格，涨跌幅，封单 (如果有)
+        # 列：名称，价格，涨跌幅，封单，暗盘流（暗盘流列始终显示）
+        self.assertEqual(self.model.columnCount(), 5)
 
         self.model.update_data(self.test_data[:3])
         self.assertEqual(self.model.rowCount(), 3)
-        self.assertEqual(self.model.columnCount(), 3)  # 不显示封单列时
+        # 前三行无封单数据，隐藏封单列：名称，价格，涨跌幅，暗盘流
+        self.assertEqual(self.model.columnCount(), 4)
 
     def test_data_display(self):
         self.model.update_data(self.test_data)

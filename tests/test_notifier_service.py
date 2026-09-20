@@ -1,5 +1,13 @@
 """
 NotifierService 消息推送服务单元测试
+
+注意：NotifierService 自 v4.3.4 起统一使用共享的 ``requests.Session``
+（``NotifierService._get_session()``），因此对底层 HTTP 调用的打桩需针对
+``requests.Session.get`` / ``requests.Session.post``，而非模块级的
+``requests.get`` / ``requests.post``。同理，网络异常重试自迁移到
+``tenacity network_retry`` 后，仅在 ``RETRYABLE_EXCEPTIONS``
+（ConnectionError/TimeoutError/IOError/OSError）上重试，且重试用尽后
+``reraise=True`` 会把异常向上抛出（不再静默返回 False）。
 """
 
 import time
@@ -29,7 +37,7 @@ class TestNotifierService(unittest.TestCase):
         """测试后清理"""
         NotifierService._token_cache.clear()
 
-    @patch("stock_monitor.services.notifier.requests.get")
+    @patch("stock_monitor.services.notifier.requests.Session.get")
     def test_get_app_token_success(self, mock_get):
         """测试成功获取企业微信 Token"""
         # 模拟 API 响应
@@ -48,12 +56,14 @@ class TestNotifierService(unittest.TestCase):
         self.assertEqual(token, "test_access_token")
 
         # 验证缓存已设置
-        self.assertIn("test_corp", NotifierService._token_cache)
-        cached_token, expiry = NotifierService._token_cache["test_corp"]
+        self.assertIn(("test_corp", "test_secret"), NotifierService._token_cache)
+        cached_token, expiry = NotifierService._token_cache[
+            ("test_corp", "test_secret")
+        ]
         self.assertEqual(cached_token, "test_access_token")
         self.assertGreater(expiry, time.time())
 
-    @patch("stock_monitor.services.notifier.requests.get")
+    @patch("stock_monitor.services.notifier.requests.Session.get")
     def test_get_app_token_api_error(self, mock_get):
         """测试 API 错误处理"""
         # 模拟 API 错误响应
@@ -70,7 +80,7 @@ class TestNotifierService(unittest.TestCase):
         # 验证返回 None
         self.assertIsNone(token)
 
-    @patch("stock_monitor.services.notifier.requests.get")
+    @patch("stock_monitor.services.notifier.requests.Session.get")
     def test_get_app_token_network_error(self, mock_get):
         """测试网络异常处理"""
         # 模拟网络异常
@@ -82,12 +92,15 @@ class TestNotifierService(unittest.TestCase):
         # 验证返回 None
         self.assertIsNone(token)
 
-    @patch("stock_monitor.services.notifier.requests.get")
+    @patch("stock_monitor.services.notifier.requests.Session.get")
     def test_get_app_token_cache_hit(self, mock_get):
         """测试缓存命中"""
         # 先手动设置缓存
         now = time.time()
-        NotifierService._token_cache["test_corp"] = ("cached_token", now + 3600)
+        NotifierService._token_cache[("test_corp", "test_secret")] = (
+            "cached_token",
+            now + 3600,
+        )
 
         # 调用方法
         token = NotifierService._get_app_token("test_corp", "test_secret")
@@ -96,12 +109,15 @@ class TestNotifierService(unittest.TestCase):
         self.assertEqual(token, "cached_token")
         mock_get.assert_not_called()
 
-    @patch("stock_monitor.services.notifier.requests.get")
+    @patch("stock_monitor.services.notifier.requests.Session.get")
     def test_get_app_token_cache_expired(self, mock_get):
         """测试缓存过期"""
         # 设置过期的缓存
         expired_time = time.time() - 3600
-        NotifierService._token_cache["test_corp"] = ("expired_token", expired_time)
+        NotifierService._token_cache[("test_corp", "test_secret")] = (
+            "expired_token",
+            expired_time,
+        )
 
         # 模拟新的 Token 响应
         mock_response = MagicMock()
@@ -119,7 +135,50 @@ class TestNotifierService(unittest.TestCase):
         self.assertEqual(token, "new_token")
         mock_get.assert_called_once()
 
-    @patch("stock_monitor.services.notifier.requests.post")
+    @patch("stock_monitor.services.notifier.requests.Session.get")
+    def test_wrong_secret_does_not_reuse_cached_token(self, mock_get):
+        """S5 回归：同一 corp_id 用错误 secret 时不得命中旧 token 缓存。"""
+        now = time.time()
+        NotifierService._token_cache[("test_corp", "correct_secret")] = (
+            "cached_token",
+            now + 3600,
+        )
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "errcode": 40001,
+            "errmsg": "invalid credential",
+        }
+        mock_get.return_value = mock_response
+
+        token = NotifierService._get_app_token("test_corp", "WRONG_secret")
+
+        self.assertIsNone(token)
+        mock_get.assert_called_once()  # 必须走网络，不得吃缓存
+
+    @patch("stock_monitor.services.notifier.requests.Session.get")
+    def test_test_app_push_rejects_wrong_secret(self, mock_get):
+        """S5 回归：test_app_push 用错误 secret 必须失败，且错误串含「Token 失败」。"""
+        now = time.time()
+        NotifierService._token_cache[("test_corp", "correct_secret")] = (
+            "cached_token",
+            now + 3600,
+        )
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "errcode": 40001,
+            "errmsg": "invalid credential",
+        }
+        mock_get.return_value = mock_response
+
+        result = NotifierService.test_app_push("test_corp", "WRONG_secret", "1000001")
+
+        self.assertFalse(result["success"])
+        self.assertIn("Token 失败", result["error"])
+        mock_get.assert_called_once()
+
+    @patch("stock_monitor.services.notifier.requests.Session.post")
     @patch("stock_monitor.services.notifier.NotifierService._get_app_token")
     def test_send_wecom_app_message_success(self, mock_get_token, mock_post):
         """测试成功发送企业微信消息"""
@@ -147,7 +206,7 @@ class TestNotifierService(unittest.TestCase):
         call_args = mock_post.call_args
         self.assertIn("access_token=test_token", call_args[0][0])
 
-    @patch("stock_monitor.services.notifier.requests.post")
+    @patch("stock_monitor.services.notifier.requests.Session.post")
     @patch("stock_monitor.services.notifier.NotifierService._get_app_token")
     def test_send_wecom_app_message_missing_config(self, mock_get_token, mock_post):
         """测试配置缺失的情况"""
@@ -171,7 +230,7 @@ class TestNotifierService(unittest.TestCase):
         # 验证未发送消息
         mock_post.assert_not_called()
 
-    @patch("stock_monitor.services.notifier.requests.post")
+    @patch("stock_monitor.services.notifier.requests.Session.post")
     @patch("stock_monitor.services.notifier.NotifierService._get_app_token")
     def test_send_wecom_app_message_send_failed(self, mock_get_token, mock_post):
         """测试消息发送失败"""
@@ -227,11 +286,11 @@ class TestNotifierServiceEdgeCases(unittest.TestCase):
         now = time.time()
         # 设置一个刚好在缓冲区内过期的缓存
         expiry = now + 60  # 60 秒后过期
-        NotifierService._token_cache["test"] = ("token", expiry)
+        NotifierService._token_cache[("test", "secret")] = ("token", expiry)
 
         # 此时应该认为缓存已过期（因为要提前 1 分钟）
         # 这个测试验证缓存策略的实现细节
-        cached_token, cached_expiry = NotifierService._token_cache["test"]
+        cached_token, cached_expiry = NotifierService._token_cache[("test", "secret")]
         self.assertEqual(cached_token, "token")
 
         # 验证缓冲区逻辑：now < expiry - 60 应该为 False
@@ -258,7 +317,12 @@ class TestNotifierServiceEdgeCases(unittest.TestCase):
 
 
 class TestNotifierServiceRetry(unittest.TestCase):
-    """NotifierService 重试机制测试"""
+    """NotifierService 重试机制测试
+
+    重试策略由 ``tenacity network_retry`` 提供：仅对
+    ``RETRYABLE_EXCEPTIONS``（ConnectionError/TimeoutError/IOError/OSError）
+    重试，最多 3 次；用尽后 ``reraise=True`` 使异常向上抛出。
+    """
 
     def setUp(self):
         """测试前准备"""
@@ -274,22 +338,22 @@ class TestNotifierServiceRetry(unittest.TestCase):
         """测试后清理"""
         NotifierService._token_cache.clear()
 
-    @patch("stock_monitor.services.notifier.requests.post")
+    @patch("stock_monitor.services.notifier.requests.Session.post")
     @patch("stock_monitor.services.notifier.NotifierService._get_app_token")
     def test_send_wecom_app_message_retry_on_network_error(
         self, mock_get_token, mock_post
     ):
-        """测试网络错误自动重试"""
+        """测试网络错误自动重试（前两次失败，第三次成功）"""
         # 模拟 Token 成功
         mock_get_token.return_value = "test_token"
 
-        # 模拟前两次失败，第三次成功
+        # 前两次可重试网络异常，第三次成功
         mock_response_success = MagicMock()
         mock_response_success.json.return_value = {"errcode": 0, "errmsg": "ok"}
 
         mock_post.side_effect = [
-            Exception("Connection timeout"),
-            Exception("Connection refused"),
+            ConnectionError("Connection timeout"),
+            ConnectionError("Connection refused"),
             mock_response_success,
         ]
 
@@ -304,37 +368,35 @@ class TestNotifierServiceRetry(unittest.TestCase):
         # 验证调用了 3 次（初次 + 2 次重试）
         self.assertEqual(mock_post.call_count, 3)
 
-    @patch("stock_monitor.services.notifier.requests.post")
+    @patch("stock_monitor.services.notifier.requests.Session.post")
     @patch("stock_monitor.services.notifier.NotifierService._get_app_token")
     def test_send_wecom_app_message_retry_exhausted(self, mock_get_token, mock_post):
-        """测试重试次数用尽后返回 False"""
+        """重试次数用尽后异常向上抛出"""
         # 模拟 Token 成功
         mock_get_token.return_value = "test_token"
 
-        # 模拟始终失败
-        mock_post.side_effect = Exception("Persistent network error")
+        # 始终失败（可重试网络异常）
+        mock_post.side_effect = ConnectionError("Persistent network error")
 
-        # 调用方法（应该重试 3 次后返回 False）
-        result = NotifierService.send_wecom_app_message(
-            self.test_config, title="测试标题", description="测试描述"
-        )
-
-        # 验证返回 False
-        self.assertFalse(result)
+        # 重试 3 次后 network_retry(reraise=True) 抛出异常
+        with self.assertRaises(ConnectionError):
+            NotifierService.send_wecom_app_message(
+                self.test_config, title="测试标题", description="测试描述"
+            )
 
         # 验证重试了 3 次（max_attempts=3）
         self.assertEqual(mock_post.call_count, 3)
 
     @patch("stock_monitor.services.notifier.SafeRequest.post")
     def test_send_wecom_webhook_text_retry_on_error(self, mock_post):
-        """测试 Webhook 消息重试"""
-        # 模拟前两次失败，第三次成功
+        """测试 Webhook 消息重试（前两次失败，第三次成功）"""
+        # 前两次可重试网络异常，第三次成功
         mock_response_success = MagicMock()
         mock_response_success.json.return_value = {"errcode": 0}
 
         mock_post.side_effect = [
-            Exception("Network timeout"),
-            Exception("Temporary failure"),
+            ConnectionError("Network timeout"),
+            ConnectionError("Temporary failure"),
             mock_response_success,
         ]
 
@@ -351,17 +413,15 @@ class TestNotifierServiceRetry(unittest.TestCase):
 
     @patch("stock_monitor.services.notifier.SafeRequest.post")
     def test_send_wecom_webhook_text_retry_exhausted(self, mock_post):
-        """测试 Webhook 重试次数用尽"""
-        # 模拟始终失败
-        mock_post.side_effect = Exception("Persistent network error")
+        """测试 Webhook 重试次数用尽（异常向上抛出）"""
+        # 始终失败（可重试网络异常）
+        mock_post.side_effect = ConnectionError("Persistent network error")
 
-        # 调用方法
-        result = NotifierService.send_wecom_webhook_text(
-            "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test", "测试消息"
-        )
-
-        # 验证返回 False
-        self.assertFalse(result)
+        # 重试 3 次后 network_retry(reraise=True) 抛出异常
+        with self.assertRaises(ConnectionError):
+            NotifierService.send_wecom_webhook_text(
+                "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test", "测试消息"
+            )
 
         # 验证重试了 3 次
         self.assertEqual(mock_post.call_count, 3)

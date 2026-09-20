@@ -89,18 +89,22 @@ class TestQuantEngine(unittest.TestCase):
         self.assertFalse(result)
 
     def test_freq_map_constants(self):
-        """测试频率映射常量"""
-        self.assertEqual(QuantEngine.FreqMap["15m"], 1)
-        self.assertEqual(QuantEngine.FreqMap["30m"], 2)
-        self.assertEqual(QuantEngine.FreqMap["60m"], 3)
-        self.assertEqual(QuantEngine.FreqMap["daily"], 9)
+        """测试频率映射常量（已从 QuantEngine 迁移至 quant_engine_constants）"""
+        from stock_monitor.core.engine.quant_engine_constants import FreqMap
+
+        self.assertEqual(FreqMap["15m"], 1)
+        self.assertEqual(FreqMap["30m"], 2)
+        self.assertEqual(FreqMap["60m"], 3)
+        self.assertEqual(FreqMap["daily"], 9)
 
     def test_tf_chinese_map_constants(self):
-        """测试中文频率映射常量"""
-        self.assertEqual(QuantEngine.TF_CHINESE_MAP["15m"], "15分钟")
-        self.assertEqual(QuantEngine.TF_CHINESE_MAP["30m"], "30分钟")
-        self.assertEqual(QuantEngine.TF_CHINESE_MAP["60m"], "60分钟")
-        self.assertEqual(QuantEngine.TF_CHINESE_MAP["daily"], "日线")
+        """测试中文频率映射常量（已从 QuantEngine 迁移至 quant_engine_constants）"""
+        from stock_monitor.core.engine.quant_engine_constants import TF_CHINESE_MAP
+
+        self.assertEqual(TF_CHINESE_MAP["15m"], "15 分钟")
+        self.assertEqual(TF_CHINESE_MAP["30m"], "30 分钟")
+        self.assertEqual(TF_CHINESE_MAP["60m"], "60 分钟")
+        self.assertEqual(TF_CHINESE_MAP["daily"], "日线")
 
     def test_calculate_comprehensive_indicators_structure(self):
         """测试综合指标计算返回结构"""

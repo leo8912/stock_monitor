@@ -30,14 +30,14 @@ from stock_monitor.utils.retry import network_retry as retry
 
 
 class NotifierService:
-    # 简单的应用 Token 缓存: {corp_id: (token, expiry_ts)}
+    # 简单的应用 Token 缓存: {(corp_id, secret): (token, expiry_ts)}
     _token_cache = {}
     # 共享 HTTP 会话（连接池复用）
     _session = None
     _lock = threading.Lock()
 
     @classmethod
-    def _get_session(cls):
+    def _get_session(cls) -> requests.Session:
         """获取共享的 requests.Session"""
         if cls._session is None:
             with cls._lock:
@@ -48,17 +48,37 @@ class NotifierService:
 
     @classmethod
     def _get_app_token(cls, corp_id: str, secret: str) -> Optional[str]:
-        """获取并快缓存企业微信应用 AccessToken"""
+        """获取并缓存企业微信应用 AccessToken（仅返回 token）。"""
+        token, _error = cls._resolve_app_token(corp_id, secret)
+        return token
+
+    @classmethod
+    def _resolve_app_token(cls, corp_id: str, secret: str) -> tuple:
+        """获取企业微信应用 AccessToken，返回 ``(token, error_detail)``。
+
+        缓存键为 ``(corp_id, secret)`` —— 同一 corp_id 一旦换了 secret，必须重新
+        走网络校验；否则会沿用旧 token，导致「测试推送」按钮用错误凭证也"通过"，
+        与按钮本意相悖（真实推送路径同样存在"改密后沿用旧 token"的隐患）。
+
+        Args:
+            corp_id: 企业 ID。
+            secret: 应用 Secret。
+
+        Returns:
+            ``(token, error_detail)``：成功时 ``error_detail`` 为 None；失败时
+            token 为 None，``error_detail`` 携带服务端响应或异常文本（供诊断）。
+        """
         import time
 
         now = time.time()
+        cache_key = (corp_id, secret)
 
-        # 1. 检查缓存
+        # 1. 检查缓存（按 corp_id + secret 精确命中）
         with cls._lock:
-            if corp_id in cls._token_cache:
-                token, expiry = cls._token_cache[corp_id]
+            if cache_key in cls._token_cache:
+                token, expiry = cls._token_cache[cache_key]
                 if now < expiry - 60:  # 提前1分钟过期
-                    return token
+                    return token, None
 
         # 2. 从服务器获取
         try:
@@ -68,13 +88,14 @@ class NotifierService:
                 token = resp["access_token"]
                 expires_in = resp.get("expires_in", 7200)
                 with cls._lock:
-                    cls._token_cache[corp_id] = (token, now + expires_in)
-                return token
+                    cls._token_cache[cache_key] = (token, now + expires_in)
+                return token, None
             else:
                 app_logger.error_ctx("获取企微 App Token 失败", resp=resp)
+                return None, resp
         except Exception as e:
             app_logger.error_ctx("获取企微 App Token 异常", error=str(e))
-        return None
+            return None, str(e)
 
     @classmethod
     @retry(max_attempts=3, backoff_factor=0.5)
@@ -121,6 +142,58 @@ class NotifierService:
         except Exception as e:
             app_logger.error(f"企微应用消息推送异常: {e}")
             raise  # 让retry装饰器捕获异常
+
+    @classmethod
+    def test_app_push(cls, corp_id: str, secret: str, agent_id: str) -> dict:
+        """向指定企业应用发送一条测试消息（供设置页"测试推送"使用）。
+
+        把原本散落在 UI 线程类里的 token 获取 / 消息发送逻辑收敛到服务层，
+        避免在对话框模块内直接使用 requests。
+
+        Args:
+            corp_id: 企业微信 CorpID。
+            secret: 应用 Secret。
+            agent_id: 应用 AgentID。
+
+        Returns:
+            dict: ``{"success": bool, "error": str | None, "response": dict | None}``
+        """
+        result: dict = {"success": False, "error": None, "response": None}
+        try:
+            token, token_error = cls._resolve_app_token(corp_id, secret)
+            if not token:
+                # 恢复带细节的错误串（保留 UI 侧依赖的子串「Token 失败」）
+                result["error"] = (
+                    f"获取企业应用 Token 失败: {token_error}"
+                    if token_error
+                    else "获取企业应用 Token 失败"
+                )
+                return result
+
+            send_url = (
+                f"https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token={token}"
+            )
+            payload = {
+                "touser": "@all",
+                "msgtype": "text",
+                "agentid": int(agent_id) if str(agent_id).isdigit() else agent_id,
+                "text": {
+                    "content": (
+                        "🚀 企业应用测试成功\n\n"
+                        "您的股票监控系统已成功通过企业自建应用通道连接！\n"
+                        f"当前时间: {time.strftime('%Y-%m-%d %H:%M:%S')}"
+                    )
+                },
+                "safe": 0,
+            }
+            resp = cls._get_session().post(send_url, json=payload, timeout=10).json()
+            result["response"] = resp
+            result["success"] = resp.get("errcode") == 0
+            if not result["success"]:
+                result["error"] = f"发送失败: {resp}"
+        except Exception as e:
+            result["error"] = str(e)
+        return result
 
     @staticmethod
     @retry(max_attempts=3, backoff_factor=0.5)
@@ -184,11 +257,7 @@ class NotifierService:
         # 【优化】使用纯文本格式以确保个人微信链接可点击
         signal_rows = "\n".join([f"• {s}" for s in signals])
         desc_body = (
-            f"{price_detail}\n\n"
-            f"关键信号：\n"
-            f"{signal_rows}\n\n"
-            f"---\n\n"
-            f"{cycle_info}"
+            f"{price_detail}\n\n关键信号：\n{signal_rows}\n\n---\n\n{cycle_info}"
         )
 
         success = False

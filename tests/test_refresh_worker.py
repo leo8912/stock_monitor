@@ -63,7 +63,10 @@ class TestRefreshWorker:
         ):
             worker.run()
 
-            # 验证调用
-            mock_stock_manager.fetch_and_process_stocks.assert_called_with(["sh600000"])
+            # 验证调用：生产实现始终以异步模式获取量化数据
+            # （wait_for_quant_data=False），避免阻塞 UI 线程
+            mock_stock_manager.fetch_and_process_stocks.assert_called_with(
+                ["sh600000"], wait_for_quant_data=False
+            )
             mock_stock_manager.has_stock_data_changed.assert_called_with(mock_stocks)
             mock_stock_manager.update_last_stock_data.assert_called_with(mock_stocks)

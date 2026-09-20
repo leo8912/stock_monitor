@@ -1,5 +1,8 @@
+import hashlib
 import os
+import re
 import tempfile
+import urllib.parse
 from typing import Any, Optional
 
 import requests
@@ -15,6 +18,15 @@ from stock_monitor.utils.logger import app_logger
 # 镜像源配置：国内环境优先使用镜像加速下载
 GITHUB_MIRROR_PREFIX = "https://mirror.ghproxy.com/"
 
+# 官方发布域名白名单（精确匹配 hostname，禁止子串匹配）
+OFFICIAL_HOSTS = {
+    "github.com",
+    "api.github.com",
+    "objects.githubusercontent.com",
+    "raw.githubusercontent.com",
+    "codeload.github.com",
+}
+
 # 网络超时配置（秒）
 CONNECT_TIMEOUT = 15  # 建立连接超时
 READ_TIMEOUT = 30  # 数据读取超时（每个 chunk 的最大等待时间）
@@ -22,6 +34,53 @@ READ_TIMEOUT = 30  # 数据读取超时（每个 chunk 的最大等待时间）
 # 断点续传配置
 CHUNK_SIZE = 8192  # 每次读取的块大小
 MAX_RETRIES = 3  # 最大重试次数
+
+# 合法 SHA256 十六进制格式
+_SHA256_RE = re.compile(r"[a-fA-F0-9]{64}")
+
+
+def _is_official_url(url: str) -> bool:
+    """判断 URL 是否属于官方发布域名（hostname 精确匹配 + 标准端口）。
+
+    Args:
+        url: 待检查的 URL。
+
+    Returns:
+        bool: 属于官方域名且端口为标准 HTTPS 端口时返回 True，否则 False。
+    """
+    if not url:
+        return False
+    try:
+        parsed = urllib.parse.urlsplit(url)
+    except ValueError:
+        return False
+    if parsed.scheme not in ("http", "https"):
+        return False
+    hostname = parsed.hostname or ""
+    if hostname.lower() not in OFFICIAL_HOSTS:
+        return False
+    # 收紧：仅允许未显式指定端口或标准 HTTPS 端口 443，拒绝 github.com:444 之类
+    try:
+        port = parsed.port
+    except ValueError:
+        return False
+    return port in (None, 443)
+
+
+def _is_valid_sha256(value: str) -> bool:
+    """校验字符串是否为合法的 64 位十六进制 SHA256。"""
+    if not value:
+        return False
+    return _SHA256_RE.fullmatch(value.strip()) is not None
+
+
+def _calculate_sha256(file_path: str) -> str:
+    """计算文件的 SHA256 摘要（大写十六进制）。"""
+    sha256_hash = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        for byte_block in iter(lambda: f.read(4096), b""):
+            sha256_hash.update(byte_block)
+    return sha256_hash.hexdigest().upper()
 
 
 class UpdateDownloader:
@@ -279,7 +338,7 @@ class UpdateDownloader:
 
         return False
 
-    def _cleanup_download(self, download_path: str):
+    def _cleanup_download(self, download_path: str) -> None:
         """清理下载的临时文件"""
         try:
             if os.path.exists(download_path):
@@ -290,6 +349,39 @@ class UpdateDownloader:
         except OSError as e:
             app_logger.warning(f"清理临时文件失败: {e}")
 
+    def _reject_update(
+        self,
+        download_path: str,
+        security_warning_callback,
+        error_callback,
+        reason: str,
+    ) -> bool:
+        """拒绝当前更新包：记录原因、通知用户并清理已下载文件。
+
+        Args:
+            download_path: 已下载文件路径。
+            security_warning_callback: 安全提示回调（仅用于提示拒绝原因）。
+            error_callback: 错误提示回调。
+            reason: 拒绝原因。
+
+        Returns:
+            bool: 恒为 False（表示校验未通过）。
+        """
+        app_logger.error(reason)
+        if error_callback:
+            error_callback(reason)
+        if security_warning_callback:
+            try:
+                security_warning_callback(reason)
+            except Exception:
+                app_logger.debug("安全提示回调执行失败", exc_info=True)
+        try:
+            if os.path.exists(download_path):
+                os.remove(download_path)
+        except OSError as e:
+            app_logger.warning(f"删除被拒绝的更新包失败: {e}")
+        return False
+
     def _verify_hash(
         self,
         download_path: str,
@@ -298,97 +390,96 @@ class UpdateDownloader:
         security_warning_callback=None,
         error_callback=None,
     ) -> bool:
-        """
-        校验下载文件的哈希值
+        """校验下载文件的哈希值（fail-closed 策略）。
+
+        安全策略：任何无法确定可信哈希的情况一律判为失败并拒绝安装，
+        包括：取不到哈希、哈希来源非官方域名、哈希格式非法、计算过程异常、
+        哈希不匹配。``security_warning_callback`` 仅用于提示拒绝原因，
+        不再决定是否放行。
+
+        Args:
+            download_path: 已下载文件路径。
+            assets: release 资产列表。
+            latest_release_info: release 信息（body 可能含 SHA256）。
+            security_warning_callback: 安全提示回调（提示拒绝原因）。
+            error_callback: 错误提示回调。
 
         Returns:
-            bool: 校验通过返回 True，失败返回 False
+            bool: 校验通过返回 True，否则 False。
         """
         try:
-            # 1. 尝试从 assets 获取哈希文件
+            expected_hash = ""
+
+            # 1. 从 assets 获取 sha256.txt 哈希文件（仅允许官方域名）
             hash_asset = next(
                 (a for a in assets if a.get("name") == "sha256.txt"), None
             )
-            expected_hash = ""
-
             if hash_asset and hash_asset.get("browser_download_url"):
+                hash_url = hash_asset["browser_download_url"]
+                if not _is_official_url(hash_url):
+                    return self._reject_update(
+                        download_path,
+                        security_warning_callback,
+                        error_callback,
+                        f"哈希校验文件来源非官方域名，已拒绝更新: {hash_url}",
+                    )
+                app_logger.info("正在下载哈希校验文件...")
                 try:
-                    app_logger.info("正在下载哈希校验文件...")
-                    hash_url = hash_asset["browser_download_url"]
-                    # 哈希文件也优先使用镜像
-                    mirror_hash_url = f"{GITHUB_MIRROR_PREFIX}{hash_url}"
-                    try:
-                        hash_resp = requests.get(
-                            mirror_hash_url,
-                            timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
-                        )
-                        if hash_resp.status_code == 200:
-                            expected_hash = hash_resp.text.strip()
-                    except requests.exceptions.RequestException:
-                        # 镜像失败，回退原始地址
-                        hash_resp = requests.get(
-                            hash_url,
-                            timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
-                        )
-                        if hash_resp.status_code == 200:
-                            expected_hash = hash_resp.text.strip()
+                    hash_resp = requests.get(
+                        hash_url,
+                        timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
+                    )
+                    if hash_resp.status_code == 200:
+                        expected_hash = hash_resp.text.strip()
                 except (Timeout, ConnectionError):
+                    # 网络问题不立即判失败，允许回退到 release body 解析
                     app_logger.warning("下载哈希校验文件超时或连接失败")
                 except RequestException as e:
                     app_logger.warning(f"下载哈希校验文件网络异常：{e}")
-                except Exception as e:
-                    app_logger.warning(f"下载哈希校验文件失败：{e}")
-            # 2. 从 release body 中解析哈希
-            if not expected_hash and latest_release_info.get("body"):
-                import re
 
-                body = latest_release_info["body"]
-                match = re.search(r"SHA256: `?([a-fA-F0-9]{64})`?", body)
+            # 2. 回退：从 release body 中解析哈希
+            #    兼容 markdown 加粗写法（**SHA256**: `hash`）与纯文本（SHA256: hash）
+            if not expected_hash and latest_release_info.get("body"):
+                match = re.search(
+                    r"SHA256\**\s*:\s*`?([a-fA-F0-9]{64})`?",
+                    latest_release_info["body"],
+                )
                 if match:
                     expected_hash = match.group(1)
 
-            if expected_hash:
-                app_logger.info(
-                    f"正在校验文件完整性... 期望哈希: {expected_hash[:8]}..."
+            # 3. 哈希格式校验：必须是合法 64 位十六进制，否则视为无哈希
+            if not _is_valid_sha256(expected_hash):
+                return self._reject_update(
+                    download_path,
+                    security_warning_callback,
+                    error_callback,
+                    "无法获取可信的哈希校验值（缺失或格式非法），已拒绝安装该更新包。",
                 )
-                import hashlib
 
-                sha256_hash = hashlib.sha256()
-                with open(download_path, "rb") as f:
-                    for byte_block in iter(lambda: f.read(4096), b""):
-                        sha256_hash.update(byte_block)
-                calculated_hash = sha256_hash.hexdigest().upper()
-                expected_hash = expected_hash.upper()
-
-                if calculated_hash != expected_hash:
-                    err_msg = (
-                        f"安全检查失败：文件哈希不匹配。\n"
-                        f"下载的文件哈希: {calculated_hash}\n"
-                        f"期望的哈希: {expected_hash}\n"
-                        f"文件可能已损坏或被篡改。"
-                    )
-                    app_logger.error(err_msg)
-                    os.remove(download_path)
-                    if error_callback:
-                        error_callback(err_msg)
-                    return False
-                app_logger.info("哈希校验通过")
-            else:
-                warn_msg = (
-                    "此更新包没有提供哈希校验值，无法验证文件完整性。\n"
-                    "是否仍要继续安装？"
+            # 4. 计算并比对哈希
+            expected_hash = expected_hash.strip().upper()
+            app_logger.info(f"正在校验文件完整性... 期望哈希: {expected_hash[:8]}...")
+            calculated_hash = _calculate_sha256(download_path)
+            if calculated_hash != expected_hash:
+                err_msg = (
+                    f"安全检查失败：文件哈希不匹配。\n"
+                    f"下载的文件哈希: {calculated_hash}\n"
+                    f"期望的哈希: {expected_hash}\n"
+                    f"文件可能已损坏或被篡改。"
                 )
-                app_logger.warning(
-                    "未找到哈希校验值，跳过安全检查。建议人工确认更新包来源。"
+                return self._reject_update(
+                    download_path,
+                    security_warning_callback,
+                    error_callback,
+                    err_msg,
                 )
-                if security_warning_callback:
-                    if not security_warning_callback(warn_msg):
-                        os.remove(download_path)
-                        return False
 
-        except OSError as e:
-            app_logger.error(f"哈希校验文件 IO 错误：{e}")
+            app_logger.info("哈希校验通过")
+            return True
+
         except Exception as e:
-            app_logger.error(f"哈希校验过程异常：{e}", exc_info=True)
-            # 校验逻辑异常不阻止更新，但记录日志
-        return True
+            # fail-closed：任何校验过程异常都拒绝更新
+            app_logger.error(f"哈希校验过程异常，已拒绝更新: {e}", exc_info=True)
+            if error_callback:
+                error_callback(f"哈希校验过程异常，已拒绝安装该更新包：{e}")
+            return False

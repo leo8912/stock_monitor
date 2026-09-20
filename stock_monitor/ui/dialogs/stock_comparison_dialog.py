@@ -12,7 +12,17 @@ from ...utils.logger import app_logger
 class StockComparisonDialog(QtWidgets.QDialog):
     """多只股票对比弹窗"""
 
-    def __init__(self, engine, symbols: list[str], stock_names: dict, parent=None):
+    def __init__(
+        self, engine, symbols: list[str], stock_names: dict, parent=None
+    ) -> None:
+        """初始化对比弹窗。
+
+        Args:
+            engine: 量化/行情引擎，用于拉取指标与信号。
+            symbols: 待对比的股票代码列表。
+            stock_names: 代码到名称的映射。
+            parent: 父窗口。
+        """
         super().__init__(parent)
         self.engine = engine
         self.symbols = symbols
@@ -21,7 +31,8 @@ class StockComparisonDialog(QtWidgets.QDialog):
         self.setup_ui()
         self.load_data()
 
-    def setup_ui(self):
+    def setup_ui(self) -> None:
+        """构建对比弹窗的界面（暗色主题表格 + 刷新/关闭按钮）。"""
         self.setWindowTitle("📊 股票技术指标对比")
         self.setMinimumSize(800, 500)
         self.resize(1000, 600)
@@ -109,7 +120,7 @@ class StockComparisonDialog(QtWidgets.QDialog):
 
         self.setLayout(layout)
 
-    def load_data(self):
+    def load_data(self) -> None:
         """加载股票数据并填充表格"""
         try:
             self.table.setRowCount(0)
@@ -130,7 +141,11 @@ class StockComparisonDialog(QtWidgets.QDialog):
                     # 获取当前价格
                     current_price = df.iloc[-1]["close"]
                     prev_price = df.iloc[-2]["close"] if len(df) > 1 else current_price
-                    pct_change = (current_price - prev_price) / prev_price * 100
+                    pct_change = (
+                        (current_price - prev_price) / prev_price * 100
+                        if prev_price
+                        else 0.0
+                    )
 
                     # 获取RSI
                     rsi = indicators.get("rsi", 0)

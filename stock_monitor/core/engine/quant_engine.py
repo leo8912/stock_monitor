@@ -37,7 +37,13 @@ except ImportError:
 class LRUCacheWithTTL:
     """LRU + TTL 混合缓存，基于 OrderedDict 实现（线程安全）"""
 
-    def __init__(self, max_size=128, default_ttl=60):
+    def __init__(self, max_size=128, default_ttl=60) -> None:
+        """初始化 LRU+TTL 缓存。
+
+        Args:
+            max_size: 最大条目数。
+            default_ttl: 默认过期秒数。
+        """
         import threading
         from collections import OrderedDict
 
@@ -49,6 +55,7 @@ class LRUCacheWithTTL:
         self._lock = threading.Lock()
 
     def get(self, key, ttl_override=None):
+        """读取键值；命中且未过期返回值，否则返回 None。"""
         with self._lock:
             if key not in self.cache:
                 self.misses += 1
@@ -64,7 +71,8 @@ class LRUCacheWithTTL:
             self.hits += 1
             return value
 
-    def set(self, key, value, ttl_override=None):
+    def set(self, key, value, ttl_override=None) -> None:
+        """写入/更新键值；超容量时淘汰最久未使用项。"""
         with self._lock:
             if key in self.cache:
                 del self.cache[key]
@@ -72,17 +80,18 @@ class LRUCacheWithTTL:
                 self.cache.popitem(last=False)
             self.cache[key] = [value, time.time(), 0]
 
-    def delete(self, key):
+    def delete(self, key) -> None:
         """删除缓存中的指定key"""
         with self._lock:
             self.cache.pop(key, None)
 
-    def clear(self):
+    def clear(self) -> None:
         """清空所有缓存条目"""
         with self._lock:
             self.cache.clear()
 
     def get_stats(self):
+        """返回缓存统计（大小、命中/未命中、命中率、容量、TTL）。"""
         with self._lock:
             total = self.hits + self.misses
             rate = (self.hits / total * 100) if total else 0
@@ -99,7 +108,8 @@ class LRUCacheWithTTL:
 _bars_cache_instance = None
 
 
-def get_bars_cache(max_size=128, ttl=60):
+def get_bars_cache(max_size=128, ttl=60) -> "LRUCacheWithTTL":
+    """获取（惰性创建）全局 K 线 LRU 缓存单例。"""
     global _bars_cache_instance
     if _bars_cache_instance is None:
         _bars_cache_instance = LRUCacheWithTTL(max_size, ttl)
@@ -114,7 +124,12 @@ class QuantEngine:
     _market_benchmark_lock = threading.Lock()
     _rsrs_cache = {}  # RSRS 计算缓存：{(symbol, timeframe): (zscore, slope, timestamp)}
 
-    def __init__(self, market_adapter):
+    def __init__(self, market_adapter) -> None:
+        """初始化量化引擎，创建各级 LRU 缓存与财务过滤器。
+
+        Args:
+            market_adapter: 市场数据适配器（提供 bars/index/quotes 等接口）。
+        """
         self.client = market_adapter
         self._bars_lru_cache = get_bars_cache(max_size=128, ttl=60)
         # 使用带容量限制的LRU缓存，防止长期运行导致内存泄漏
@@ -139,7 +154,7 @@ class QuantEngine:
         stats["avg_vol_cache"] = self._avg_vol_cache.get_stats()
         return stats
 
-    def clear_all_caches(self):
+    def clear_all_caches(self) -> None:
         """清空所有内部缓存"""
         self._bars_lru_cache.clear()
         self._avg_vol_cache.clear()
@@ -358,6 +373,7 @@ class QuantEngine:
     def check_macd_bullish_divergence(
         self, df: pd.DataFrame, window: int = 30, end_idx: int = None
     ) -> bool:
+        """检测 MACD 底背离：价格创新低而 MACD 柱不再创新低。"""
         try:
             # 复制 DataFrame 避免修改调用者的原始数据
             df = df.copy()
@@ -386,6 +402,7 @@ class QuantEngine:
             return False
 
     def check_bbands_squeeze(self, df: pd.DataFrame, end_idx: int = None) -> bool:
+        """检测布林带收窄（变盘前兆）：当前带宽接近近 100 根最小带宽。"""
         try:
             curr = df if end_idx is None else df.iloc[: end_idx + 1]
             if len(curr) < 100:
@@ -457,6 +474,7 @@ class QuantEngine:
         return []
 
     def check_accumulation(self, df: pd.DataFrame, end_idx: int = None) -> bool:
+        """检测 OBV 低位吸筹：低波动区间内 OBV 均线走强。"""
         try:
             if "OBV" not in df.columns:
                 df.ta.obv(append=True)
@@ -783,7 +801,7 @@ class QuantEngine:
             app_logger.error(f"[价格获取] {symbol} 未知异常：{type(e).__name__}: {e}")
             return {}
 
-    def _ensure_ta_active(self, df: pd.DataFrame = None):
+    def _ensure_ta_active(self, df: pd.DataFrame = None) -> bool:
         """确保 pandas-ta 访问器已激活 (针对打包环境的自愈逻辑)"""
         # 如果已经激活，直接返回
         if hasattr(pd.DataFrame, "ta"):
@@ -1128,7 +1146,7 @@ class QuantEngine:
 
     def _fetch_ak_fallback_money_flow(
         self, pure_code, market, cache, full_df: pd.DataFrame = None
-    ):
+    ) -> None:
         """
         [ELEGANT] 资金流向补全逻辑：针对 TDX 接口局限性，在收盘后或开启时补全当日主力资金数据
         """
@@ -1269,7 +1287,7 @@ class QuantEngine:
                 avg_min_vol = self.get_five_day_avg_minute_volume(code)
                 intensity = auction_vol / avg_min_vol
                 app_logger.debug(
-                    f"[竞价分析] {code} 强度:{intensity:.1f}x, 金额:{auction_vol/10000:.0f}万"
+                    f"[竞价分析] {code} 强度:{intensity:.1f}x, 金额:{auction_vol / 10000:.0f}万"
                 )
 
             res = {

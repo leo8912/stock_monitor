@@ -42,6 +42,16 @@ jobs:
         pip install akshare --force-reinstall
         pip install pandas-ta-classic --force-reinstall
 
+    - name: 质量门禁：静态检查与单元测试 # Quality gate: lint + format + unit tests
+      shell: bash
+      run: |
+        echo "=== ruff 静态检查 ==="
+        python -m ruff check stock_monitor tests
+        echo "=== ruff 格式检查 ==="
+        python -m ruff format --check stock_monitor tests
+        echo "=== 单元测试（默认排除 gui 标记用例）==="
+        python -m pytest -q
+
     - name: 验证所需文件是否存在 # Verify required files exist
       run: |
         echo "检查所需文件:"

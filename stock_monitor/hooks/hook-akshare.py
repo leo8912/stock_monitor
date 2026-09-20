@@ -2,6 +2,7 @@
 PyInstaller hook for akshare to ensure all dependencies are included.
 Place this file in: stock_monitor/hooks/hook-akshare.py
 """
+
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 # 收集所有 akshare 子模块
@@ -87,6 +88,6 @@ explicit_imports = [
 
 hiddenimports.extend(explicit_imports)
 
-# 打印调试信息
+# 打印调试信息（PyInstaller 构建期 hook 输出，非应用日志，故保留 print）
 print(f"Collected {len(hiddenimports)} hidden imports for akshare")
 print(f"Collected {len(datas)} data files for akshare")

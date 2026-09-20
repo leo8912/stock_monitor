@@ -68,7 +68,14 @@ try:
     _market_available = True
 except Exception as e:
     _market_available = False
-    print(f"Market layer import warning: {e}")
+    # 生产代码不使用 print；用 app_logger 记录。日志模块不可用时静默降级，
+    # 避免阻断 core 包导入。
+    try:
+        from stock_monitor.utils.logger import app_logger
+
+        app_logger.warning(f"Market layer import warning: {e}")
+    except Exception:
+        pass
 
 # ============================================================================
 # 解析层 (Resolvers Layer)

@@ -137,7 +137,8 @@ class TaskbarQuoteBar(QtWidgets.QWidget):
     settings_requested = pyqtSignal()
     quit_requested = pyqtSignal()
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None) -> None:
+        """初始化任务栏行情条：窗口标志、动画/定时器与 Win32 消息注册。"""
         super().__init__(None)  # 顶层窗口，稍后 SetParent 到任务栏
         self._all_stocks: list[StockRowData] = []
         self._page = 0
@@ -237,14 +238,40 @@ class TaskbarQuoteBar(QtWidgets.QWidget):
         self._recalc_width()
         self.update()
 
+    @staticmethod
+    def compute_market_stats(
+        up_count: int, down_count: int, flat_count: int, total_count: int
+    ) -> dict:
+        """归一化全市场涨跌家数，供任务栏红绿盘比例条绘制使用。
+
+        抽为纯函数以便单元测试（构造真实 ``TaskbarQuoteBar`` 会在无交互桌面
+        会话中触发 Win32 ``SetParent`` native 崩溃）。
+
+        Args:
+            up_count: 上涨家数。
+            down_count: 下跌家数。
+            flat_count: 平盘家数。
+            total_count: 总家数。
+
+        Returns:
+            含 ``up`` / ``down`` / ``flat`` / ``total`` 四个 ``int`` 字段的字典。
+        """
+        return {
+            "up": int(up_count),
+            "down": int(down_count),
+            "flat": int(flat_count),
+            "total": int(total_count),
+        }
+
     def update_market_stats(
         self, up_count: int, down_count: int, flat_count: int, total_count: int
     ) -> None:
         """同步全市场涨跌比例并更新任务栏顶部红绿盘条。"""
-        self._market_up_count = int(up_count)
-        self._market_down_count = int(down_count)
-        self._market_flat_count = int(flat_count)
-        self._market_total_count = int(total_count)
+        stats = self.compute_market_stats(up_count, down_count, flat_count, total_count)
+        self._market_up_count = stats["up"]
+        self._market_down_count = stats["down"]
+        self._market_flat_count = stats["flat"]
+        self._market_total_count = stats["total"]
         self.update()
 
     def start(self) -> bool:
@@ -304,11 +331,13 @@ class TaskbarQuoteBar(QtWidgets.QWidget):
     # ── 翻页 ────────────────────────────────────────────────────
 
     def _page_count(self) -> int:
+        """返回当前每页只数下的总页数（无数据时视为 1 页）。"""
         if not self._all_stocks:
             return 1
         return (len(self._all_stocks) + self._per_page - 1) // self._per_page
 
     def _clamp_page(self) -> None:
+        """把当前页号约束到 [0, 页数) 范围内。"""
         count = self._page_count()
         if self._page >= count:
             self._page = 0
@@ -316,6 +345,7 @@ class TaskbarQuoteBar(QtWidgets.QWidget):
             self._page = count - 1
 
     def _next_page(self) -> None:
+        """切换到下一页（循环），仅多于 1 页时生效。"""
         if self._page_count() <= 1:
             return
         self._begin_page_transition(1)
@@ -323,6 +353,7 @@ class TaskbarQuoteBar(QtWidgets.QWidget):
         self.update()
 
     def _prev_page(self) -> None:
+        """切换到上一页（循环），仅多于 1 页时生效。"""
         if self._page_count() <= 1:
             return
         self._begin_page_transition(-1)
@@ -338,16 +369,19 @@ class TaskbarQuoteBar(QtWidgets.QWidget):
         self._page_anim.start()
 
     def _on_page_anim_value(self, value) -> None:
+        """翻页动画帧回调：更新过渡进度并触发重绘。"""
         self._anim_progress = float(value)
         self.update()
 
     def _current_page_stocks(self) -> list[StockRowData]:
+        """返回当前页应显示的股票切片。"""
         start = self._page * self._per_page
         return self._all_stocks[start : start + self._per_page]
 
     # ── 交互 ────────────────────────────────────────────────────
 
     def wheelEvent(self, event: QtGui.QWheelEvent) -> None:  # noqa: N802
+        """滚轮滚动：向上翻上一页，向下翻下一页。"""
         if event.angleDelta().y() > 0:
             self._prev_page()
         else:
@@ -355,6 +389,7 @@ class TaskbarQuoteBar(QtWidgets.QWidget):
         event.accept()
 
     def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:  # noqa: N802
+        """鼠标点击：左键翻页，右键弹菜单。"""
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
             self._next_page()
             event.accept()
@@ -394,6 +429,7 @@ class TaskbarQuoteBar(QtWidgets.QWidget):
             self._reposition()
 
     def _make_font(self) -> QtGui.QFont:
+        """返回行情条统一使用的加粗字体。"""
         font = QtGui.QFont("Microsoft YaHei", 9)
         font.setBold(True)
         return font
@@ -448,6 +484,7 @@ class TaskbarQuoteBar(QtWidgets.QWidget):
         return QtGui.QColor("#888888")
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # noqa: N802
+        """绘制行情条：底色、大盘比例条与当前页（含翻页过渡动画）。"""
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.RenderHint.TextAntialiasing, True)
         painter.setFont(self._make_font())
@@ -537,6 +574,8 @@ class TaskbarQuoteBar(QtWidgets.QWidget):
     ) -> None:
         """绘制单页股票（上下堆叠），带垂直偏移与不透明度用于过渡动画。"""
         painter.setOpacity(max(0.0, min(1.0, opacity)))
+        if not stocks:  # 除零防护（T12）：避免 len(stocks)=0 时除零
+            return
         total_h = self.height()
         row_h = total_h / len(stocks)
         col_widths = self._column_widths()
@@ -583,6 +622,7 @@ class TaskbarQuoteBar(QtWidgets.QWidget):
         return True
 
     def _embed_into_taskbar(self) -> bool:
+        """Win10 及更早：以 SetParent 将窗口嵌入任务栏子窗口。"""
         try:
             if not self._find_taskbar():
                 self.embed_failed.emit("未找到任务栏窗口 Shell_TrayWnd")
@@ -620,6 +660,7 @@ class TaskbarQuoteBar(QtWidgets.QWidget):
             return False
 
     def _detach_from_taskbar(self) -> None:
+        """从任务栏分离（移除子窗口样式/父句柄），仅 Windows 嵌入态需要。"""
         if not (_IS_WINDOWS and self._embedded):
             return
         try:
@@ -638,6 +679,7 @@ class TaskbarQuoteBar(QtWidgets.QWidget):
             self._embedded = False
 
     def _get_window_rect(self, hwnd: int) -> tuple[int, int, int, int]:
+        """返回窗口的 (left, top, right, bottom) 物理像素矩形。"""
         rect = wintypes.RECT()
         _user32.GetWindowRect(hwnd, ctypes.byref(rect))
         return rect.left, rect.top, rect.right, rect.bottom

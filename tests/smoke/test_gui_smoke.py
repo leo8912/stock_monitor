@@ -1,8 +1,11 @@
+import pytest
+
 from stock_monitor.core.config.container import container
 from stock_monitor.data.stock.stock_db import StockDatabase
 from stock_monitor.ui.main_window import MainWindow
 
 
+@pytest.mark.gui
 def test_main_window_init(qtbot, monkeypatch):
     """
     GUI冒烟测试：验证主窗口能否正常初始化
