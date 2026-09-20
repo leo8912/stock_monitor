@@ -37,6 +37,8 @@
 - 新增 Python 3.9 兼容性 AST 守卫（CI 运行 3.9，本地 3.13 会掩盖如「`staticmethod` 对象可调用」这类 3.10+ 行为）
   - 守卫自身在 3.9 下不可用已修复：原实现用 `ast.Match` 检测 match 语句，而该属性 3.10 才加入，
     在 3.9 上抛 `AttributeError` 导致守卫全线失败；改为 `getattr` 降级
+  - 质量门禁在 `QT_QPA_PLATFORM=offscreen` 下运行：CI runner 无显示会话，Qt 走真实平台会让
+    pytest-qt 在事件处理时段错误（exit 139）
 
 ### ⚠️ 升级提示 (Upgrade Notes)
 - **请轮换企微凭据**：历史日志 `logs/stock_monitor.log` 中已明文残留 corpsecret 与 webhook key。脱敏只能阻止后续写入，已泄露的凭据需到企微后台重新生成
