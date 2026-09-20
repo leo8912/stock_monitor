@@ -1,5 +1,28 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.8.1] - 2026-09-22
+
+> 项目全量代码审查后的精简优化：删除重复代码、统一散落逻辑、精简模块导出、提升运行时性能。**用户可见行为不变**。
+
+### 🧹 代码清理 (Cleanup)
+- **删除 3 个未使用的工具函数**：`handle_exception`、`_safe_bool_conversion`、`_safe_int_conversion`（`utils/helpers.py`），均为历史迁移残留，全项目无调用点
+- **删除死代码 `format_stock_code` 包装器**（`data/stock/stocks.py`）：引用不存在的 `helpers.format_stock_code`，实际功能由 `StockCodeProcessor` 提供
+- **删除未使用的全局实例**：`stock_processor`（`stock_data_processor.py`）和 `stock_data_validator`（`stock_data_validator.py`），均为静态方法类的冗余实例
+- **修复 `stocks.py` 中的无效导入**：`from stock_monitor.utils.helpers import format_stock_code` 指向不存在的函数
+
+### 🔄 逻辑统一 (Consolidation)
+- **合并 `sh000001/sz000001` 名称映射逻辑**：删除 `StockDataProcessor._handle_special_stocks`（与 `StockDataValidator.handle_special_cases` 完全重复），处理器统一调用验证器中的映射方法
+- **统一 `_get_recent_trade_dates`**：删除 `dark_trade_exporter.py` 中的重复实现，改为从 `dark_trade/utils.py` 导入
+
+### 📦 模块精简 (Module Simplification)
+- **`core/engine/__init__.py` 从 141 行精简至 46 行**：移除 50+ 个常量的 re-export（外部代码均通过子模块按需导入，包级别导出从未被使用）
+- **`application.py` 移除正则样式表替换**：删除脆弱的 `re.sub(r"\* \{(.*?)\}", ...)` 逻辑，改为从 QSS 源文件（`main.qss`）中移除通配符字体规则，字体由 `QFont` 在 app 级别统一设置
+- **`pyproject.toml` 更新 black target-version**：从 `['py37', 'py38', 'py39', 'py310', 'py311']` 更新为 `['py39', 'py310', 'py311']`，与 `requires-python >= 3.9` 保持一致
+
+### ⚡ 性能优化 (Performance)
+- **`_ensure_ta_active` 添加类级别缓存标志**：新增 `_ta_activation_attempted` 类变量，pandas-ta 激活尝试仅执行一次，后续调用只需一次 `hasattr` 检查即跳过全部逻辑
+- **`calculate_intensity_score` 消除重复计算**：修复 `curr` 变量被计算两次的问题（先从原始 df 计算用于长度检查，copy 后又重新计算），合并为一次计算
+
 ## [v4.8.0] - 2026-09-20
 
 > 本版本源于一次全量代码审查（107 文件 / 22,423 行），集中修复 P0 9 项、P1 14 项、P2 12 项缺陷，并完成设置对话框的结构拆分。**用户可见行为保持不变**（既有的文案不一致处亦原样保留），内部可靠性与安全能力显著增强。

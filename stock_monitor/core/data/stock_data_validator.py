@@ -75,16 +75,11 @@ class StockDataValidator:
 
         # 如果没有精确匹配,尝试使用纯数字代码匹配
         if not info and isinstance(data, dict):
-            # 提取纯数字代码
             pure_code = code[2:] if code.startswith(("sh", "sz")) else code
             info = data.get(pure_code)
 
-            # 特殊处理:确保上证指数和平安银行正确映射
-            info = StockDataValidator.handle_special_cases(info, pure_code, code)
-
-        # 特殊处理:确保上证指数和平安银行正确映射(即使精确匹配也需处理)
-        if info and isinstance(data, dict):
-            # 提取纯数字代码
+        # 兜底修正名称（copy=True 避免污染原始 data dict）
+        if info is not None:
             pure_code = code[2:] if code.startswith(("sh", "sz")) else code
             info = StockDataValidator.handle_special_cases(
                 info, pure_code, code, should_copy=True
@@ -105,7 +100,3 @@ class StockDataValidator:
         """
         required_fields = ["name", "now", "close", "open", "high", "low", "volume"]
         return all(field in stock_data for field in required_fields)
-
-
-# 创建全局实例(虽然是静态方法,但保持一致性)
-stock_data_validator = StockDataValidator()

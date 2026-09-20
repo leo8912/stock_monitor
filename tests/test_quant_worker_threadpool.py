@@ -123,3 +123,17 @@ class TestQuantWorkerThreadPool(unittest.TestCase):
             # 根据代码：timeout=120 for futures, timeout=30 per future
             self.assertEqual(120, 120)  # 总超时时间
             self.assertEqual(30, 30)  # 单个任务超时时间
+
+    def test_start_worker_clears_stop_event_after_restart(self):
+        """停止量化后重新启用时，应重新启动同一个 worker。"""
+        from stock_monitor.core.workers.quant_worker import QuantWorker
+
+        with patch("stock_monitor.data.stock.stock_db.StockDatabase"):
+            worker = QuantWorker(self.mock_fetcher, "https://test.webhook")
+            worker._stop_event.set()
+
+            with patch.object(worker, "start") as mock_start:
+                worker.start_worker()
+
+            self.assertFalse(worker._stop_event.is_set())
+            mock_start.assert_called_once()

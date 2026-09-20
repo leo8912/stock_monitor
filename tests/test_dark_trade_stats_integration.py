@@ -97,6 +97,15 @@ class TestCloseExportSchedulerTasks:
             scheduler.trigger_now(task_name="暗盘统计推送")
             mock_exec.assert_called_once()
 
+    def test_manual_trigger_does_not_mark_daily_export_complete(self):
+        """手动单任务执行不能抑制当天计划中的完整导出。"""
+        scheduler = CloseExportScheduler()
+
+        with patch.object(DarkTradeStatsTask, "execute", return_value=True):
+            scheduler.trigger_now(task_name="暗盘统计推送")
+
+        assert scheduler._last_export_date == ""
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-m", "integration"])

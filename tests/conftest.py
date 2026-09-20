@@ -6,6 +6,9 @@ Pytest 配置文件
 
 import os
 import sys
+from pathlib import Path
+
+import pytest
 
 # 确保 Windows 环境下使用 UTF-8 编码
 if sys.platform == "win32":
@@ -22,6 +25,14 @@ def pytest_configure(config):
                 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
             except Exception:
                 pass
+
+
+def pytest_collection_modifyitems(config, items):
+    """统一标记 integration 目录中的外部服务测试。"""
+    integration_dir = Path(__file__).parent / "integration"
+    for item in items:
+        if integration_dir in Path(item.fspath).parents:
+            item.add_marker(pytest.mark.integration)
         if hasattr(sys.stderr, "reconfigure"):
             try:
                 sys.stderr.reconfigure(encoding="utf-8", errors="replace")

@@ -3,6 +3,7 @@ from typing import Any, Optional
 import requests
 
 from ..utils.logger import app_logger
+from ..utils.network_helper import create_session
 
 
 class NetworkManager:
@@ -16,9 +17,7 @@ class NetworkManager:
             timeout: 请求超时时间（秒）
         """
         self.timeout = timeout
-        self.session = requests.Session()
-        # 设置默认请求头
-        self.session.headers.update(
+        self.session = create_session(
             {
                 "User-Agent": "StockMonitor/4.4 (Windows; Python)",
                 "Accept": "application/vnd.github.v3+json",

@@ -46,11 +46,13 @@ class LRUCache:
         self._hits = 0
         self._misses = 0
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str, ttl_override: float = None) -> Optional[Any]:
         """读取键值；命中且未过期返回值并刷新 LRU 次序，否则返回 None。"""
         with self._lock:
             if key in self._cache:
                 value, expiry = self._cache[key]
+                if ttl_override is not None:
+                    expiry = expiry - self._default_ttl + ttl_override
                 if expiry > time.time():
                     self._cache.move_to_end(key)
                     self._hits += 1
@@ -60,11 +62,13 @@ class LRUCache:
             self._misses += 1
             return None
 
-    def set(self, key: str, value: Any, ttl: float = None) -> None:
+    def set(
+        self, key: str, value: Any, ttl: float = None, ttl_override: float = None
+    ) -> None:
         """写入/更新键值，可选自定义 ttl；超容量时淘汰最久未使用项。"""
         with self._lock:
             if ttl is None:
-                ttl = self._default_ttl
+                ttl = ttl_override if ttl_override is not None else self._default_ttl
             if key in self._cache:
                 del self._cache[key]
             elif len(self._cache) >= self._max_size:
@@ -98,6 +102,28 @@ class LRUCache:
                 "misses": self._misses,
                 "hit_rate": self._hits / total if total > 0 else 0.0,
             }
+
+    # 兼容量化引擎历史 API；新代码优先使用 stats 属性。
+    def get_stats(self) -> dict:
+        stats = self.stats
+        return {
+            **stats,
+            "hit_rate": f"{stats['hit_rate'] * 100:.1f}%",
+            "avg_ttl": self._default_ttl,
+        }
+
+    @property
+    def cache(self):
+        """兼容量化诊断代码的缓存视图。"""
+        return self._cache
+
+    @property
+    def max_size(self) -> int:
+        return self._max_size
+
+    @property
+    def default_ttl(self) -> float:
+        return self._default_ttl
 
 
 class SQLiteCache:

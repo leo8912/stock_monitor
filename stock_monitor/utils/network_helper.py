@@ -9,6 +9,17 @@ import requests
 from requests.exceptions import HTTPError, RequestException, Timeout
 
 
+def create_session(headers: Optional[dict[str, str]] = None) -> requests.Session:
+    """创建统一配置的 HTTP 会话。
+
+    会话所有权仍属于调用方：并发代码必须每个线程各自调用本函数，不能跨线程共享。
+    """
+    session = requests.Session()
+    if headers:
+        session.headers.update(headers)
+    return session
+
+
 class NetworkRequestError(Exception):
     """网络请求异常基类"""
 

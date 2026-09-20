@@ -3,7 +3,7 @@
 用于加载和处理股票基础数据
 """
 
-from typing import Any, Optional
+from typing import Any
 
 from stock_monitor.utils.logger import app_logger
 
@@ -31,21 +31,3 @@ def load_stock_data() -> list[dict[str, Any]]:
     all_stocks = a_stocks + index_stocks + hk_stocks
     app_logger.debug(f"从SQLite数据库加载股票基础数据成功，共{len(all_stocks)}条记录")
     return all_stocks
-
-
-def format_stock_code(code: str) -> Optional[str]:
-    """
-    格式化股票代码，确保正确的前缀
-
-    将6位数字股票代码转换为带交易所前缀的标准格式，或验证已带前缀的代码是否有效。
-
-    Args:
-        code (str): 股票代码，可以是6位数字或已带前缀的8位代码
-
-    Returns:
-        Optional[str]: 格式化后的股票代码，如果输入无效则返回None
-    """
-    # 使用工具函数处理股票代码格式化
-    from stock_monitor.utils.helpers import format_stock_code
-
-    return format_stock_code(code)

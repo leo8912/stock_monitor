@@ -137,10 +137,16 @@ class ConnectionPool:
         return conn
 
     def _is_connection_valid(self, conn: sqlite3.Connection) -> bool:
-        """检查连接是否有效（轻量级检查，不执行SQL）"""
+        """检查连接是否有效。
+
+        ``sqlite3.Connection`` 没有 ``closed`` 属性，不能通过属性访问判断状态。
+        用一次无副作用的查询确认连接仍可用；连接只会在创建它的线程中调用，
+        因此不会引入跨线程访问问题。
+        """
         try:
-            return not conn.closed
-        except Exception:
+            conn.execute("SELECT 1")
+            return True
+        except sqlite3.Error:
             return False
 
     def close_all(self) -> None:

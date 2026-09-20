@@ -9,12 +9,13 @@
 from __future__ import annotations
 
 import csv
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 import requests
 
 from stock_monitor.services.dark_trade.service import fetch_all_dark_trade
+from stock_monitor.services.dark_trade.utils import get_recent_trade_dates
 from stock_monitor.utils.logger import app_logger
 
 # ── 明盘行情API（东方财富市场实时数据）──────────────────────────────────────
@@ -104,17 +105,6 @@ def fetch_market_quotes_all() -> dict[str, dict]:
 
     app_logger.info(f"[DarkExport] 明盘行情获取完成: {len(result)} 只股票")
     return result
-
-
-def _get_recent_trade_dates(n: int = 5) -> list[str]:
-    """获取最近N个交易日日期列表（简单跳过周末）"""
-    dates: list[str] = []
-    current = datetime.now()
-    while len(dates) < n:
-        if current.weekday() < 5:
-            dates.append(current.strftime("%Y%m%d"))
-        current -= timedelta(days=1)
-    return dates  # 最新的在前
 
 
 def _build_history_net(history_records: dict) -> dict:
@@ -258,7 +248,7 @@ def export_dark_trade_csv(
     app_logger.info(f"[DarkExport] 今日暗盘记录: {len(today_records)} 条")
 
     # ── 2. 抓取近N-1天历史数据（今天已有，再取前N-1天）───────────────────────
-    recent_dates = _get_recent_trade_dates(history_days)  # [今天, 昨天, ...]
+    recent_dates = get_recent_trade_dates(history_days)  # [今天, 昨天, ...]
     history_records: dict[str, list[dict]] = {today_str: today_records}
     for d in recent_dates[1:]:
         try:

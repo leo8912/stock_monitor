@@ -5,7 +5,6 @@
 
 import os
 import sys
-from typing import Any, Callable
 
 
 def resource_path(relative_path):
@@ -92,50 +91,3 @@ def is_equal(a, b, tol=0.01):
         return abs(float(a) - float(b)) < tol
     except Exception:
         return False
-
-
-def handle_exception(
-    operation_name: str,
-    operation_func: Callable[[], Any],
-    default_return: Any,
-    logger: Any,
-) -> Any:
-    """
-    通用异常处理函数
-
-    Args:
-        operation_name: 操作名称
-        operation_func: 执行操作的函数
-        default_return: 默认返回值
-        logger: 日志记录器
-
-    Returns:
-        操作结果或默认值
-    """
-    try:
-        return operation_func()
-    except Exception as e:
-        error_msg = f"{operation_name}时发生错误：{e}"
-        logger.error(error_msg)
-        return default_return
-
-
-def _safe_bool_conversion(value, default=False):
-    """安全地将值转换为布尔值（从 settings_dialog.py 迁移）"""
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        return value.lower() == "true"
-    return default
-
-
-def _safe_int_conversion(value, default=0):
-    """安全地将值转换为整数（从 settings_dialog.py 迁移）"""
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str):
-        try:
-            return int(value)
-        except ValueError:
-            pass
-    return default

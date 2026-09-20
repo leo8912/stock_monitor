@@ -37,8 +37,11 @@ class StockDataProcessor:
         Returns:
             StockRowData: 填充完毕的单行股票数据对象
         """
-        # 1. 处理特殊股票名称（如上证指数）
-        info = StockDataProcessor._handle_special_stocks(code, raw_data)
+        from stock_monitor.core.data.stock_data_validator import StockDataValidator
+
+        # 1. 处理特殊股票名称（如上证指数）—— 统一使用 Validator 中的映射逻辑
+        pure_code = code[2:] if code.startswith(("sh", "sz")) else code
+        info = StockDataValidator.handle_special_cases(raw_data, pure_code, code)
 
         # 2. 提取名称
         name = StockDataProcessor._extract_name(code, info)
@@ -115,24 +118,6 @@ class StockDataProcessor:
             auction_vol=auction_vol,
             auction_intensity=auction_intensity,
         )
-
-    @staticmethod
-    def _handle_special_stocks(code: str, info: dict[str, Any]) -> dict[str, Any]:
-        """处理特殊股票代码的名称映射（安全网，正常情况 quotes 已返回正确数据）"""
-        pure_code = code[2:] if code.startswith(("sh", "sz")) else code
-
-        if pure_code == "000001":
-            if code == "sh000001":
-                # quotes() 已通过腾讯接口返回正确上证指数数据
-                # 此处仅作为安全网，防止上游返回错误名称
-                if info.get("name") != "上证指数":
-                    info = info.copy()
-                    info["name"] = "上证指数"
-            elif code == "sz000001":
-                if info.get("name") != "平安银行":
-                    info = info.copy()
-                    info["name"] = "平安银行"
-        return info
 
     @staticmethod
     def _extract_name(code: str, info: dict[str, Any]) -> str:
@@ -258,5 +243,3 @@ class StockDataProcessor:
         return ("", "")
 
 
-# 全局实例
-stock_processor = StockDataProcessor()

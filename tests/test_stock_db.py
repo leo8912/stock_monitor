@@ -101,6 +101,14 @@ class TestStockDatabase(unittest.TestCase):
         self.assertIsNotNone(stock2)
         self.assertEqual(stock2["name"], "Tencent")
 
+    def test_connection_is_reused_within_a_thread(self):
+        """同一线程的连续数据库操作应复用同一个打开的连接。"""
+        with self.db._get_connection() as first_connection:
+            self.assertIsNotNone(first_connection.execute("SELECT 1").fetchone())
+
+        with self.db._get_connection() as second_connection:
+            self.assertIs(first_connection, second_connection)
+
     def test_update_existing_stocks(self):
         """Test updating existing stocks"""
         # Initial insert

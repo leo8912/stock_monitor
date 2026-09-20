@@ -175,9 +175,9 @@ class StockManager:
         self, code: str, info: dict[str, Any]
     ) -> StockRowData:
         """处理单只股票的数据的实际实现"""
-        from stock_monitor.core.data.stock_data_processor import stock_processor
+        from stock_monitor.core.data.stock_data_processor import StockDataProcessor
 
-        result = stock_processor.process_raw_data(code, info)
+        result = StockDataProcessor.process_raw_data(code, info)
         return result
 
     def _process_single_stock_data(self, code: str, info_json: str) -> StockRowData:

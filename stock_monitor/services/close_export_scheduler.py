@@ -240,7 +240,9 @@ class CloseExportScheduler(QtCore.QThread):
         """标记今天已执行"""
         self._last_export_date = datetime.now().strftime("%Y%m%d")
 
-    def _execute_export(self, task_name: str | None = None):
+    def _execute_export(
+        self, task_name: str | None = None, *, mark_exported: bool = True
+    ):
         """执行导出任务
 
         Args:
@@ -269,8 +271,10 @@ class CloseExportScheduler(QtCore.QThread):
                         f"[CloseExportScheduler] 任务 {task.name} 异常: {e}"
                     )
 
-            # 标记今天已执行
-            self._mark_exported()
+            # 仅计划任务完成后才阻止当天后续的自动执行。手动单任务测试
+            # 不应让 15:05 的完整收盘导出被跳过。
+            if mark_exported:
+                self._mark_exported()
 
             # 发送完成信号
             if exported_files:
@@ -333,7 +337,7 @@ class CloseExportScheduler(QtCore.QThread):
         app_logger.info(
             f"[CloseExportScheduler] 手动触发导出测试 (task={task_name})..."
         )
-        self._execute_export(task_name=task_name)
+        self._execute_export(task_name=task_name, mark_exported=False)
 
 
 # 全局单例

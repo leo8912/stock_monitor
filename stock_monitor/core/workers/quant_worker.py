@@ -191,12 +191,14 @@ class QuantWorker(QtCore.QThread):
 
     def start_worker(self) -> None:
         """启动量化扫描线程（清空停止标志，已在运行时跳过）。"""
-        if not self._stop_event.is_set():
-            self._stop_event.clear()
-            if not self.isRunning():
-                self.start()
-            else:
-                app_logger.warning("QuantWorker 线程仍在运行，跳过启动")
+        if self.isRunning():
+            app_logger.warning("QuantWorker 线程仍在运行，跳过启动")
+            return
+
+        # stop_worker() 会设置该事件；重新启用量化功能时必须清除它，
+        # 否则 run() 会立即退出，导致同一会话内无法恢复扫描。
+        self._stop_event.clear()
+        self.start()
 
     def stop_worker(self) -> None:
         """停止量化线程（轮询等待线程真正结束）。

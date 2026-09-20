@@ -3,12 +3,13 @@
 测试更新功能的简单脚本
 """
 
-import os
-import sys
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "stock_monitor"))
+import pytest
 
 from stock_monitor.core.updater import AppUpdater
+
+# 此测试会访问 GitHub 的真实发布接口；默认单元测试必须保持离线、确定且不
+# 启动网络线程。需要验证线上更新链路时显式执行 ``pytest -m integration``。
+pytestmark = pytest.mark.integration
 
 
 def test_update_check():

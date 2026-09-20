@@ -17,6 +17,7 @@ from ..utils.network_helper import (
     NetworkRequestError,
     SafeRequest,
     TimeoutConfig,
+    create_session,
 )
 
 # ====== 网络请求常量 ======
@@ -42,8 +43,7 @@ class NotifierService:
         if cls._session is None:
             with cls._lock:
                 if cls._session is None:
-                    cls._session = requests.Session()
-                    cls._session.headers.update({"Content-Type": "application/json"})
+                    cls._session = create_session({"Content-Type": "application/json"})
         return cls._session
 
     @classmethod

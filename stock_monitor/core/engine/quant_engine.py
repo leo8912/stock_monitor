@@ -26,94 +26,13 @@ from stock_monitor.core.resolvers.symbol_resolver import SymbolResolver, SymbolT
 from stock_monitor.utils.logger import app_logger
 
 from .financial_filter import FinancialFilter
+from .quant_cache import LRUCacheWithTTL, get_bars_cache
 from .quant_engine_constants import FreqMap
 
 try:
     import akshare as ak
 except ImportError:
     ak = None
-
-
-class LRUCacheWithTTL:
-    """LRU + TTL 混合缓存，基于 OrderedDict 实现（线程安全）"""
-
-    def __init__(self, max_size=128, default_ttl=60) -> None:
-        """初始化 LRU+TTL 缓存。
-
-        Args:
-            max_size: 最大条目数。
-            default_ttl: 默认过期秒数。
-        """
-        import threading
-        from collections import OrderedDict
-
-        self.cache = OrderedDict()
-        self.max_size = max_size
-        self.default_ttl = default_ttl
-        self.hits = 0
-        self.misses = 0
-        self._lock = threading.Lock()
-
-    def get(self, key, ttl_override=None):
-        """读取键值；命中且未过期返回值，否则返回 None。"""
-        with self._lock:
-            if key not in self.cache:
-                self.misses += 1
-                return None
-            value, timestamp, count = self.cache[key]
-            ttl = ttl_override or self.default_ttl
-            if time.time() - timestamp > ttl:
-                del self.cache[key]
-                self.misses += 1
-                return None
-            self.cache[key] = [value, timestamp, count + 1]
-            self.cache.move_to_end(key)
-            self.hits += 1
-            return value
-
-    def set(self, key, value, ttl_override=None) -> None:
-        """写入/更新键值；超容量时淘汰最久未使用项。"""
-        with self._lock:
-            if key in self.cache:
-                del self.cache[key]
-            while len(self.cache) >= self.max_size:
-                self.cache.popitem(last=False)
-            self.cache[key] = [value, time.time(), 0]
-
-    def delete(self, key) -> None:
-        """删除缓存中的指定key"""
-        with self._lock:
-            self.cache.pop(key, None)
-
-    def clear(self) -> None:
-        """清空所有缓存条目"""
-        with self._lock:
-            self.cache.clear()
-
-    def get_stats(self):
-        """返回缓存统计（大小、命中/未命中、命中率、容量、TTL）。"""
-        with self._lock:
-            total = self.hits + self.misses
-            rate = (self.hits / total * 100) if total else 0
-            return {
-                "size": len(self.cache),
-                "hits": self.hits,
-                "misses": self.misses,
-                "hit_rate": f"{rate:.1f}%",
-                "max_size": self.max_size,
-                "avg_ttl": self.default_ttl,
-            }
-
-
-_bars_cache_instance = None
-
-
-def get_bars_cache(max_size=128, ttl=60) -> "LRUCacheWithTTL":
-    """获取（惰性创建）全局 K 线 LRU 缓存单例。"""
-    global _bars_cache_instance
-    if _bars_cache_instance is None:
-        _bars_cache_instance = LRUCacheWithTTL(max_size, ttl)
-    return _bars_cache_instance
 
 
 class QuantEngine:
@@ -123,6 +42,7 @@ class QuantEngine:
     _market_benchmark_cache = {}
     _market_benchmark_lock = threading.Lock()
     _rsrs_cache = {}  # RSRS 计算缓存：{(symbol, timeframe): (zscore, slope, timestamp)}
+    _ta_activation_attempted = False  # pandas-ta 激活是否已尝试过（类级别缓存）
 
     def __init__(self, market_adapter) -> None:
         """初始化量化引擎，创建各级 LRU 缓存与财务过滤器。
@@ -623,13 +543,11 @@ class QuantEngine:
         if df.empty:
             return 0
 
+        # 复制 DataFrame 避免修改调用者的原始数据（ta.append 会添加列）
+        df = df.copy()
         curr = df if end_idx is None else df.iloc[: end_idx + 1]
         if len(curr) < 20:
             return 0
-
-        # 复制 DataFrame 避免修改调用者的原始数据
-        df = df.copy()
-        curr = df if end_idx is None else df.iloc[: end_idx + 1]
 
         score = 0
         signal_names = [s["name"] for s in signals]
@@ -803,9 +721,11 @@ class QuantEngine:
 
     def _ensure_ta_active(self, df: pd.DataFrame = None) -> bool:
         """确保 pandas-ta 访问器已激活 (针对打包环境的自愈逻辑)"""
-        # 如果已经激活，直接返回
-        if hasattr(pd.DataFrame, "ta"):
-            return True
+        # 快速路径：已激活或已尝试过
+        if hasattr(pd.DataFrame, "ta") or QuantEngine._ta_activation_attempted:
+            return hasattr(pd.DataFrame, "ta")
+
+        QuantEngine._ta_activation_attempted = True
 
         try:
             # 1. 尝试常规导入 (兼容 classic 和标准版)

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stock_monitor"
-version = "4.8.0"
+version = "4.8.1"
 description = "A real-time stock monitoring application for A-shares"
 authors = [
     {name = "Stock Monitor Team"}
@@ -32,11 +32,21 @@ dependencies = [
     "matplotlib>=3.7.0",
     "mplfinance>=0.12.10b0",
 ]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.2.0",
+    "pytest-cov>=4.0.0",
+    "pytest-qt>=4.2.0",
+    "black>=23.3.0",
+    "ruff>=0.0.267",
+    "pre-commit>=3.3.1",
+]
 requires-python = ">=3.9"
 
 [tool.black]
 line-length = 88
-target-version = ['py37', 'py38', 'py39', 'py310', 'py311']
+target-version = ['py39', 'py310', 'py311']
 include = '\.pyi?$'
 exclude = '''
 /(
@@ -79,9 +89,10 @@ multi_line_output = 3
 qt_api = "pyqt6"
 pythonpath = ["."]
 testpaths = ["tests"]
-addopts = "-v --tb=short -m 'not gui'"
+addopts = "-v --tb=short -m 'not gui and not integration'"
 markers = [
     "gui: 需要交互桌面会话（会构造真实原生窗口/嵌入任务栏），默认排除；用 -m gui 单独运行",
+    "integration: 依赖真实外部服务的集成测试，默认排除；用 -m integration 单独运行",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",

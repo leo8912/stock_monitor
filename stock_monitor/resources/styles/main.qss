@@ -1,8 +1,4 @@
-/* Base Application Style */
-* {
-    font-family: "{{FONT_FAMILY}}";
-    font-size: {{FONT_SIZE}}px;
-}
+/* Base Application Style - font is set via QFont in application.py */
 
 /* 强制主窗口直角，防止初始闪烁及系统级圆角 */
 #MainWindow {
