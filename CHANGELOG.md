@@ -1,5 +1,22 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.8.2] - 2026-09-24
+
+> 测试覆盖率补充：填充空壳测试、添加异常路径测试、完善 safe_call 测试、添加有数据测试、网络异常测试、mock 替代 time.sleep、边界输入测试、事件总线场景补充。
+
+### 🧪 测试 (Tests)
+- **`test_di_container.py`**：填充 `test_factory_registration`（验证工厂只调用一次，返回缓存单例）和 `test_get_with_auto_creation`（自动创建已知类型）；新增 `test_get_unregistered_non_auto_type_raises`
+- **`test_core_service.py`**：新增 3 个异常路径测试（fetcher 抛异常传播、空数据透传、部分失败混合结果）
+- **`test_exception_handling.py`**：新增 4 个 safe_call 测试（正常返回透传、默认 None、自定义处理器、参数透传）
+- **`test_stock_data_source.py`**：重写 setUp 使用真实 SQLite 文件数据库 + tearDown 恢复单例；新增 2 个有数据测试（搜索、按代码查询）
+- **`test_fetcher.py`**：新增 2 个网络异常测试（HTTP 非200、请求超时）
+- **`test_cache_manager.py`**：用 `unittest.mock.patch` 替换全部 `time.sleep`，消除测试中的真实等待
+- **`test_symbol_resolver.py`**：新增 2 个边界输入测试（空字符串、无效代码）
+- **`test_event_bus.py`**：新增 2 个场景（无订阅者发布、重复订阅同一 callback）
+
+### 🔧 工程化 (Engineering)
+- **`conftest.py`**：`sys.stderr.reconfigure` 从 `pytest_collection_modifyitems` 移入 `pytest_configure`，避免每个 test item 重复执行
+
 ## [v4.8.1] - 2026-09-22
 
 > 项目全量代码审查后的精简优化：删除重复代码、统一散落逻辑、精简模块导出、提升运行时性能。**用户可见行为不变**。

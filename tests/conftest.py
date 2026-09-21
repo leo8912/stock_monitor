@@ -18,13 +18,15 @@ if sys.platform == "win32":
 
 def pytest_configure(config):
     """pytest 配置钩子，在测试收集前执行"""
-    # 设置控制台编码
+    # 设置控制台编码（只执行一次，避免在每个 test item 上重复执行）
     if sys.platform == "win32":
-        if hasattr(sys.stdout, "reconfigure"):
-            try:
-                sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-            except Exception:
-                pass
+        for stream in ("stdout", "stderr"):
+            s = getattr(sys, stream, None)
+            if s is not None and hasattr(s, "reconfigure"):
+                try:
+                    s.reconfigure(encoding="utf-8", errors="replace")
+                except Exception:
+                    pass
 
 
 def pytest_collection_modifyitems(config, items):
@@ -33,8 +35,3 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if integration_dir in Path(item.fspath).parents:
             item.add_marker(pytest.mark.integration)
-        if hasattr(sys.stderr, "reconfigure"):
-            try:
-                sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-            except Exception:
-                pass

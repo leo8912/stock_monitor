@@ -159,6 +159,20 @@ class TestSymbolType(unittest.TestCase):
 class TestSymbolResolverEdgeCases(unittest.TestCase):
     """SymbolResolver 边界情况测试"""
 
+    def test_resolve_empty_string(self):
+        """空字符串输入应引发异常（slicing越界）"""
+        with self.assertRaises((IndexError, ValueError)):
+            SymbolResolver.resolve("")
+
+    def test_resolve_invalid_code(self):
+        """无效代码（非数字非sh/sz前缀）仍能解析为STOCK类型"""
+        # "abc" doesn't match any special code, doesn't start with sh/sz
+        # Falls through to default inference: first char is 'a' != '6', so market=0
+        config = SymbolResolver.resolve("abc")
+        self.assertEqual(config.code, "abc")
+        self.assertEqual(config.market, 0)
+        self.assertEqual(config.type, SymbolType.STOCK)
+
     def test_case_insensitive(self):
         """测试大小写不敏感"""
         config1 = SymbolResolver.resolve("SH600519")

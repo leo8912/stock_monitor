@@ -36,23 +36,25 @@ class TestDIContainer(unittest.TestCase):
         self.assertIs(self.container.get("my_db"), db)
 
     def test_factory_registration(self):
-        """Test factory registration"""
-        self.container.register_factory(Database, lambda: Database())
+        """Test factory registration - factory creates instance on first get, cached as singleton"""
+        factory_calls = []
 
-        self.container.get(Database)
-        self.container.get(Database)
+        def tracking_factory():
+            instance = Database()
+            factory_calls.append(instance)
+            return instance
 
-        # Factories in this container implementation might be cached as singletons depending on implementation
-        # Checking implementation: register_factory stores factory, get calls it if not found in instances?
-        # Re-checking container.py source would be wise, but assuming standard behavior or singletons.
-        # Let's verify if 'register_factory' implies transient or just lazy singleton.
-        # Looking at previous context: "Factory Pattern Support: Added register_factory method..."
+        self.container.register_factory(Database, tracking_factory)
 
-        # If implementation caches the result (Singleton), db1 should be db2.
-        # If it creates new every time (Transient), db1 != db2.
-        # I'll check what implementation does.
-        # Actually I can't assume. Let's assume lazy singleton for now or check behavior.
-        pass
+        # First call should invoke the factory
+        result1 = self.container.get(Database)
+        self.assertEqual(len(factory_calls), 1)
+        self.assertIsInstance(result1, Database)
+
+        # Second call should return the same cached instance (factory NOT called again)
+        result2 = self.container.get(Database)
+        self.assertEqual(len(factory_calls), 1)  # factory still called only once
+        self.assertIs(result1, result2)  # same cached singleton
 
     def test_automatic_resolution(self):
         """Test automatic dependency resolution"""
@@ -74,10 +76,29 @@ class TestDIContainer(unittest.TestCase):
         self.assertIs(controller.service, service)
 
     def test_get_with_auto_creation(self):
-        """Test backward compatibility auto-creation"""
-        # Some core classes might be auto-created if not found
-        # Need to know which ones are hardcoded in get()
-        pass
+        """Test backward compatibility auto-creation for known types in _AUTO_CREATEABLE_TYPES"""
+        from stock_monitor.config.manager import ConfigManager
+
+        # Ensure ConfigManager is not pre-registered
+        self.assertFalse(self.container.has(ConfigManager))
+
+        # get() should auto-create a ConfigManager instance (with DeprecationWarning)
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            instance = self.container.get(ConfigManager)
+
+        self.assertIsInstance(instance, ConfigManager)
+
+        # Should be cached as singleton on second call
+        instance2 = self.container.get(ConfigManager)
+        self.assertIs(instance, instance2)
+
+    def test_get_unregistered_non_auto_type_raises(self):
+        """Test that get() raises KeyError for unregistered types not in _AUTO_CREATEABLE_TYPES"""
+        with self.assertRaises(KeyError):
+            self.container.get(Controller)
 
 
 if __name__ == "__main__":

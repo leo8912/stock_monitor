@@ -121,3 +121,20 @@ class TestEventBus:
         assert Topics.CONFIG_CHANGED == "config.changed"
         assert Topics.DATA_REFRESHED == "data.refreshed"
         assert Topics.APP_STARTUP == "app.startup"
+
+    def test_publish_no_subscribers(self):
+        """发布到无订阅者的 topic 不应报错"""
+        # Should not raise any exception
+        self.bus.publish("nonexistent.topic", data="test")
+
+    def test_duplicate_subscribe(self):
+        """重复订阅同一 callback 应注册多次，publish时触发多次"""
+        call_count = []
+        callback = lambda e: call_count.append(1)
+
+        self.bus.subscribe("t", callback)
+        self.bus.subscribe("t", callback)
+        self.bus.publish("t")
+
+        # Duplicate subscribe means the callback is registered twice
+        assert call_count == [1, 1]

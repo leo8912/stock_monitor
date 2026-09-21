@@ -59,6 +59,39 @@ class TestStockDataService(unittest.TestCase):
         self.mock_fetcher.fetch_single.assert_called_with(code)
         self.assertEqual(result, raw_data)
 
+    def test_get_stocks_data_fetcher_exception(self):
+        """Test that fetcher exceptions propagate through service methods"""
+        self.mock_fetcher.fetch_multiple.side_effect = ConnectionError("Network failure")
+
+        with self.assertRaises(ConnectionError):
+            self.service.get_multiple_stocks_data(["sh600000"])
+
+        self.mock_fetcher.fetch_single.side_effect = TimeoutError("Request timed out")
+        with self.assertRaises(TimeoutError):
+            self.service.get_stock_data("sh600000")
+
+    def test_get_stocks_data_empty_fetcher(self):
+        """Test that empty data from fetcher is returned as-is"""
+        self.mock_fetcher.fetch_multiple.return_value = {}
+        result = self.service.get_multiple_stocks_data(["sh600000"])
+        self.assertEqual(result, {})
+        self.mock_fetcher.fetch_multiple.assert_called_once()
+
+    def test_get_stocks_data_partial_failure(self):
+        """Test batch retrieval when fetcher returns mixed results (some None)"""
+        raw_data = {
+            "sh600000": {"name": "PF Bank", "now": 10.0},
+            "sh601398": None,
+        }
+        self.mock_fetcher.fetch_multiple.return_value = raw_data
+
+        result = self.service.get_multiple_stocks_data(["sh600000", "sh601398"])
+
+        self.assertEqual(result, raw_data)
+        # Data for failed stock is None; successful stock has data
+        self.assertIsNotNone(result["sh600000"])
+        self.assertIsNone(result["sh601398"])
+
 
 if __name__ == "__main__":
     unittest.main()
