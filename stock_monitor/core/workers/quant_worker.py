@@ -79,6 +79,8 @@ class QuantWorker(QtCore.QThread):
 
         # 启动时加载持久化的信号缓存
         self._load_signal_cache()
+        # 主循环存盘计数器（run() 每次启动时重置）
+        self._save_cache_counter = 0
 
     def set_symbols(self, symbols: list[str]) -> None:
         """设置监控标的（G-11：存副本，避免与扫描线程共享同一 list 对象）。
@@ -515,74 +517,97 @@ class QuantWorker(QtCore.QThread):
         )
 
     def run(self) -> None:
-        from stock_monitor.core.config_center import config_center
+        """量化雷达线程主循环。
 
-        from ..market.market_manager import MarketManager
-
+        每轮迭代委托 :meth:`_run_iteration`；量化开关关闭时该迭代仅做 5s
+        等待并跳过底部的 1s 轮询（保持原 ``continue`` 语义）。
+        """
         app_logger.info_ctx("量化雷达侦测线程已启动", action="start")
-        save_cache_counter = 0  # 每10次循环保存一次缓存
+        # 每 10 次循环保存一次缓存（每次 run() 重新计数）
+        self._save_cache_counter = 0
 
         # 首次运行时进行缓存预热
         cache_warming_attempted = False
 
         while not self._stop_event.is_set():
             try:
-                # 优先处理 UI 登记的手动报告请求（不依赖量化开关，避免阻塞 UI）
-                self._process_pending_report()
-
-                self.config = config_center.snapshot()
-                if not self.config.get("quant_enabled", False):
-                    self.msleep(5000)
+                cache_warming_attempted, fast_poll = self._run_iteration(
+                    cache_warming_attempted
+                )
+                if fast_poll:
                     continue
-
-                # G-11：本轮循环使用标的快照，避免主线程并发替换
-                symbols_snapshot = self._symbols_snapshot()
-
-                # 在第一次进入市场开盘时进行缓存预热
-                if MarketManager().is_market_open() and not cache_warming_attempted:
-                    cache_warming_attempted = True
-                    if symbols_snapshot and not self._cache_warmed:
-                        app_logger.info("触发缓存预热...")
-                        try:
-                            self.cache_warmer.warm_cache_for_symbols(
-                                symbols_snapshot,
-                                categories=[1, 2, 3, 9],  # 15m, 30m, 60m, daily
-                                offset=100,
-                            )
-                            self._cache_warmed = True
-                        except Exception as e:
-                            app_logger.error(f"缓存预热失败：{e}")
-
-                if MarketManager().is_market_open():
-                    current_interval = self.config.get(
-                        "quant_scan_interval", self.scan_interval
-                    )
-                    if (
-                        symbols_snapshot
-                        and time.time() - self.last_scan_time >= current_interval
-                    ):
-                        scan_start = time.time()
-                        self.perform_scan_parallel()
-                        scan_duration = time.time() - scan_start
-                        self.perf_monitor.record_scan_time(scan_duration)
-                        self.last_scan_time = time.time()
-                        app_logger.info_ctx(
-                            "量化扫描完成",
-                            symbols=len(symbols_snapshot),
-                            duration_ms=f"{scan_duration * 1000:.0f}",
-                        )
-
-                self.check_and_trigger_reports()
-
-                # 定期保存信号缓存（每10秒保存一次，避免过于频繁的磁盘I/O）
-                save_cache_counter += 1
-                if save_cache_counter >= 10:
-                    self._save_signal_cache()
-                    save_cache_counter = 0
-
             except Exception as e:
                 app_logger.error(f"QuantWorker 运行异常：{e}")
             self.msleep(1000)
+
+    def _run_iteration(self, cache_warming_attempted: bool) -> tuple[bool, bool]:
+        """执行一次主循环迭代。
+
+        Args:
+            cache_warming_attempted: 跨迭代的"本轮 run 是否已尝试预热"标记。
+
+        Returns:
+            (cache_warming_attempted, fast_poll)：``fast_poll`` 为 True 表示
+            量化开关关闭，调用方应跳过底部 1s 轮询（迭代内已等待 5s）。
+        """
+        from stock_monitor.core.config_center import config_center
+
+        from ..market.market_manager import MarketManager
+
+        # 优先处理 UI 登记的手动报告请求（不依赖量化开关，避免阻塞 UI）
+        self._process_pending_report()
+
+        self.config = config_center.snapshot()
+        if not self.config.get("quant_enabled", False):
+            self.msleep(5000)
+            return cache_warming_attempted, True
+
+        # G-11：本轮循环使用标的快照，避免主线程并发替换
+        symbols_snapshot = self._symbols_snapshot()
+
+        # 在第一次进入市场开盘时进行缓存预热
+        if MarketManager().is_market_open() and not cache_warming_attempted:
+            cache_warming_attempted = True
+            if symbols_snapshot and not self._cache_warmed:
+                app_logger.info("触发缓存预热...")
+                try:
+                    self.cache_warmer.warm_cache_for_symbols(
+                        symbols_snapshot,
+                        categories=[1, 2, 3, 9],  # 15m, 30m, 60m, daily
+                        offset=100,
+                    )
+                    self._cache_warmed = True
+                except Exception as e:
+                    app_logger.error(f"缓存预热失败：{e}")
+
+        if MarketManager().is_market_open():
+            current_interval = self.config.get(
+                "quant_scan_interval", self.scan_interval
+            )
+            if (
+                symbols_snapshot
+                and time.time() - self.last_scan_time >= current_interval
+            ):
+                scan_start = time.time()
+                self.perform_scan_parallel()
+                scan_duration = time.time() - scan_start
+                self.perf_monitor.record_scan_time(scan_duration)
+                self.last_scan_time = time.time()
+                app_logger.info_ctx(
+                    "量化扫描完成",
+                    symbols=len(symbols_snapshot),
+                    duration_ms=f"{scan_duration * 1000:.0f}",
+                )
+
+        self.check_and_trigger_reports()
+
+        # 定期保存信号缓存（每10次循环保存一次，避免过于频繁的磁盘I/O）
+        self._save_cache_counter += 1
+        if self._save_cache_counter >= 10:
+            self._save_signal_cache()
+            self._save_cache_counter = 0
+
+        return cache_warming_attempted, False
 
     def perform_scan(self) -> None:
         """对全部自选股执行批量量化扫描（串行兼容入口，委托并行版本执行）"""
