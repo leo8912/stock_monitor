@@ -287,9 +287,9 @@ class QuantWorker(QtCore.QThread):
             # 执行技术面分析
             signals = self.engine.scan_all_timeframes(symbol)
 
-            # OBV 累积检测
+            # OBV 累积检测（与 _scan_single_symbol 一致：转换为标准信号格式）
             obv_signals = self.engine.detect_obv_accumulation(symbol, daily_df)
-            signals.extend(obv_signals)
+            scan_rules.append_obv_signals(signals, obv_signals)
 
             # 波浪与斐波那契分析 (日线 + 60m)
             daily_wave, h60_wave = self._analyze_symbol_waves(symbol, daily_df)
