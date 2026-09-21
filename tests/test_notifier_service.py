@@ -253,6 +253,60 @@ class TestNotifierService(unittest.TestCase):
         # 验证返回 False
         self.assertFalse(result)
 
+    @patch("stock_monitor.services.notifier.requests.Session.post")
+    @patch("stock_monitor.services.notifier.NotifierService._get_app_token")
+    def test_send_failure_invalidates_stale_token(self, mock_get_token, mock_post):
+        """服务端拒绝 token（errcode=40014）时清除本地缓存，避免最长 2h 持续失败"""
+        mock_get_token.return_value = "stale_token"
+        cache_key = ("test_corp_id", "test_secret")
+        NotifierService._token_cache[cache_key] = ("stale_token", time.time() + 3600)
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "errcode": 40014,
+            "errmsg": "invalid access_token",
+        }
+        mock_post.return_value = mock_response
+
+        result = NotifierService.send_wecom_app_message(
+            self.test_config, title="测试标题", description="测试描述"
+        )
+
+        self.assertFalse(result)
+        self.assertNotIn(cache_key, NotifierService._token_cache)
+
+    @patch("stock_monitor.services.notifier.requests.Session.post")
+    @patch("stock_monitor.services.notifier.NotifierService._get_app_token")
+    def test_send_failure_keeps_cache_for_other_errors(self, mock_get_token, mock_post):
+        """非 token 类错误（如频率限制 45009）不应清除 token 缓存"""
+        mock_get_token.return_value = "valid_token"
+        cache_key = ("test_corp_id", "test_secret")
+        NotifierService._token_cache[cache_key] = ("valid_token", time.time() + 3600)
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "errcode": 45009,
+            "errmsg": "api freq out of limit",
+        }
+        mock_post.return_value = mock_response
+
+        result = NotifierService.send_wecom_app_message(
+            self.test_config, title="测试标题", description="测试描述"
+        )
+
+        self.assertFalse(result)
+        self.assertIn(cache_key, NotifierService._token_cache)
+
+    def test_invalidate_app_token(self):
+        """invalidate_app_token 精确清除指定凭证缓存，不影响其它凭证"""
+        NotifierService._token_cache[("corp_a", "secret_a")] = ("tok_a", time.time() + 60)
+        NotifierService._token_cache[("corp_b", "secret_b")] = ("tok_b", time.time() + 60)
+
+        NotifierService.invalidate_app_token("corp_a", "secret_a")
+
+        self.assertNotIn(("corp_a", "secret_a"), NotifierService._token_cache)
+        self.assertIn(("corp_b", "secret_b"), NotifierService._token_cache)
+
     def test_default_url_fallback(self):
         """测试 URL 默认回退"""
         # 验证当 URL 为空时，应该使用默认值

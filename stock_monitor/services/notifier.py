@@ -25,6 +25,11 @@ DEFAULT_TIMEOUT_SECONDS = 10  # 默认超时时间 (秒)
 WEBHOOK_TIMEOUT_SECONDS = 5  # Webhook 超时时间 (秒)
 TOKEN_EXPIRY_BUFFER_SECONDS = 60  # Token 提前过期缓冲 (秒)
 
+# 企微返回这些 errcode 表示 access_token 已失效/错误，需要清除本地缓存重新获取：
+# 40001 secret 错误、40014 不合法的 access_token、41001 缺少 access_token、
+# 42001 access_token 超时
+TOKEN_INVALID_ERRCODES = frozenset({40001, 40014, 41001, 42001})
+
 
 # ====== 重试装饰器（使用统一重试模块）======
 from stock_monitor.utils.retry import network_retry as retry
@@ -51,6 +56,12 @@ class NotifierService:
         """获取并缓存企业微信应用 AccessToken（仅返回 token）。"""
         token, _error = cls._resolve_app_token(corp_id, secret)
         return token
+
+    @classmethod
+    def invalidate_app_token(cls, corp_id: str, secret: str) -> None:
+        """清除指定应用凭证的 token 缓存（服务端拒绝 token 时调用）。"""
+        with cls._lock:
+            cls._token_cache.pop((corp_id, secret), None)
 
     @classmethod
     def _resolve_app_token(cls, corp_id: str, secret: str) -> tuple:
@@ -137,6 +148,13 @@ class NotifierService:
                 app_logger.info_ctx("企微应用消息发送成功", title=title, channel="app")
                 return True
             else:
+                if resp.get("errcode") in TOKEN_INVALID_ERRCODES:
+                    # token 被服务端拒绝：清除缓存，下次发送重新获取
+                    cls.invalidate_app_token(corp_id, secret)
+                    app_logger.warning(
+                        f"企微 token 已失效（errcode={resp.get('errcode')}），"
+                        "已清除本地缓存，下次发送将重新获取"
+                    )
                 app_logger.error(f"企微应用消息发送失败: {resp}")
                 return False
         except Exception as e:
@@ -190,6 +208,8 @@ class NotifierService:
             result["response"] = resp
             result["success"] = resp.get("errcode") == 0
             if not result["success"]:
+                if resp.get("errcode") in TOKEN_INVALID_ERRCODES:
+                    cls.invalidate_app_token(corp_id, secret)
                 result["error"] = f"发送失败: {resp}"
         except Exception as e:
             result["error"] = str(e)
