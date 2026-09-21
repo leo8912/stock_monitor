@@ -23,7 +23,7 @@ from ..engine import WaveAnalyzer, WaveChart, quant_report, wave_report
 from ..engine.backtest_engine import BacktestEngine
 from ..engine.quant_engine import QuantEngine
 from ..engine.quant_engine_constants import TF_CHINESE_MAP
-from . import alert_text, signal_cache
+from . import alert_text, scan_rules, signal_cache
 from .base import DEFAULT_STOP_TIMEOUT_MS, wait_for_thread_stop
 
 CACHE_DIR = Path(get_config_dir()) / "cache"
@@ -646,7 +646,10 @@ class QuantWorker(QtCore.QThread):
         app_logger.info(f"本轮量化扫描完毕，触发信号：{len(results)} 次")
 
     def _scan_single_symbol(self, symbol: str) -> dict:
-        """扫描单只股票（供线程池调用）"""
+        """扫描单只股票（供线程池调用）
+
+        数据获取依赖 engine/backtester，决策规则见 scan_rules 纯函数模块。
+        """
         try:
             stock_name = self.fetcher.name_registry.get_name(symbol)
             code, market, _ = self.engine._parse_symbol(symbol)
@@ -657,29 +660,14 @@ class QuantWorker(QtCore.QThread):
             signals = self.engine.scan_all_timeframes(symbol)
 
             obv_signals = self.engine.detect_obv_accumulation(symbol, daily_df)
-            for sig in obv_signals:
-                signals.append(
-                    {
-                        "name": f"OBV 低位累积 ({sig['level']})",
-                        "tf": "Daily",
-                        "time": sig["time"],
-                    }
-                )
+            scan_rules.append_obv_signals(signals, obv_signals)
 
             daily_stats = self.backtester.get_strategy_stats(code, market, category=9)
 
-            is_confluence = False
             rsrs_z, _ = self.engine.calculate_rsrs(daily_df)
-            has_macd_div = any(s["name"] == "MACD 底背离" for s in signals)
-            if has_macd_div and rsrs_z > 0.7:
-                is_confluence = True
+            is_confluence = scan_rules.is_confluence(signals, rsrs_z)
 
-            is_priority = False
-            wr_label = ""
-            if daily_stats and daily_stats.get("total_signals", 0) >= 3:
-                if daily_stats["win_rate"] >= 0.8:
-                    is_priority = True
-                    wr_label = f" [💎 历史胜率 {daily_stats['win_rate'] * 100:.0f}%]"
+            is_priority, _wr_label = scan_rules.is_priority_symbol(daily_stats)
 
             score, audit = self.engine.calculate_intensity_score_with_symbol(
                 symbol, daily_df, signals
@@ -688,23 +676,11 @@ class QuantWorker(QtCore.QThread):
             threshold = 2 if is_priority else 3
 
             if is_confluence:
-                signals.append(
-                    {
-                        "name": "⚡策略共振 (底背离+RSRS)",
-                        "tf": "Daily",
-                        "time": time.strftime("%H:%M"),
-                    }
-                )
-                score = max(score, 4)
+                signals, score = scan_rules.apply_confluence(signals, score)
 
-            if not signals and score >= threshold:
-                signals.append(
-                    {
-                        "name": "多因子综合走强" + wr_label,
-                        "tf": "Daily",
-                        "time": time.strftime("%H:%M"),
-                    }
-                )
+            scan_rules.append_multi_factor_fallback(
+                signals, score, threshold, _wr_label
+            )
 
             if signals:
                 return self._process_signals(
