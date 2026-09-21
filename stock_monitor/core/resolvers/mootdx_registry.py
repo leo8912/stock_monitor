@@ -1,3 +1,4 @@
+import contextlib
 import io
 import json
 import os
@@ -117,24 +118,36 @@ class MootdxNameRegistry:
             return
 
         # 防御 PyInstaller 窗口模式下 sys.stdout/stderr 为 None 的问题
-        stdout_orig = sys.stdout
-        stderr_orig = sys.stderr
-        temp_out = io.StringIO()
-
+        # 使用 contextlib.redirect_stdout/redirect_stderr 替代全局替换，
+        # 避免影响其他线程的输出。
+        _sentinel = io.StringIO()
+        real_stdout = sys.stdout or _sentinel
+        real_stderr = sys.stderr or _sentinel
+        # 如果 stdout/stderr 为 None（PyInstaller 无窗口模式），
+        # 临时设置一个 StringIO 防止 write 崩溃，用完即还原。
+        _patched_stdout = False
+        _patched_stderr = False
         if sys.stdout is None:
-            sys.stdout = temp_out
+            sys.stdout = _sentinel
+            _patched_stdout = True
         if sys.stderr is None:
-            sys.stderr = temp_out
+            sys.stderr = _sentinel
+            _patched_stderr = True
+
+        _stderr_capture = io.StringIO()
 
         safe_log_info("本地缓存中存在未知名称，触发全量名称字典同步...")
         try:
             safe_log_info(f"调用 client.stocks(market=0)，client 类型：{type(client)}")
-            sz_df = client.stocks(market=0)
+
+            with contextlib.redirect_stdout(io.StringIO()), \
+                 contextlib.redirect_stderr(_stderr_capture):
+                sz_df = client.stocks(market=0)
+                sh_df = client.stocks(market=1)
+
             safe_log_info(
                 f"sz_df 获取成功，行数：{len(sz_df) if sz_df is not None else 'None'}"
             )
-
-            sh_df = client.stocks(market=1)
             safe_log_info(
                 f"sh_df 获取成功，行数：{len(sh_df) if sh_df is not None else 'None'}"
             )
@@ -184,9 +197,11 @@ class MootdxNameRegistry:
             error_msg = f"全量同步名称字典失败：{e}\n详细堆栈:\n{error_detail}"
             safe_log_error(error_msg)
         finally:
-            # 还原标准流
-            sys.stdout = stdout_orig
-            sys.stderr = stderr_orig
+            # 还原为 None 占位的标准流（仅还原我们修补的部分）
+            if _patched_stdout:
+                sys.stdout = None
+            if _patched_stderr:
+                sys.stderr = None
 
     def get_name(self, symbol: str) -> str:
         """从缓存安全获取名称，支持通过 SymbolResolver 归一化键"""

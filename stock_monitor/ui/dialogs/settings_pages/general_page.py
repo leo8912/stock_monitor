@@ -209,13 +209,15 @@ class GeneralSettingsPage(SettingsPage):
                     progress_dialog.show()
 
                     def progress_cb(percent) -> None:
-                        """下载进度回调：更新进度对话框数值。"""
+                        """下载进度回调：更新进度对话框数值。
+
+                        不再手动调用 QApplication.processEvents()，
+                        Qt 事件循环会在合适的时机处理重绘。
+                        """
                         progress_dialog.setValue(percent)
-                        QApplication.processEvents()
 
                     def is_cancelled_cb() -> bool:
                         """取消检查回调：返回用户是否已取消下载。"""
-                        QApplication.processEvents()
                         return progress_dialog.wasCanceled()
 
                     def security_warn_cb(warn_msg) -> bool:

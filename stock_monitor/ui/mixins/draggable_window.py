@@ -2,6 +2,24 @@ from typing import Optional
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 
+# Windows API 结构体定义（模块级别，避免在热路径中重复创建）
+try:
+    import ctypes
+    from ctypes import wintypes
+
+    class _WINDOWPOS(ctypes.Structure):
+        _fields_ = [
+            ("hwnd", wintypes.HWND),
+            ("hwndInsertAfter", wintypes.HWND),
+            ("x", ctypes.c_int),
+            ("y", ctypes.c_int),
+            ("cx", ctypes.c_int),
+            ("cy", ctypes.c_int),
+            ("flags", ctypes.c_uint),
+        ]
+except ImportError:
+    _WINDOWPOS = None  # 非 Windows 平台
+
 
 class DraggableWindowMixin:
     """
@@ -215,7 +233,7 @@ class DraggableWindowMixin:
 
     def nativeEvent(self, event_type, message):
         """处理 Windows 原生事件，在消息循环级别锁定置顶状态"""
-        if event_type == b"windows_generic_msg":
+        if event_type == b"windows_generic_msg" and _WINDOWPOS is not None:
             import ctypes
             from ctypes import wintypes
 
@@ -224,20 +242,8 @@ class DraggableWindowMixin:
             # 消息拦截：0x0046 = WM_WINDOWPOSCHANGING
             # 当窗口层级试图改变时（例如点击其他窗口导致焦点移动），将其强制拉回到 TOPMOST
             if msg.message == 0x0046:
-                # 定义并读取 WINDOWPOS 结构体数据
-                class WINDOWPOS(ctypes.Structure):
-                    _fields_ = [
-                        ("hwnd", wintypes.HWND),
-                        ("hwndInsertAfter", wintypes.HWND),
-                        ("x", ctypes.c_int),
-                        ("y", ctypes.c_int),
-                        ("cx", ctypes.c_int),
-                        ("cy", ctypes.c_int),
-                        ("flags", ctypes.c_uint),
-                    ]
-
                 # hwndInsertAfter = HWND_TOPMOST (-1)
-                pos = WINDOWPOS.from_address(msg.lParam)
+                pos = _WINDOWPOS.from_address(msg.lParam)
                 pos.hwndInsertAfter = -1
                 # 这里不需要执行额外的 SetWindowPos，系统会根据修改后的 pos 继续动作
 

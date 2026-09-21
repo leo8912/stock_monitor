@@ -3,6 +3,7 @@
 基于 tenacity 库，提供标准化的重试策略
 """
 
+import time
 from functools import wraps
 from typing import Any, Callable
 
@@ -121,8 +122,6 @@ def retry_on_failure(
                         app_logger.warning(
                             f"{func.__name__} 第{attempt + 1}次尝试失败: {e}"
                         )
-                        import time
-
                         time.sleep(delay)
             app_logger.error(f"{func.__name__} 在 {max_attempts} 次尝试后仍然失败")
             raise last_exception

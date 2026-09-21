@@ -1,4 +1,5 @@
 import os
+import weakref
 
 from PyQt6 import QtGui, QtWidgets
 
@@ -28,7 +29,7 @@ class SystemTray(QtWidgets.QSystemTrayIcon):
             )
         )
         super().__init__(icon)
-        self.main_window = main_window
+        self._main_window_ref = weakref.ref(main_window)
         self.menu = QtWidgets.QMenu()
         self.action_show = self.menu.addAction("显示")
         self.action_settings = self.menu.addAction("设置")
@@ -43,6 +44,11 @@ class SystemTray(QtWidgets.QSystemTrayIcon):
 
         # 托盘行情降级面板（任务栏嵌入失败时启用）
         self._quote_fallback = None
+
+    @property
+    def main_window(self):
+        """通过 weakref 访问主窗口，避免循环引用导致内存泄漏。"""
+        return self._main_window_ref()
 
     def enable_quote_fallback(self, stocks=None) -> None:
         """启用托盘行情轮播降级方案。"""

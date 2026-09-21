@@ -189,7 +189,7 @@ class StockDataProcessor:
 
             return (f"{f_now:.2f}", f"{percent:+.2f}%", color, f_now, f_close)
 
-        except (ValueError, TypeError, Exception) as e:
+        except Exception as e:
             app_logger.warning(f"处理股票 {code} 价格信息失败: {e}")
             return None
 

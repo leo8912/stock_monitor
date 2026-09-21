@@ -46,7 +46,9 @@ def safe_call(
 
     # 统一的错误日志记录
     app_logger.error(error_msg)
-    app_logger.debug(f"函数参数: args={args}, kwargs={kwargs}")
+    app_logger.debug(
+        f"函数参数: {len(args)} positional args, {len(kwargs)} keyword args"
+    )
 
     # 调用自定义异常处理器(如果提供)
     if exception_handler:

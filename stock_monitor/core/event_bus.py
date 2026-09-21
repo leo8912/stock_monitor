@@ -11,6 +11,34 @@ from typing import Any, Callable
 
 from stock_monitor.utils.logger import app_logger
 
+# 尝试导入 PyQt6 以支持异步分发
+_QApp = None
+_HAS_PYQT = False
+_HAS_EVENT_LOOP = False
+try:
+    from PyQt6.QtCore import QTimer
+
+    def _get_qapp():
+        """延迟获取 QApplication 实例。"""
+        global _QApp
+        if _QApp is None:
+            from PyQt6.QtWidgets import QApplication
+
+            _QApp = QApplication.instance()
+        return _QApp
+
+    _HAS_PYQT = True
+    # 检测是否有正在运行的 Qt 事件循环（pytest 等无事件循环场景走同步路径）
+    try:
+        from PyQt6.QtWidgets import QApplication
+
+        _app = QApplication.instance()
+        _HAS_EVENT_LOOP = _app is not None and _app.thread() is not None
+    except Exception:
+        _HAS_EVENT_LOOP = False
+except ImportError:
+    _HAS_PYQT = False
+
 
 @dataclass
 class Event:
@@ -91,12 +119,11 @@ class EventBus:
 
     def publish(self, topic: str, data: Any = None, source: str = "") -> None:
         """
-        发布事件
+        发布事件。
 
-        Args:
-            topic: 事件主题
-            data: 事件数据
-            source: 事件来源标识
+        优先通过 QTimer.singleShot(0, ...) 异步分发回调，避免阻塞调用线程
+        （尤其适用于从工作线程发布到 UI 线程订阅者的场景）。
+        若 PyQt6 不可用（如纯 CLI 模式），则退化为同步执行。
         """
         event = Event(topic=topic, data=data, source=source)
 
@@ -106,7 +133,26 @@ class EventBus:
             subscribers.extend(self._subscribers.get(topic, []))
             subscribers.extend(self._wildcard_subscribers)
 
-        # 同步执行回调
+        if not subscribers:
+            return
+
+        # --- 异步分发（PyQt6 可用且有事件循环时） ---
+        if _HAS_PYQT and _HAS_EVENT_LOOP:
+            for callback in subscribers:
+                try:
+                    QTimer.singleShot(0, lambda cb=callback, ev=event: cb(ev))
+                except Exception:
+                    # QTimer 只能在有事件循环的线程中使用，退化为同步
+                    try:
+                        callback(event)
+                    except Exception as e:
+                        app_logger.error(
+                            f"事件回调异常 [{topic}]: {e}",
+                            extra={"event_topic": topic, "event_source": source},
+                        )
+            return
+
+        # --- 同步分发（无 PyQt6 时的 fallback） ---
         for callback in subscribers:
             try:
                 callback(event)

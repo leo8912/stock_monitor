@@ -19,6 +19,7 @@ class NetworkManager:
         self.timeout = timeout
         self.session = create_session(
             {
+                # 版本号应与 stock_monitor/version.py 保持同步
                 "User-Agent": "StockMonitor/4.4 (Windows; Python)",
                 "Accept": "application/vnd.github.v3+json",
             }
@@ -96,29 +97,27 @@ class NetworkManager:
             JSON响应数据或None（如果失败）
         """
         # GitHub API 请求使用更长超时 + 可选 Token
-        old_timeout = self.timeout
-        self.timeout = 30
+        # 注意：不修改 self.timeout 和 self.session.headers，避免多线程竞态
+        headers = {}
         try:
-            # 如果配置了 GitHub Token，添加认证（提高限流到 5000次/小时）
-            try:
-                from stock_monitor.core.config_center import config_center
+            from stock_monitor.core.config_center import config_center
 
-                token = config_center.get_str("github_token", "")
-                if token:
-                    self.session.headers["Authorization"] = f"token {token}"
-            except Exception:
-                pass
+            token = config_center.get_str("github_token", "")
+            if token:
+                headers["Authorization"] = f"token {token}"
+        except Exception:
+            pass
 
-            response = self.get(url)
-        finally:
-            self.timeout = old_timeout
-            # 清理认证头
-            self.session.headers.pop("Authorization", None)
+        try:
+            response = self.session.get(url, timeout=30, headers=headers)
+            response.raise_for_status()
+            app_logger.debug(f"GET请求成功: {url}")
+        except requests.exceptions.RequestException as e:
+            app_logger.error(f"GET请求失败: {url}, 错误: {e}")
+            return None
 
-        if response:
-            try:
-                return response.json()
-            except ValueError as e:
-                app_logger.error(f"解析GitHub API响应失败: {e}")
-                return None
-        return None
+        try:
+            return response.json()
+        except ValueError as e:
+            app_logger.error(f"解析GitHub API响应失败: {e}")
+            return None

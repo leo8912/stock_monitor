@@ -121,14 +121,12 @@ class FinancialFilter:
     def _get_cached_data(self, symbol: str) -> Optional[list[dict[str, Any]]]:
         """读取本地缓存"""
         cache_path = os.path.join(self.cache_dir, f"{symbol}.json")
-        if not os.path.exists(cache_path):
-            return None
-
-        # 检查是否过期
-        if time.time() - os.path.getmtime(cache_path) > self.cache_expiry:
-            return None
 
         try:
+            # 检查是否过期（TOCTOU 安全：直接尝试访问，捕获 FileNotFoundError）
+            if time.time() - os.path.getmtime(cache_path) > self.cache_expiry:
+                return None
+
             with open(cache_path, encoding="utf-8") as f:
                 return json.load(f)
         except FileNotFoundError:

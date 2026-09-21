@@ -34,29 +34,19 @@ class MarketStatusBar(QtWidgets.QWidget):
             QtWidgets.QSizePolicy.Policy.Preferred,
         )
 
-        # 创建右键菜单
+        # 创建右键菜单（一次性构建，show_context_menu 只做 popup）
         self.menu = QtWidgets.QMenu(self)
         self.menu.setObjectName("AppContextMenu")
+        action_settings = self.menu.addAction("设置")
+        action_settings.triggered.connect(self.open_settings)
+        self.menu.addSeparator()
+        action_quit = self.menu.addAction("退出")
+        action_quit.triggered.connect(self.quit_app)
         self.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self.show_context_menu)
 
     def show_context_menu(self, position):
-        """显示右键菜单"""
-        # 清空现有动作
-        self.menu.clear()
-
-        # 添加"设置"动作
-        action_settings = self.menu.addAction("设置")
-        action_settings.triggered.connect(self.open_settings)
-
-        # 添加分隔符
-        self.menu.addSeparator()
-
-        # 添加"退出"动作
-        action_quit = self.menu.addAction("退出")
-        action_quit.triggered.connect(self.quit_app)
-
-        # 显示菜单
+        """显示右键菜单（菜单已在 __init__ 中构建完毕，此处只弹出）。"""
         self.menu.popup(QtGui.QCursor.pos())
 
     def open_settings(self):

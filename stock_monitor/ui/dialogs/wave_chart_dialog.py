@@ -8,9 +8,7 @@ import pandas as pd
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
 from PyQt6 import QtWidgets
-
-plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "DejaVu Sans"]
-plt.rcParams["axes.unicode_minus"] = False
+from PyQt6.QtCore import QThread, pyqtSignal
 
 from ...core.engine.wave_analyzer import analyze_and_record, explain_wave, wave_hint
 from ...utils.logger import app_logger
@@ -26,8 +24,66 @@ YELLOW = "#ffcc00"
 WHITE = "#ffffff"
 
 
+class _WaveDataWorker(QThread):
+    """后台拉取 K 线并执行波浪分析，避免阻塞 UI。"""
+
+    finished = pyqtSignal(object, str)  # (result_or_None, timeframe_name)
+    error = pyqtSignal(str)
+
+    def __init__(self, engine, symbol, category, timeframe_key, timeframe_name,
+                 subwave_checked, fib_coefficients, parent=None):
+        super().__init__(parent)
+        self.engine = engine
+        self.symbol = symbol
+        self.category = category
+        self.timeframe_key = timeframe_key
+        self.timeframe_name = timeframe_name
+        self.subwave_checked = subwave_checked
+        self.fib_coefficients = fib_coefficients
+
+    def run(self):
+        try:
+            df = self.engine.fetch_bars(
+                self.symbol, category=self.category, offset=350
+            )
+            if df is None or df.empty or len(df) < 30:
+                self.finished.emit(None, self.timeframe_name)
+                return
+
+            result = None
+            if self.subwave_checked:
+                result = analyze_and_record(
+                    df,
+                    symbol=self.symbol,
+                    timeframe=self.timeframe_key,
+                    threshold=0.03,
+                    fib_coefficients=self.fib_coefficients,
+                )
+            else:
+                for t in [0.08, 0.06, 0.05]:
+                    result = analyze_and_record(
+                        df,
+                        symbol=self.symbol,
+                        timeframe=self.timeframe_key,
+                        threshold=t,
+                        fib_coefficients=self.fib_coefficients,
+                    )
+                    if result:
+                        break
+
+            self.finished.emit(result, self.timeframe_name)
+        except Exception as e:
+            self.error.emit(str(e))
+
+
 class WaveChartDialog(QtWidgets.QDialog):
     """波浪与斐波那契K线图本地弹窗"""
+
+    # 局部 rcParams，避免污染全局 matplotlib 配置
+    _LOCAL_RC = {
+        "font.sans-serif": ["Microsoft YaHei", "SimHei", "DejaVu Sans"],
+        "axes.unicode_minus": False,
+    }
 
     def __init__(self, symbol: str, stock_name: str, engine, parent=None):
         super().__init__(parent)
@@ -90,8 +146,9 @@ class WaveChartDialog(QtWidgets.QDialog):
         top_bar.addWidget(self.period_combo)
         main_layout.addLayout(top_bar)
 
-        # 图形区域
-        self.figure = plt.figure(facecolor="#121212")
+        # 图形区域（使用局部 rcParams 避免污染全局配置）
+        with plt.rc_context(self._LOCAL_RC):
+            self.figure = plt.figure(facecolor="#121212")
         self.canvas = FigureCanvas(self.figure)
         main_layout.addWidget(self.canvas, stretch=1)
 
@@ -226,6 +283,13 @@ class WaveChartDialog(QtWidgets.QDialog):
         try:
             plt.close(self.figure)
             self.figure.clear()
+            # 释放 canvas 和 toolbar，断开 matplotlib 与 Qt 的关联
+            if self.canvas is not None:
+                self.canvas.deleteLater()
+                self.canvas = None
+            if self.toolbar is not None:
+                self.toolbar.deleteLater()
+                self.toolbar = None
         except Exception:
             pass
         super().closeEvent(event)
@@ -240,46 +304,42 @@ class WaveChartDialog(QtWidgets.QDialog):
         timeframe_key = self.period_combo.currentData()
         category = 9 if timeframe_key == "daily" else 3
 
+        app_logger.info(
+            f"[波浪图弹窗] 拉取K线: symbol={self.symbol}, category={category}, offset=350"
+        )
+
+        # 在后台线程中执行网络拉取 + 波浪分析，避免阻塞 UI
+        self._wave_worker = _WaveDataWorker(
+            engine=self.engine,
+            symbol=self.symbol,
+            category=category,
+            timeframe_key=timeframe_key,
+            timeframe_name=timeframe_name,
+            subwave_checked=self.subwave_cb.isChecked(),
+            fib_coefficients=self._get_fib_coefficients(),
+            parent=self,
+        )
+        self._wave_worker.finished.connect(self._on_wave_data_ready)
+        self._wave_worker.error.connect(self._on_wave_data_error)
+        self._wave_worker.start()
+
+    def _on_wave_data_ready(self, result, timeframe_name):
+        """后台数据就绪后，在主线程绘图和更新卡片。"""
+        if result is None:
+            self._card_labels["wave_main"].setText("数据不足" if not result else "无法识别波浪")
+            return
+
         try:
-            app_logger.info(
-                f"[波浪图弹窗] 拉取K线: symbol={self.symbol}, category={category}, offset=350"
-            )
-            df = self.engine.fetch_bars(self.symbol, category=category, offset=350)
-            if df is None or df.empty or len(df) < 30:
-                self._card_labels["wave_main"].setText("数据不足")
-                return
-
-            result = None
-            if self.subwave_cb.isChecked():
-                result = analyze_and_record(
-                    df,
-                    symbol=self.symbol,
-                    timeframe=timeframe_key,
-                    threshold=0.03,
-                    fib_coefficients=self._get_fib_coefficients(),
-                )
-            else:
-                for t in [0.08, 0.06, 0.05]:
-                    result = analyze_and_record(
-                        df,
-                        symbol=self.symbol,
-                        timeframe=timeframe_key,
-                        threshold=t,
-                        fib_coefficients=self._get_fib_coefficients(),
-                    )
-                    if result:
-                        break
-
-            if not result:
-                self._card_labels["wave_main"].setText("无法识别波浪")
-                return
-
             self.plot_to_canvas(result, timeframe_name)
             self._update_cards(result)
-
         except Exception as e:
-            app_logger.error(f"[波浪图弹窗] 异常: {e}", exc_info=True)
+            app_logger.error(f"[波浪图弹窗] 绘图异常: {e}", exc_info=True)
             self._card_labels["wave_main"].setText(f"失败: {e}")
+
+    def _on_wave_data_error(self, error_msg):
+        """后台线程出错回调。"""
+        app_logger.error(f"[波浪图弹窗] 异常: {error_msg}", exc_info=True)
+        self._card_labels["wave_main"].setText(f"失败: {error_msg}")
 
     def _update_cards(self, result):
         cw = result.current_wave

@@ -6,6 +6,9 @@ class StockRowData:
     """
     股票单行显示数据对象
     代替原本散落且脆弱的多值 tuple 传递方案
+
+    注意：此 dataclass 为可变的（frozen=False），因为 main_window_view_model
+    会在运行时更新 dark_flow 字段。跨线程访问时需由调用方保证线程安全。
     """
 
     code: str

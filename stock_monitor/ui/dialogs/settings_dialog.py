@@ -80,6 +80,7 @@ class NewSettingsDialog(QDialog):
         # 不传递父窗口给 QDialog，避免继承主窗口的置顶属性
         super().__init__(None)
         self.main_window = main_window
+        self._force_hide = False
 
         # Initialize ViewModel
         self.viewModel = SettingsViewModel()
@@ -327,6 +328,7 @@ class NewSettingsDialog(QDialog):
         self._cleanup_preview_state()
         self._emit_config_changed_signal()
         self._watchlist_page._update_original_watch_list()
+        self._force_hide = True
         self.hide()
 
     def _cleanup_preview_state(self) -> None:
@@ -362,6 +364,7 @@ class NewSettingsDialog(QDialog):
             self.main_window.update()
 
         # 隐藏窗口而不是关闭
+        self._force_hide = True
         self.hide()
 
     def showEvent(self, a0) -> None:  # type: ignore
@@ -410,10 +413,16 @@ class NewSettingsDialog(QDialog):
 
             app_logger.error(f"设置对话框 closeEvent 清理失败：{e}")
         finally:
-            # 隐藏窗口而不是真正关闭
-            self.hide()
-            if event:
-                event.ignore()  # 阻止窗口真正关闭
+            if self._force_hide:
+                # accept/reject 主动调用 hide()，阻止窗口真正关闭
+                self._force_hide = False
+                self.hide()
+                if event:
+                    event.ignore()
+            else:
+                # 用户点击 X 按钮，真正关闭窗口
+                if event:
+                    event.accept()
 
     def hideEvent(self, event: QtGui.QHideEvent) -> None:
         """设置对话框隐藏事件 - 清理预览状态"""

@@ -173,12 +173,21 @@ exit /b 1
                     app_logger.error(f"BAT 启动也失败：{e2}", exc_info=True)
                     return False
 
-            # 强制退出
+            # 清理关键资源后安全退出
             import time
 
             time.sleep(1.0)
-            os._exit(0)
-            # 注意: os._exit(0) 后程序已终止，此处不会执行
+
+            # 手动关闭数据库连接池，避免 WAL 文件残留
+            try:
+                from stock_monitor.data.stock.stock_db import get_db_pool
+
+                get_db_pool().close_all()
+            except Exception:
+                pass
+
+            # sys.exit 触发 atexit 处理器与 finally 块，比 os._exit 更安全
+            sys.exit(0)
 
         except Exception as e:
             app_logger.error(f"启动更新程序时发生错误: {e}", exc_info=True)

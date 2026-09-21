@@ -3,10 +3,87 @@
 """
 
 from PyQt6 import QtWidgets
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QColor
 
 from ...utils.logger import app_logger
+
+
+class _DataLoadWorker(QThread):
+    """后台数据拉取线程，避免阻塞 UI。"""
+
+    finished = pyqtSignal(list)  # 成功时发送 comparison_data 列表
+    error = pyqtSignal(str)  # 失败时发送错误信息
+
+    def __init__(self, engine, symbols, stock_names, parent=None):
+        super().__init__(parent)
+        self.engine = engine
+        self.symbols = symbols
+        self.stock_names = stock_names
+
+    def run(self):
+        comparison_data = []
+        try:
+            for symbol in self.symbols:
+                try:
+                    df = self.engine.fetch_bars(symbol, category=9, offset=250)
+                    if df is None or df.empty or len(df) < 60:
+                        continue
+
+                    indicators = self.engine.calculate_comprehensive_indicators(df)
+                    if not indicators:
+                        continue
+
+                    current_price = df.iloc[-1]["close"]
+                    prev_price = df.iloc[-2]["close"] if len(df) > 1 else current_price
+                    pct_change = (
+                        (current_price - prev_price) / prev_price * 100
+                        if prev_price
+                        else 0.0
+                    )
+
+                    rsi = indicators.get("rsi", 0)
+                    if rsi == 0 and "RSI_14" in df.columns:
+                        rsi = df["RSI_14"].iloc[-1]
+
+                    trend = indicators.get("trend", "震荡")
+                    trend_color = (
+                        "#ff4a4a"
+                        if "多头" in trend
+                        else "#2ca02c"
+                        if "空头" in trend
+                        else "#ffcc00"
+                    )
+
+                    signals = []
+                    if self.engine.check_macd_bullish_divergence(df):
+                        signals.append("MACD底背离")
+                    if self.engine.check_bbands_squeeze(df):
+                        signals.append("BB收口")
+                    if self.engine.check_accumulation(df):
+                        signals.append("OBV吸筹")
+
+                    strength = indicators.get("strength", "")
+
+                    comparison_data.append({
+                        "symbol": symbol,
+                        "name": self.stock_names.get(symbol, symbol),
+                        "price": current_price,
+                        "pct_change": pct_change,
+                        "rsi": rsi,
+                        "trend": trend,
+                        "trend_color": trend_color,
+                        "signals": signals,
+                        "strength": strength,
+                    })
+
+                except Exception as e:
+                    app_logger.warning(f"[股票对比] 获取 {symbol} 数据失败: {e}")
+                    continue
+
+            self.finished.emit(comparison_data)
+        except Exception as e:
+            self.error.emit(str(e))
 
 
 class StockComparisonDialog(QtWidgets.QDialog):
@@ -28,6 +105,7 @@ class StockComparisonDialog(QtWidgets.QDialog):
         self.symbols = symbols
         self.stock_names = stock_names
         self.comparison_data = []
+        self._data_worker = None
         self.setup_ui()
         self.load_data()
 
@@ -121,80 +199,41 @@ class StockComparisonDialog(QtWidgets.QDialog):
         self.setLayout(layout)
 
     def load_data(self) -> None:
-        """加载股票数据并填充表格"""
+        """在后台线程中加载股票数据，完成后回到主线程填充表格。"""
+        self.table.setRowCount(0)
+        self.comparison_data = []
+
+        # 禁用刷新按钮，防止重复触发
+        self._set_refresh_enabled(False)
+
+        self._data_worker = _DataLoadWorker(
+            self.engine, self.symbols, self.stock_names, self
+        )
+        self._data_worker.finished.connect(self._on_data_loaded)
+        self._data_worker.error.connect(self._on_data_error)
+        self._data_worker.start()
+
+    def _on_data_loaded(self, data: list) -> None:
+        """后台线程完成后的回调：在主线程填充表格。"""
+        self.comparison_data = data
+        self._populate_table()
+        self._set_refresh_enabled(True)
+
+    def _on_data_error(self, error_msg: str) -> None:
+        """后台线程出错时的回调。"""
+        self._set_refresh_enabled(True)
+        app_logger.error(f"[股票对比] 加载数据失败: {error_msg}")
+        QtWidgets.QMessageBox.critical(self, "错误", f"加载数据失败: {error_msg}")
+
+    def _set_refresh_enabled(self, enabled: bool) -> None:
+        """启用/禁用刷新按钮。"""
+        for btn in self.findChildren(QtWidgets.QPushButton):
+            if "刷新" in (btn.text() or ""):
+                btn.setEnabled(enabled)
+
+    def _populate_table(self) -> None:
+        """根据 self.comparison_data 填充表格（仅在主线程调用）。"""
         try:
-            self.table.setRowCount(0)
-            self.comparison_data = []
-
-            for symbol in self.symbols:
-                try:
-                    # 获取日线数据
-                    df = self.engine.fetch_bars(symbol, category=9, offset=250)
-                    if df is None or df.empty or len(df) < 60:
-                        continue
-
-                    # 计算技术指标
-                    indicators = self.engine.calculate_comprehensive_indicators(df)
-                    if not indicators:
-                        continue
-
-                    # 获取当前价格
-                    current_price = df.iloc[-1]["close"]
-                    prev_price = df.iloc[-2]["close"] if len(df) > 1 else current_price
-                    pct_change = (
-                        (current_price - prev_price) / prev_price * 100
-                        if prev_price
-                        else 0.0
-                    )
-
-                    # 获取RSI
-                    rsi = indicators.get("rsi", 0)
-                    if rsi == 0:
-                        # 从DataFrame获取
-                        if "RSI_14" in df.columns:
-                            rsi = df["RSI_14"].iloc[-1]
-
-                    # 获取趋势
-                    trend = indicators.get("trend", "震荡")
-                    trend_color = (
-                        "#ff4a4a"
-                        if "多头" in trend
-                        else "#2ca02c"
-                        if "空头" in trend
-                        else "#ffcc00"
-                    )
-
-                    # 获取信号
-                    signals = []
-                    if self.engine.check_macd_bullish_divergence(df):
-                        signals.append("MACD底背离")
-                    if self.engine.check_bbands_squeeze(df):
-                        signals.append("BB收口")
-                    if self.engine.check_accumulation(df):
-                        signals.append("OBV吸筹")
-
-                    # 获取强度
-                    strength = indicators.get("strength", "")
-
-                    # 存储数据
-                    stock_data = {
-                        "symbol": symbol,
-                        "name": self.stock_names.get(symbol, symbol),
-                        "price": current_price,
-                        "pct_change": pct_change,
-                        "rsi": rsi,
-                        "trend": trend,
-                        "trend_color": trend_color,
-                        "signals": signals,
-                        "strength": strength,
-                    }
-                    self.comparison_data.append(stock_data)
-
-                except Exception as e:
-                    app_logger.warning(f"[股票对比] 获取 {symbol} 数据失败: {e}")
-                    continue
-
-            # 填充表格
             self.table.setRowCount(len(self.comparison_data))
             for row, data in enumerate(self.comparison_data):
                 # 股票名称
@@ -248,5 +287,4 @@ class StockComparisonDialog(QtWidgets.QDialog):
             self.table.resizeColumnsToContents()
 
         except Exception as e:
-            app_logger.error(f"[股票对比] 加载数据失败: {e}")
-            QtWidgets.QMessageBox.critical(self, "错误", f"加载数据失败: {str(e)}")
+            app_logger.error(f"[股票对比] 填充表格失败: {e}")

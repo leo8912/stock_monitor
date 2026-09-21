@@ -521,7 +521,6 @@ class QuantSettingsPage(SettingsPage):
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         self.btn_manual_fetch_dark_trade.setEnabled(False)
         self.btn_manual_fetch_dark_trade.setText("⏳ 导出中...")
-        QApplication.processEvents()
 
         def _restore_button() -> None:
             """恢复"刷新暗盘资金数据"按钮的可用状态与文案。"""
@@ -563,7 +562,6 @@ class QuantSettingsPage(SettingsPage):
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         self.btn_test_dark_trade_stats.setEnabled(False)
         self.btn_test_dark_trade_stats.setText("⏳ 推送中...")
-        QApplication.processEvents()
 
         def _restore_button() -> None:
             """恢复"测试暗盘统计推送"按钮的可用状态与文案。"""

@@ -1,3 +1,4 @@
+import copy
 from enum import Enum
 
 
@@ -44,10 +45,13 @@ class SymbolResolver:
         """
         将任意格式的符号解析为标准配置。
         """
+        if not symbol:
+            raise ValueError("symbol 不能为空字符串")
+
         s_lower = symbol.lower()
 
         if s_lower in cls._SPECIAL_CODES:
-            return cls._SPECIAL_CODES[s_lower]
+            return copy.copy(cls._SPECIAL_CODES[s_lower])
 
         if s_lower.startswith(("sh", "sz")):
             mk = 1 if s_lower.startswith("sh") else 0
@@ -63,13 +67,13 @@ class SymbolResolver:
 
         if market is not None:
             if symbol == "000001" and market == 1:
-                return cls._SPECIAL_CODES["sh000001"]
+                return copy.copy(cls._SPECIAL_CODES["sh000001"])
             if symbol == "999999" and market == 1:
-                return cls._SPECIAL_CODES["999999"]
+                return copy.copy(cls._SPECIAL_CODES["999999"])
             return SymbolConfig(symbol, market, SymbolType.STOCK)
 
         if symbol == "999999":
-            return cls._SPECIAL_CODES["999999"]
+            return copy.copy(cls._SPECIAL_CODES["999999"])
 
         mk = 1 if symbol.startswith("6") else 0
         return SymbolConfig(symbol, mk, SymbolType.STOCK)

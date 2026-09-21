@@ -94,12 +94,12 @@ class UIConstants:
 
     # ==================== 字体常量 ====================
     class Fonts:
-        """字体常量"""
+        """字体常量（单位：点 pt，使用 setPointSize() 而非 setPixelSize() 以支持 DPI 缩放）"""
 
         DEFAULT_FAMILY = "Microsoft YaHei"  # 默认字体
-        DEFAULT_SIZE = 14  # 默认字号
-        SMALL_SIZE = 12  # 小字号
-        LARGE_SIZE = 16  # 大字号
+        DEFAULT_SIZE = 14  # 默认字号（pt）
+        SMALL_SIZE = 12  # 小字号（pt）
+        LARGE_SIZE = 16  # 大字号（pt）
 
     # ==================== 间距常量 ====================
     class Spacing:

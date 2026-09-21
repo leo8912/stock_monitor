@@ -53,10 +53,11 @@ class SettingsViewModel(QObject):
         self._processor = StockCodeProcessor()
 
         # 搜索防抖定时器
-        self._search_timer = QTimer()
+        self._search_timer = QTimer(self)
         self._search_timer.setSingleShot(True)
         self._search_timer.timeout.connect(self._perform_search)
         self._last_query = ""
+        self._test_thread = None  # 测试扫描线程引用
 
     def validate_settings(self, settings: dict) -> bool:
         """验证配置有效性（保存前执行）
@@ -299,7 +300,7 @@ class SettingsViewModel(QObject):
                 worker._alert_cache.clear()
 
                 # 防止旧线程还在跑被回收
-                if hasattr(self, "_test_thread") and self._test_thread.isRunning():
+                if self._test_thread is not None and self._test_thread.isRunning():
                     self.error_occurred.emit("测试正在进行中，请稍后")
                     return
 

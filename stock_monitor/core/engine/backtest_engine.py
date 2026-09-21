@@ -36,6 +36,82 @@ class BacktestEngine:
         # 结果缓存: {(symbol, category, date): result}
         self._cache = self._load_cache()
 
+    # ------------------------------------------------------------------
+    # 公共回测框架
+    # ------------------------------------------------------------------
+
+    def _run_backtest(
+        self,
+        df,
+        signal_points: list[int],
+        hold_len: int,
+        target_profit: float,
+        stop_loss: float,
+    ) -> dict:
+        """对信号点列表执行统一的持仓期盈亏评估。
+
+        所有策略回测方法共享此框架，避免重复的评估循环。
+        """
+        n = len(signal_points)
+        if n == 0:
+            return {"total_signals": 0, "win_rate": 0.0, "avg_profit": 0.0}
+
+        success_count = 0
+        total_profit = 0.0
+        for idx in signal_points:
+            entry_price = df.loc[idx, "close"]
+            if entry_price <= 0:  # 除零防护（T12）
+                continue
+            future_df = df.iloc[idx + 1 : idx + 1 + hold_len]
+            if future_df.empty:
+                continue
+            max_high = future_df["high"].max()
+            min_low = future_df["low"].min()
+            exit_price = future_df["close"].iloc[-1]
+
+            if (max_high - entry_price) / entry_price >= target_profit:
+                success_count += 1
+                total_profit += target_profit
+            elif (min_low - entry_price) / entry_price <= -stop_loss:
+                total_profit -= stop_loss
+            else:
+                total_profit += (exit_price - entry_price) / entry_price
+
+        return {
+            "total_signals": n,
+            "win_rate": round(success_count / n, 4),
+            "avg_profit": round(total_profit / n, 4),
+        }
+
+    def _precompute_rsrs_zscores(self, df, start_idx: int = 620) -> dict[int, float]:
+        """预计算整个 RSRS Z-Score 序列。
+
+        使用固定窗口（600 根 K 线）避免 O(n²) 重复计算。
+        返回 {position: z_score} 字典，供信号检测循环直接查询。
+        """
+        rsrs_window = 600
+        zscores: dict[int, float] = {}
+        for i in range(start_idx, len(df)):
+            window_df = df.iloc[max(0, i - rsrs_window) : i + 1]
+            z, _ = self.qe.calculate_rsrs(window_df)
+            zscores[i] = z
+        return zscores
+
+    def _evaluate_and_cache(
+        self, cache_key: str, df, signal_points, hold_len, target_profit, stop_loss
+    ) -> dict:
+        """评估信号并缓存结果（三策略公共尾声）。"""
+        res = self._run_backtest(df, signal_points, hold_len, target_profit, stop_loss)
+        if res["total_signals"] > 0:
+            with self._lock:
+                self._cache[cache_key] = res
+            self._save_cache()
+        return res
+
+    # ------------------------------------------------------------------
+    # 策略回测方法
+    # ------------------------------------------------------------------
+
     def get_strategy_stats(
         self, symbol: str, market: int, category: int, days: int = 250
     ) -> Optional[dict]:
@@ -88,41 +164,10 @@ class BacktestEngine:
                     if not signal_points or (i - signal_points[-1] > cooldown):
                         signal_points.append(i)
 
-            n = len(signal_points)
-            if n == 0:
-                return {"total_signals": 0, "win_rate": 0.0, "avg_profit": 0.0}
-
-            success_count = 0
-            total_profit = 0.0
-            for idx in signal_points:
-                entry_price = df.loc[idx, "close"]
-                if entry_price <= 0:  # 除零防护（T12）
-                    continue
-                future_df = df.iloc[idx + 1 : idx + 1 + hold_len]
-                if future_df.empty:
-                    continue
-                max_high = future_df["high"].max()
-                min_low = future_df["low"].min()
-                exit_price = future_df["close"].iloc[-1]
-
-                if (max_high - entry_price) / entry_price >= self.target_profit:
-                    success_count += 1
-                    total_profit += self.target_profit
-                elif (min_low - entry_price) / entry_price <= -self.stop_loss:
-                    total_profit -= self.stop_loss
-                else:
-                    total_profit += (exit_price - entry_price) / entry_price
-
-            res = {
-                "total_signals": n,
-                "win_rate": round(success_count / n, 4),
-                "avg_profit": round(total_profit / n, 4),
-            }
-            # 存入并保存持久化缓存
-            with self._lock:
-                self._cache[cache_key] = res
-            self._save_cache()
-            return res
+            return self._evaluate_and_cache(
+                cache_key, df, signal_points, hold_len,
+                self.target_profit, self.stop_loss,
+            )
 
         except Exception as e:
             app_logger.error(f"回测失败 [{symbol} cat={category}]: {e}")
@@ -153,51 +198,20 @@ class BacktestEngine:
             hold_len = 10 if category == 9 else 15
             cooldown = 10
 
-            # 预计算 RSRS 序列以提升回测速度
-            # 在实际工程中，这里可以优化为一次性计算所有点的 Z-score
-            signal_points = []
-            # 从 620 开始，确保有足够的 M=600 窗口
-            for i in range(620, len(df) - hold_len - 1):
-                # 截取到当前点的 slice 并计算
-                curr_df = df.iloc[: i + 1]
-                z, _ = self.qe.calculate_rsrs(curr_df)
+            # 预计算整个 RSRS Z-Score 序列（固定窗口 600，避免 O(n²)）
+            zscores = self._precompute_rsrs_zscores(df, start_idx=620)
 
+            signal_points = []
+            for i in range(620, len(df) - hold_len - 1):
+                z = zscores.get(i, 0.0)
                 if z > z_threshold:
                     if not signal_points or (i - signal_points[-1] > cooldown):
                         signal_points.append(i)
 
-            n = len(signal_points)
-            if n == 0:
-                return {"total_signals": 0, "win_rate": 0.0, "avg_profit": 0.0}
-
-            success_count = 0
-            total_profit = 0.0
-            for idx in signal_points:
-                entry_price = df.loc[idx, "close"]
-                if entry_price <= 0:  # 除零防护（T12）
-                    continue
-                future_df = df.iloc[idx + 1 : idx + 1 + hold_len]
-                max_high = future_df["high"].max()
-                min_low = future_df["low"].min()
-                exit_price = future_df["close"].iloc[-1]
-
-                if (max_high - entry_price) / entry_price >= 0.05:
-                    success_count += 1
-                    total_profit += 0.05
-                elif (min_low - entry_price) / entry_price <= -0.05:
-                    total_profit -= 0.05
-                else:
-                    total_profit += (exit_price - entry_price) / entry_price
-
-            res = {
-                "total_signals": n,
-                "win_rate": round(success_count / n, 4),
-                "avg_profit": round(total_profit / n, 4),
-            }
-            with self._lock:
-                self._cache[cache_key] = res
-            self._save_cache()
-            return res
+            return self._evaluate_and_cache(
+                cache_key, df, signal_points, hold_len,
+                target_profit=0.05, stop_loss=0.05,
+            )
         except Exception as e:
             app_logger.error(f"RSRS 回测失败 [{symbol}]: {e}")
             return None
@@ -228,55 +242,27 @@ class BacktestEngine:
             cooldown = 20  # 共振信号更珍贵，冷却期设长一些
             window = 30
 
+            # 预计算整个 RSRS Z-Score 序列（固定窗口 600，避免 O(n²)）
+            zscores = self._precompute_rsrs_zscores(df, start_idx=620)
+
             signal_points = []
-            # 回测区间
             start_idx = 620
             end_idx = len(df) - hold_len - 1
 
             for i in range(start_idx, end_idx):
                 # 因子 1: MACD 底背离
                 if self.qe.check_macd_bullish_divergence(df, window=window, end_idx=i):
-                    # 因子 2: RSRS 走强 (Z > 0.7)
-                    curr_df = df.iloc[: i + 1]
-                    z, _ = self.qe.calculate_rsrs(curr_df)
+                    # 因子 2: RSRS 走强 (Z > 0.7) —— 从预计算序列查询
+                    z = zscores.get(i, 0.0)
 
                     if z > z_threshold:
                         if not signal_points or (i - signal_points[-1] > cooldown):
                             signal_points.append(i)
 
-            n = len(signal_points)
-            if n == 0:
-                return {"total_signals": 0, "win_rate": 0.0, "avg_profit": 0.0}
-
-            success_count = 0
-            total_profit = 0.0
-            for idx in signal_points:
-                entry_price = df.loc[idx, "close"]
-                if entry_price <= 0:  # 除零防护（T12）
-                    continue
-                future_df = df.iloc[idx + 1 : idx + 1 + hold_len]
-                max_high = future_df["high"].max()
-                min_low = future_df["low"].min()
-                exit_price = future_df["close"].iloc[-1]
-
-                # 共振信号目标更高：止盈 8%，止损 5%
-                if (max_high - entry_price) / entry_price >= 0.08:
-                    success_count += 1
-                    total_profit += 0.08
-                elif (min_low - entry_price) / entry_price <= -0.05:
-                    total_profit -= 0.05
-                else:
-                    total_profit += (exit_price - entry_price) / entry_price
-
-            res = {
-                "total_signals": n,
-                "win_rate": round(success_count / n, 4),
-                "avg_profit": round(total_profit / n, 4),
-            }
-            with self._lock:
-                self._cache[cache_key] = res
-            self._save_cache()
-            return res
+            return self._evaluate_and_cache(
+                cache_key, df, signal_points, hold_len,
+                target_profit=0.08, stop_loss=0.05,
+            )
         except Exception as e:
             app_logger.error(f"共振回测失败 [{symbol}]: {e}")
             return None

@@ -11,6 +11,7 @@ class MarketSentiment:
     """市场情绪容器（涨跌家数、全市场成交等）"""
 
     def __init__(self):
+        self._lock = Lock()
         self.up_count = 0
         self.down_count = 0
         self.flat_count = 0
@@ -18,18 +19,20 @@ class MarketSentiment:
         self.last_update = None
 
     def update(self, up, down, flat, total):
-        self.up_count = up
-        self.down_count = down
-        self.flat_count = flat
-        self.total_count = total
-        self.last_update = datetime.datetime.now()
+        with self._lock:
+            self.up_count = up
+            self.down_count = down
+            self.flat_count = flat
+            self.total_count = total
+            self.last_update = datetime.datetime.now()
 
     @property
     def up_ratio(self) -> float:
         """上涨家数占比"""
-        if self.total_count == 0:
-            return 0.5
-        return self.up_count / self.total_count
+        with self._lock:
+            if self.total_count == 0:
+                return 0.5
+            return self.up_count / self.total_count
 
 
 class MarketManager:

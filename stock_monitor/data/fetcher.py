@@ -3,8 +3,8 @@ import warnings
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import easyquotation
-import requests
 
+from stock_monitor.network.manager import NetworkManager
 from stock_monitor.utils.logger import app_logger
 
 # 安全导入 zhconv
@@ -33,6 +33,16 @@ PARALLEL_BATCHES = 5  # 并行批次数
 
 class StockFetcher:
     """股票数据获取器（支持并行获取）"""
+
+    def __init__(self) -> None:
+        # 长生命周期线程池，避免每次调用都创建/销毁
+        self._executor = ThreadPoolExecutor(max_workers=PARALLEL_BATCHES)
+        self._network = NetworkManager(timeout=30)
+
+    def close(self) -> None:
+        """释放线程池和网络连接资源。"""
+        self._executor.shutdown(wait=False)
+        self._network.close()
 
     def fetch_all_stocks(self) -> list[dict[str, str]]:
         """获取所有 A 股和港股数据（并行优化版）"""
@@ -81,23 +91,22 @@ class StockFetcher:
         results = []
         app_logger.info(f"开始并行获取 A 股数据，共 {len(batches)} 个批次...")
 
-        # 并行获取
-        with ThreadPoolExecutor(max_workers=PARALLEL_BATCHES) as executor:
-            futures = {
-                executor.submit(self._fetch_batch, batch, quotation): i
-                for i, batch in enumerate(batches)
-            }
+        # 并行获取 —— 使用类级别长生命周期线程池
+        futures = {
+            self._executor.submit(self._fetch_batch, batch, quotation): i
+            for i, batch in enumerate(batches)
+        }
 
-            for future in as_completed(futures):
-                batch_idx = futures[future]
-                try:
-                    batch_result = future.result(timeout=60)
-                    results.extend(batch_result)
-                    app_logger.debug(
-                        f"批次 {batch_idx + 1}/{len(batches)} 完成，获取 {len(batch_result)} 只股票"
-                    )
-                except Exception as e:
-                    app_logger.warning(f"批次 {batch_idx + 1} 获取失败：{e}")
+        for future in as_completed(futures):
+            batch_idx = futures[future]
+            try:
+                batch_result = future.result(timeout=60)
+                results.extend(batch_result)
+                app_logger.debug(
+                    f"批次 {batch_idx + 1}/{len(batches)} 完成，获取 {len(batch_result)} 只股票"
+                )
+            except Exception as e:
+                app_logger.warning(f"批次 {batch_idx + 1} 获取失败：{e}")
 
         app_logger.info(f"A 股数据获取完成，共 {len(results)} 只股票")
         return results
@@ -165,15 +174,17 @@ class StockFetcher:
         content = None
         for url in hkex_urls:
             try:
-                headers = {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-                    "Referer": "https://www.hkex.com.hk/",
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-                }
-                response = requests.get(url, headers=headers, timeout=30)
-                response.raise_for_status()
-                content = response.content
-                break
+                response = self._network.get(
+                    url,
+                    headers={
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                        "Referer": "https://www.hkex.com.hk/",
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                    },
+                )
+                if response is not None:
+                    content = response.content
+                    break
             except Exception as e:
                 app_logger.warning(f"从 {url} 获取港股数据失败：{e}")
 
