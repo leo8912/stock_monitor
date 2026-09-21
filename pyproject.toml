@@ -9,6 +9,7 @@ description = "A real-time stock monitoring application for A-shares"
 authors = [
     {name = "Stock Monitor Team"}
 ]
+requires-python = ">=3.9"
 dependencies = [
     "PyQt6>=6.0.0",
     "easyquotation>=0.7.7",
@@ -42,7 +43,6 @@ dev = [
     "ruff>=0.0.267",
     "pre-commit>=3.3.1",
 ]
-requires-python = ">=3.9"
 
 [tool.black]
 line-length = 88
