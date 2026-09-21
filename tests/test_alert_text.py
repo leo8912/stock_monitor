@@ -71,9 +71,7 @@ class TestFormatBacktestStats(unittest.TestCase):
         self.assertIn(
             "⚡", alert_text.format_backtest_stats({**base, "win_rate": 0.50})
         )
-        self.assertIn(
-            "⚠️", alert_text.format_backtest_stats({**base, "win_rate": 0.30})
-        )
+        self.assertIn("⚠️", alert_text.format_backtest_stats({**base, "win_rate": 0.30}))
 
     def test_format(self):
         stats = {"total_signals": 10, "win_rate": 0.6, "avg_profit": 0.025}

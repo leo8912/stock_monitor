@@ -30,8 +30,17 @@ class _WaveDataWorker(QThread):
     finished = pyqtSignal(object, str)  # (result_or_None, timeframe_name)
     error = pyqtSignal(str)
 
-    def __init__(self, engine, symbol, category, timeframe_key, timeframe_name,
-                 subwave_checked, fib_coefficients, parent=None):
+    def __init__(
+        self,
+        engine,
+        symbol,
+        category,
+        timeframe_key,
+        timeframe_name,
+        subwave_checked,
+        fib_coefficients,
+        parent=None,
+    ):
         super().__init__(parent)
         self.engine = engine
         self.symbol = symbol
@@ -43,9 +52,7 @@ class _WaveDataWorker(QThread):
 
     def run(self):
         try:
-            df = self.engine.fetch_bars(
-                self.symbol, category=self.category, offset=350
-            )
+            df = self.engine.fetch_bars(self.symbol, category=self.category, offset=350)
             if df is None or df.empty or len(df) < 30:
                 self.finished.emit(None, self.timeframe_name)
                 return
@@ -326,7 +333,9 @@ class WaveChartDialog(QtWidgets.QDialog):
     def _on_wave_data_ready(self, result, timeframe_name):
         """后台数据就绪后，在主线程绘图和更新卡片。"""
         if result is None:
-            self._card_labels["wave_main"].setText("数据不足" if not result else "无法识别波浪")
+            self._card_labels["wave_main"].setText(
+                "数据不足" if not result else "无法识别波浪"
+            )
             return
 
         try:

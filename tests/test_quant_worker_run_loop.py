@@ -266,16 +266,12 @@ class TestReportScheduling(unittest.TestCase):
     def test_manual_report_via_pending_slot(self):
         """UI 登记 → 后台循环消费 → 生成 + 发信号 + 槽位清空"""
         self.assertTrue(self.worker.run_report("manual"))
-        with patch.object(
-            self.worker, "generate_daily_summary_report"
-        ) as mock_gen:
+        with patch.object(self.worker, "generate_daily_summary_report") as mock_gen:
             self.worker._process_pending_report()
             mock_gen.assert_called_once_with("manual")
         self.assertEqual(self.reports, ["manual"])
         # 槽位已消费，再次处理为空操作
-        with patch.object(
-            self.worker, "generate_daily_summary_report"
-        ) as mock_gen:
+        with patch.object(self.worker, "generate_daily_summary_report") as mock_gen:
             self.worker._process_pending_report()
             mock_gen.assert_not_called()
 
@@ -296,9 +292,7 @@ class TestReportScheduling(unittest.TestCase):
         clock = self._freeze_clock("11:35")
         with (
             clock,
-            patch.object(
-                self.worker, "generate_daily_summary_report"
-            ) as mock_gen,
+            patch.object(self.worker, "generate_daily_summary_report") as mock_gen,
         ):
             self.worker.check_and_trigger_reports()
             mock_gen.assert_called_once_with("morning")
@@ -311,9 +305,7 @@ class TestReportScheduling(unittest.TestCase):
         clock = self._freeze_clock("15:05")
         with (
             clock,
-            patch.object(
-                self.worker, "generate_daily_summary_report"
-            ) as mock_gen,
+            patch.object(self.worker, "generate_daily_summary_report") as mock_gen,
         ):
             self.worker.check_and_trigger_reports()
             mock_gen.assert_called_once_with("afternoon")
@@ -325,9 +317,7 @@ class TestReportScheduling(unittest.TestCase):
         clock = self._freeze_clock("11:35")
         with (
             clock,
-            patch.object(
-                self.worker, "generate_daily_summary_report"
-            ) as mock_gen,
+            patch.object(self.worker, "generate_daily_summary_report") as mock_gen,
         ):
             self.worker.check_and_trigger_reports()
             self.worker.check_and_trigger_reports()
@@ -337,9 +327,7 @@ class TestReportScheduling(unittest.TestCase):
     def test_scheduled_report_dedup_marker_blocks_any_trigger(self):
         """去重标记已设置时任何时刻都不再触发"""
         self.worker._last_report_date = "2099-01-01_morning"
-        with patch.object(
-            self.worker, "generate_daily_summary_report"
-        ) as mock_gen:
+        with patch.object(self.worker, "generate_daily_summary_report") as mock_gen:
             self.worker.check_and_trigger_reports()
             mock_gen.assert_not_called()
         self.assertEqual(self.reports, [])
@@ -363,4 +351,3 @@ class TestReportScheduling(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

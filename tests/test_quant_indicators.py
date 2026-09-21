@@ -93,8 +93,12 @@ class TestQuantIndicators(unittest.TestCase):
 
     def test_calculate_comprehensive_indicators_empty(self):
         """空数据或不足 60 根返回空字典"""
-        self.assertEqual(quant_indicators.calculate_comprehensive_indicators(pd.DataFrame()), {})
-        self.assertEqual(quant_indicators.calculate_comprehensive_indicators(_make_ohlcv(30)), {})
+        self.assertEqual(
+            quant_indicators.calculate_comprehensive_indicators(pd.DataFrame()), {}
+        )
+        self.assertEqual(
+            quant_indicators.calculate_comprehensive_indicators(_make_ohlcv(30)), {}
+        )
 
 
 class TestQuantEngineDelegation(unittest.TestCase):

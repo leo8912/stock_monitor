@@ -44,6 +44,7 @@ class UpdateCheckThread(TaskThread):
 
     def run(self) -> None:
         """在后台线程执行更新检查并发出结果/错误信号。"""
+
         def task():
             from stock_monitor.core.updater import app_updater
 
@@ -69,6 +70,7 @@ class ExcelExportThread(TaskThread):
 
     def run(self) -> None:
         """在后台线程导出 Excel 并发出完成信号（成功/失败+信息）。"""
+
         def task():
             from scripts.reporting.export_stocks_to_excel import export_to_excel
 
@@ -108,6 +110,7 @@ class TestAppThread(TaskThread):
 
     def run(self) -> None:
         """在后台线程调用 NotifierService 发送测试消息，完成后发出结果信号。"""
+
         def task():
             from stock_monitor.services.notifier import NotifierService
 
@@ -141,6 +144,7 @@ class DarkTradeExportThread(TaskThread):
 
     def run(self) -> None:
         """在后台线程导出暗盘 CSV 并发出完成信号。"""
+
         def task():
             from stock_monitor.services.dark_trade_exporter import (
                 export_dark_trade_csv,
@@ -161,7 +165,9 @@ class DarkTradeExportThread(TaskThread):
         self._run_task(
             task,
             lambda message: self.export_finished.emit(True, message),
-            lambda error: self.export_finished.emit(False, f"导出暗盘数据时发生异常：\n{error}"),
+            lambda error: self.export_finished.emit(
+                False, f"导出暗盘数据时发生异常：\n{error}"
+            ),
         )
 
 
@@ -182,6 +188,7 @@ class DarkTradeStatsPushThread(TaskThread):
 
     def run(self) -> None:
         """在后台线程计算暗盘统计并推送，完成后发出结果信号。"""
+
         def task():
             from stock_monitor.core.config_center import config_center
             from stock_monitor.services.dark_trade import (
@@ -216,7 +223,9 @@ class DarkTradeStatsPushThread(TaskThread):
         self._run_task(
             task,
             lambda result: self.push_finished.emit(*result),
-            lambda error: self.push_finished.emit(False, f"推送暗盘统计时发生异常：\n{error}"),
+            lambda error: self.push_finished.emit(
+                False, f"推送暗盘统计时发生异常：\n{error}"
+            ),
         )
 
 
@@ -242,6 +251,7 @@ class DarkTradeStatsExcelExportThread(TaskThread):
 
     def run(self) -> None:
         """在后台线程导出暗盘统计 Excel 并发出完成信号。"""
+
         def task():
             from stock_monitor.services.dark_trade.exporter import (
                 export_dark_trade_stats_excel,

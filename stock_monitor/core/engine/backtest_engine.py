@@ -165,8 +165,12 @@ class BacktestEngine:
                         signal_points.append(i)
 
             return self._evaluate_and_cache(
-                cache_key, df, signal_points, hold_len,
-                self.target_profit, self.stop_loss,
+                cache_key,
+                df,
+                signal_points,
+                hold_len,
+                self.target_profit,
+                self.stop_loss,
             )
 
         except Exception as e:
@@ -209,8 +213,12 @@ class BacktestEngine:
                         signal_points.append(i)
 
             return self._evaluate_and_cache(
-                cache_key, df, signal_points, hold_len,
-                target_profit=0.05, stop_loss=0.05,
+                cache_key,
+                df,
+                signal_points,
+                hold_len,
+                target_profit=0.05,
+                stop_loss=0.05,
             )
         except Exception as e:
             app_logger.error(f"RSRS 回测失败 [{symbol}]: {e}")
@@ -260,8 +268,12 @@ class BacktestEngine:
                             signal_points.append(i)
 
             return self._evaluate_and_cache(
-                cache_key, df, signal_points, hold_len,
-                target_profit=0.08, stop_loss=0.05,
+                cache_key,
+                df,
+                signal_points,
+                hold_len,
+                target_profit=0.08,
+                stop_loss=0.05,
             )
         except Exception as e:
             app_logger.error(f"共振回测失败 [{symbol}]: {e}")

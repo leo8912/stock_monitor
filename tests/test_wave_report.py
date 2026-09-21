@@ -73,19 +73,25 @@ class TestWaveReport(unittest.TestCase):
         self.assertIn("约10个交易日", text)
 
     def test_explain_wave(self):
-        self.assertEqual(wave_report.explain_wave("3", "bullish"), "主升浪，涨幅最大、速度最快的阶段")
+        self.assertEqual(
+            wave_report.explain_wave("3", "bullish"), "主升浪，涨幅最大、速度最快的阶段"
+        )
         self.assertEqual(wave_report.explain_wave("3", None), "")
         self.assertEqual(wave_report.explain_wave("X", "bullish"), "")
 
     def test_wave_action_hint(self):
-        self.assertEqual(wave_report.wave_action_hint("5", "bullish"), "建议: 逢高减仓，锁定利润")
+        self.assertEqual(
+            wave_report.wave_action_hint("5", "bullish"), "建议: 逢高减仓，锁定利润"
+        )
         self.assertEqual(
             wave_report.wave_action_hint("X", None), "建议: 观望为主，等方向明确"
         )
 
     def test_format_wave_text_analysis_short_df(self):
         """数据不足时返回空字符串"""
-        self.assertEqual(wave_report.format_wave_text_analysis("000001", "平安", "日线", None), "")
+        self.assertEqual(
+            wave_report.format_wave_text_analysis("000001", "平安", "日线", None), ""
+        )
 
 
 class TestQuantWorkerWaveDelegation(unittest.TestCase):
@@ -93,7 +99,8 @@ class TestQuantWorkerWaveDelegation(unittest.TestCase):
 
     def test_static_delegation(self):
         self.assertEqual(
-            QuantWorker._explain_wave("C", "bearish"), wave_report.explain_wave("C", "bearish")
+            QuantWorker._explain_wave("C", "bearish"),
+            wave_report.explain_wave("C", "bearish"),
         )
         self.assertEqual(
             QuantWorker._wave_action_hint("B", "bearish"),

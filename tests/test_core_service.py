@@ -61,7 +61,9 @@ class TestStockDataService(unittest.TestCase):
 
     def test_get_stocks_data_fetcher_exception(self):
         """Test that fetcher exceptions propagate through service methods"""
-        self.mock_fetcher.fetch_multiple.side_effect = ConnectionError("Network failure")
+        self.mock_fetcher.fetch_multiple.side_effect = ConnectionError(
+            "Network failure"
+        )
 
         with self.assertRaises(ConnectionError):
             self.service.get_multiple_stocks_data(["sh600000"])

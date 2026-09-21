@@ -77,4 +77,3 @@ def append_multi_factor_fallback(
             }
         )
     return signals
-

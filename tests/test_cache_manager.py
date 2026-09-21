@@ -2,7 +2,6 @@
 
 import os
 import tempfile
-import time
 from unittest.mock import patch
 
 import pytest
@@ -23,11 +22,13 @@ class TestLRUCache:
     def test_expired_entry_returns_none(self):
         cache = LRUCache(max_size=10, default_ttl=1)
         counter = [0]
+
         def fake_time():
             counter[0] += 1
             if counter[0] == 1:
                 return 1000.0  # during set (expiry = 1001)
             return 2000.0  # during get (well past expiry)
+
         with patch("stock_monitor.core.cache_manager.time.time", side_effect=fake_time):
             cache.set("key1", "value1")
             assert cache.get("key1") is None
@@ -35,11 +36,13 @@ class TestLRUCache:
     def test_custom_ttl(self):
         cache = LRUCache(max_size=10, default_ttl=60)
         counter = [0]
+
         def fake_time():
             counter[0] += 1
             if counter[0] <= 2:
                 return 1000.0  # during set calls (keys "short" and "long")
             return 1001.0  # during get calls (past short=1000.1, before long=1060)
+
         with patch("stock_monitor.core.cache_manager.time.time", side_effect=fake_time):
             cache.set("short", "val", ttl=0.1)
             cache.set("long", "val", ttl=60)
@@ -116,11 +119,13 @@ class TestSQLiteCache:
         cache = SQLiteCache(self.db_path)
         # Mock time so that set uses t=1000 (expiry=1060) and get uses t=2000 (past expiry)
         counter = [0]
+
         def fake_time():
             counter[0] += 1
             if counter[0] == 1:
                 return 1000.0  # during set (expiry = 1000 + 60 = 1060)
             return 2000.0  # during get (2000 > 1060 → expired)
+
         with patch("stock_monitor.core.cache_manager.time.time", side_effect=fake_time):
             cache.set("key", "value", ttl=60)
             assert cache.get("key") is None
@@ -143,6 +148,7 @@ class TestSQLiteCache:
         cache.set("long", "val", ttl=3600)
         # Directly insert an entry with expiry in the past
         import sqlite3
+
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
                 f"INSERT INTO {cache._table_name} (key, value, expiry, created_at) VALUES (?, ?, ?, ?)",

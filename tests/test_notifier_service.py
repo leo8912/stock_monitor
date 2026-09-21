@@ -299,8 +299,14 @@ class TestNotifierService(unittest.TestCase):
 
     def test_invalidate_app_token(self):
         """invalidate_app_token 精确清除指定凭证缓存，不影响其它凭证"""
-        NotifierService._token_cache[("corp_a", "secret_a")] = ("tok_a", time.time() + 60)
-        NotifierService._token_cache[("corp_b", "secret_b")] = ("tok_b", time.time() + 60)
+        NotifierService._token_cache[("corp_a", "secret_a")] = (
+            "tok_a",
+            time.time() + 60,
+        )
+        NotifierService._token_cache[("corp_b", "secret_b")] = (
+            "tok_b",
+            time.time() + 60,
+        )
 
         NotifierService.invalidate_app_token("corp_a", "secret_a")
 

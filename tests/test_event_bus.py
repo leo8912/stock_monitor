@@ -130,7 +130,9 @@ class TestEventBus:
     def test_duplicate_subscribe(self):
         """重复订阅同一 callback 应注册多次，publish时触发多次"""
         call_count = []
-        callback = lambda e: call_count.append(1)
+
+        def callback(e):
+            call_count.append(1)
 
         self.bus.subscribe("t", callback)
         self.bus.subscribe("t", callback)

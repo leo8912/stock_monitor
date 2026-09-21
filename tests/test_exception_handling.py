@@ -19,6 +19,7 @@ def test_safe_call_normal_return():
 
 def test_safe_call_default_return_none():
     """异常时默认返回 None"""
+
     def failing():
         raise RuntimeError("boom")
 
@@ -47,6 +48,7 @@ def test_safe_call_custom_exception_handler():
 
 def test_safe_call_passes_args_and_kwargs():
     """safe_call 应透传位置参数和关键字参数"""
+
     def add(a, b, extra=0):
         return a + b + extra
 

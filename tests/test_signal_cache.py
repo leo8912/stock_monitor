@@ -36,7 +36,10 @@ class TestParseCachePayload(unittest.TestCase):
         data = {
             "A::sig1": now - 10,  # 未过期
             "B::sig2": now - 90000,  # 已过期（旧格式）
-            "C::sig3": {"last_score": 1, "last_push_ts": now - 90000},  # 已过期（新格式）
+            "C::sig3": {
+                "last_score": 1,
+                "last_push_ts": now - 90000,
+            },  # 已过期（新格式）
         }
         last_time, states, expired = signal_cache.parse_cache_payload(data, now, 86400)
         self.assertEqual(expired, 2)
@@ -45,7 +48,9 @@ class TestParseCachePayload(unittest.TestCase):
 
     def test_malformed_key_skipped(self):
         data = {"no-separator": 123.0, "A::sig": 456.0}
-        last_time, states, expired = signal_cache.parse_cache_payload(data, 1000.0, 86400)
+        last_time, states, expired = signal_cache.parse_cache_payload(
+            data, 1000.0, 86400
+        )
         self.assertEqual(len(last_time), 1)
         self.assertIn(("A", "sig"), last_time)
 
@@ -114,9 +119,7 @@ class TestQuantWorkerSignalCacheDelegation(unittest.TestCase):
                     "stock_monitor.core.workers.quant_worker.SIGNAL_CACHE_FILE",
                     cache_file,
                 ),
-                patch(
-                    "stock_monitor.core.workers.quant_worker.CACHE_DIR", cache_dir
-                ),
+                patch("stock_monitor.core.workers.quant_worker.CACHE_DIR", cache_dir),
                 patch("stock_monitor.data.stock.stock_db.StockDatabase"),
             ):
                 worker = QuantWorker(mock_fetcher, "https://test.webhook")
@@ -132,9 +135,7 @@ class TestQuantWorkerSignalCacheDelegation(unittest.TestCase):
                 worker._signal_states = {}
                 worker._load_signal_cache()
                 self.assertIn(("SH600000", "Daily:X"), worker._signal_states)
-                self.assertEqual(
-                    worker._last_signal_time[("SH600000", "Daily:X")], now
-                )
+                self.assertEqual(worker._last_signal_time[("SH600000", "Daily:X")], now)
                 del worker2_states
 
 

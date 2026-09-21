@@ -28,14 +28,16 @@ class TestGetReportTitle(unittest.TestCase):
     def test_known_types(self):
         now = datetime(2026, 9, 21, 11, 35)
         self.assertEqual(
-            quant_report.get_report_title("morning", now), "📊 早盘复盘 (2026-09-21 11:35)"
+            quant_report.get_report_title("morning", now),
+            "📊 早盘复盘 (2026-09-21 11:35)",
         )
         self.assertEqual(
             quant_report.get_report_title("afternoon", now),
             "📈 午盘复盘 (2026-09-21 11:35)",
         )
         self.assertEqual(
-            quant_report.get_report_title("manual", now), "🔍 全量复盘 (2026-09-21 11:35)"
+            quant_report.get_report_title("manual", now),
+            "🔍 全量复盘 (2026-09-21 11:35)",
         )
         self.assertEqual(
             quant_report.get_report_title("auto", now), "📉 自动复盘 (2026-09-21 11:35)"
@@ -44,14 +46,16 @@ class TestGetReportTitle(unittest.TestCase):
     def test_unknown_type_falls_back_to_auto(self):
         now = datetime(2026, 9, 21, 15, 5)
         self.assertEqual(
-            quant_report.get_report_title("whatever", now), "📉 自动复盘 (2026-09-21 15:05)"
+            quant_report.get_report_title("whatever", now),
+            "📉 自动复盘 (2026-09-21 15:05)",
         )
 
 
 class TestFormatReportContent(unittest.TestCase):
     def test_no_signals(self):
         self.assertEqual(
-            quant_report.format_report_content("标题", [], [], "manual"), "今日无显著信号"
+            quant_report.format_report_content("标题", [], [], "manual"),
+            "今日无显著信号",
         )
 
     def test_basic_content(self):
@@ -80,7 +84,10 @@ class TestFormatReportContent(unittest.TestCase):
         self.assertIn("财报健康", content)
 
     def test_sorted_by_score_desc(self):
-        signals = [_make_signal(name="低分", score=1), _make_signal(name="高分", score=5)]
+        signals = [
+            _make_signal(name="低分", score=1),
+            _make_signal(name="高分", score=5),
+        ]
         content = quant_report.format_report_content("复盘", signals, [], "manual")
         self.assertLess(content.index("高分"), content.index("低分"))
 

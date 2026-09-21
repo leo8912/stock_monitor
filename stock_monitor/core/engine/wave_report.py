@@ -185,4 +185,3 @@ def format_wave_text_analysis(symbol: str, name: str, timeframe_name: str, df) -
     lines.append(wave_action_hint(wave, trend))
 
     return "\n".join(lines)
-

@@ -48,9 +48,7 @@ def parse_cache_payload(
             last_signal_time[key_tuple] = value
 
     # 清理过期缓存项
-    expired_keys = [
-        k for k, v in last_signal_time.items() if now - v > expiry_seconds
-    ]
+    expired_keys = [k for k, v in last_signal_time.items() if now - v > expiry_seconds]
     for key in expired_keys:
         del last_signal_time[key]
         signal_states.pop(key, None)

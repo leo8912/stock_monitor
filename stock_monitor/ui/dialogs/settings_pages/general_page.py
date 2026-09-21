@@ -163,7 +163,7 @@ class GeneralSettingsPage(SettingsPage):
         self.check_update_button.setText("检查更新")
 
         from PyQt6.QtCore import Qt
-        from PyQt6.QtWidgets import QApplication, QMessageBox, QProgressDialog
+        from PyQt6.QtWidgets import QMessageBox, QProgressDialog
 
         from stock_monitor.core.updater import app_updater
 

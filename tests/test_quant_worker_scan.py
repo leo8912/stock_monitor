@@ -310,9 +310,15 @@ class TestScanRules(unittest.TestCase):
             scan_rules.is_priority_symbol(stats), (True, " [💎 历史胜率 85%]")
         )
         # 样本不足
-        self.assertEqual(scan_rules.is_priority_symbol({"total_signals": 2, "win_rate": 0.9}), (False, ""))
+        self.assertEqual(
+            scan_rules.is_priority_symbol({"total_signals": 2, "win_rate": 0.9}),
+            (False, ""),
+        )
         # 胜率不足
-        self.assertEqual(scan_rules.is_priority_symbol({"total_signals": 5, "win_rate": 0.7}), (False, ""))
+        self.assertEqual(
+            scan_rules.is_priority_symbol({"total_signals": 5, "win_rate": 0.7}),
+            (False, ""),
+        )
         self.assertEqual(scan_rules.is_priority_symbol(None), (False, ""))
         self.assertEqual(scan_rules.is_priority_symbol({}), (False, ""))
 
@@ -330,16 +336,13 @@ class TestScanRules(unittest.TestCase):
         self.assertEqual(signals[0]["name"], "多因子综合走强 [标签]")
 
         # 未达门槛不追加
-        self.assertEqual(
-            scan_rules.append_multi_factor_fallback([], 2, 3, ""), []
-        )
+        self.assertEqual(scan_rules.append_multi_factor_fallback([], 2, 3, ""), [])
         # 已有信号不追加
         self.assertEqual(
-            scan_rules.append_multi_factor_fallback([{"name": "X"}], 5, 3, ""), [{"name": "X"}]
+            scan_rules.append_multi_factor_fallback([{"name": "X"}], 5, 3, ""),
+            [{"name": "X"}],
         )
 
 
 if __name__ == "__main__":
     unittest.main()
-
-

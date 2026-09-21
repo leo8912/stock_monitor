@@ -234,7 +234,6 @@ class DraggableWindowMixin:
     def nativeEvent(self, event_type, message):
         """处理 Windows 原生事件，在消息循环级别锁定置顶状态"""
         if event_type == b"windows_generic_msg" and _WINDOWPOS is not None:
-            import ctypes
             from ctypes import wintypes
 
             msg = wintypes.MSG.from_address(message.__int__())

@@ -65,17 +65,19 @@ class _DataLoadWorker(QThread):
 
                     strength = indicators.get("strength", "")
 
-                    comparison_data.append({
-                        "symbol": symbol,
-                        "name": self.stock_names.get(symbol, symbol),
-                        "price": current_price,
-                        "pct_change": pct_change,
-                        "rsi": rsi,
-                        "trend": trend,
-                        "trend_color": trend_color,
-                        "signals": signals,
-                        "strength": strength,
-                    })
+                    comparison_data.append(
+                        {
+                            "symbol": symbol,
+                            "name": self.stock_names.get(symbol, symbol),
+                            "price": current_price,
+                            "pct_change": pct_change,
+                            "rsi": rsi,
+                            "trend": trend,
+                            "trend_color": trend_color,
+                            "signals": signals,
+                            "strength": strength,
+                        }
+                    )
 
                 except Exception as e:
                     app_logger.warning(f"[股票对比] 获取 {symbol} 数据失败: {e}")
