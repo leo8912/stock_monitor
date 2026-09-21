@@ -251,6 +251,33 @@ class TestPerformScanParallel(unittest.TestCase):
             self.worker.perform_scan()
         mock_parallel.assert_called_once()
 
+    def test_timeout_still_emits_scan_finished(self):
+        """整体超时（as_completed 抛 TimeoutError）时 scan_finished 仍必须发出
+
+        回归背景：超时异常发生在 for 循环本身，旧代码会跳过 scan_finished，
+        导致 UI 的"扫描中"状态永不复位。
+        """
+        from concurrent.futures import TimeoutError as FuturesTimeoutError
+
+        self.worker.symbols = ["sh600519", "sz000001"]
+        events = []
+        self.worker.scan_started.connect(lambda: events.append("start"))
+        self.worker.scan_finished.connect(lambda: events.append("finish"))
+
+        def fake_as_completed(futures, timeout=None):
+            raise FuturesTimeoutError()
+
+        with (
+            patch(
+                "stock_monitor.core.workers.quant_worker.as_completed",
+                side_effect=fake_as_completed,
+            ),
+            patch.object(self.worker, "_scan_single_symbol"),
+        ):
+            self.worker.perform_scan_parallel()  # 不应抛出
+
+        self.assertEqual(events, ["start", "finish"])
+
 
 class TestScanRules(unittest.TestCase):
     """scan_rules 纯决策函数单元测试"""

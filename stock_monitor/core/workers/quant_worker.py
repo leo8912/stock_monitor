@@ -8,7 +8,7 @@ import json
 import os
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
 from pathlib import Path
 
 from PyQt6 import QtCore
@@ -658,15 +658,22 @@ class QuantWorker(QtCore.QThread):
             }
 
             # 收集结果，带超时保护（避免长期阻塞）
-            for future in as_completed(futures, timeout=120):
-                symbol = futures[future]
-                try:
-                    result = future.result(timeout=30)
-                    if result:
-                        results.append(result)
-                except Exception as e:
-                    app_logger.error(f"标的 {symbol} 扫描失败：{e}")
+            try:
+                for future in as_completed(futures, timeout=120):
+                    symbol = futures[future]
+                    try:
+                        result = future.result(timeout=30)
+                        if result:
+                            results.append(result)
+                    except Exception as e:
+                        app_logger.error(f"标的 {symbol} 扫描失败：{e}")
+            except TimeoutError:
+                # 整体超时：取消剩余任务，避免 with 退出时继续阻塞等待
+                app_logger.error("量化扫描整体超时（120s），取消剩余任务")
+                for future in futures:
+                    future.cancel()
 
+        # 无论正常完成还是超时都必须发出，否则 UI 的扫描中状态永不复位
         self.scan_finished.emit()
         app_logger.info(f"本轮量化扫描完毕，触发信号：{len(results)} 次")
 

@@ -13,6 +13,10 @@ from datetime import time as dtime
 import requests
 from PyQt6 import QtCore
 
+from stock_monitor.core.workers.base import (
+    DEFAULT_STOP_TIMEOUT_MS,
+    wait_for_thread_stop,
+)
 from stock_monitor.services.dark_trade.utils import get_recent_trade_dates
 from stock_monitor.utils.logger import app_logger
 
@@ -246,8 +250,11 @@ class DarkTradeService(QtCore.QThread):
 
             # 计算连续天数并更新缓存（在锁外构建新缓存，减少锁持有时间）
             update_time = datetime.now().strftime("%H:%M")
+            # 先取锁内快照，避免与 _do_fetch_and_update 的整体替换竞态
+            with self._lock:
+                cache_snapshot = dict(self._cache)
             new_cache = {}
-            for code, (today_net, _) in self._cache.items():
+            for code, (today_net, _) in cache_snapshot.items():
                 # 收集每天的数据（从今天往前）
                 all_nets = [today_net]
                 for d in dates[1:]:
@@ -316,9 +323,18 @@ class DarkTradeService(QtCore.QThread):
             self.start()
 
     def stop_service(self):
-        """停止服务线程"""
+        """停止服务线程（轮询等待线程真正结束）。
+
+        抓取长循环内的单次网络请求最长 12s 不可中断，但循环体之间会检查
+        ``_running``；这里等待上限与其它 Worker 一致，超时仅告警不阻塞退出。
+        """
         self._running = False
-        self.wait(2000)
+        self.requestInterruption()
+        if not wait_for_thread_stop(self):
+            app_logger.warning(
+                f"[DarkTrade] 服务停止超时（>{DEFAULT_STOP_TIMEOUT_MS}ms），"
+                "线程可能仍在收尾"
+            )
 
     def run(self):
         """线程主循环"""
@@ -342,6 +358,9 @@ class DarkTradeService(QtCore.QThread):
                     self._fetch_history_and_update()
                     last_history_refresh = time.time()
 
+                if not self._running:
+                    break
+
                 self._check_close_export()
 
                 # 交易时段内按间隔刷新
@@ -358,7 +377,11 @@ class DarkTradeService(QtCore.QThread):
             except Exception as e:
                 app_logger.error(f"[DarkTrade] 主循环异常: {e}")
 
-            self.msleep(5000)  # 每5秒检查一次时机
+            # 5s 分片睡眠：期间响应停止请求
+            for _ in range(5):
+                if not self._running:
+                    break
+                self.msleep(1000)
 
         app_logger.info("[DarkTrade] 服务已停止")
 
