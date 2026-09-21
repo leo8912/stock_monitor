@@ -17,6 +17,11 @@ from stock_monitor.ui.dialogs.settings_dialog import NewSettingsDialog
 from stock_monitor.ui.mixins.draggable_window import DraggableWindowMixin
 
 # Removed obsolete styles import
+from stock_monitor.ui.utils import (
+    compute_background_alpha,
+    sanitize_font_size,
+    sort_stocks_by_user_order,
+)
 from stock_monitor.ui.view_models.main_window_view_model import MainWindowViewModel
 from stock_monitor.ui.widgets.context_menu import AppContextMenu
 from stock_monitor.ui.widgets.market_status import MarketStatusBar
@@ -27,9 +32,6 @@ from stock_monitor.utils.logger import app_logger
 
 # 定义常量
 ICON_FILE = resource_path("icon.ico")
-MIN_BACKGROUND_ALPHA = 128  # 透明度0时的alpha值(半透明,相当于原来50%的透明度)
-MAX_BACKGROUND_ALPHA = 255  # 透明度100时的alpha值(完全不透明)
-ALPHA_RANGE = MAX_BACKGROUND_ALPHA - MIN_BACKGROUND_ALPHA
 
 
 class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
@@ -439,15 +441,7 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
             self._last_data = data
 
             # 2. 对返回的数据进行强制排序以同步 UI 列表顺序
-            stock_order_map = {
-                code: i for i, code in enumerate(self.current_user_stocks)
-            }
-            data = sorted(
-                data,
-                key=lambda x: stock_order_map.get(
-                    x.code if hasattr(x, "code") else getattr(x, "name", ""), 999
-                ),
-            )
+            data = sort_stocks_by_user_order(data, self.current_user_stocks)
 
             # 3. 更新表格数据
             self.update_table_signal.emit(data)
@@ -788,14 +782,7 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
             if font_size is None:
                 font_size = self._config_helper.get_int(ConfigKeys.FONT_SIZE, 13)
 
-            try:
-                font_size = int(font_size)
-            except (ValueError, TypeError):
-                font_size = 13
-
-            # 确保字体大小大于0
-            if font_size <= 0:
-                font_size = 13
+            font_size = sanitize_font_size(font_size)
 
             app_logger.info(f"更新主窗口字体: {font_family}, {font_size}px")
 
@@ -937,8 +924,7 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         if hasattr(self, "_preview_transparency"):
             transparency = self._preview_transparency
 
-        alpha = int(MIN_BACKGROUND_ALPHA + (ALPHA_RANGE * transparency / 100))
-        alpha = max(MIN_BACKGROUND_ALPHA, min(MAX_BACKGROUND_ALPHA, alpha))
+        alpha = compute_background_alpha(transparency)
         bg_color = QtGui.QColor(30, 30, 30, alpha)
         painter.setBrush(bg_color)
         painter.setPen(QtCore.Qt.PenStyle.NoPen)  # type: ignore

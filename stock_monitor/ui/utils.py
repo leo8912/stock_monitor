@@ -5,6 +5,37 @@ UI工具模块
 
 from PyQt6 import QtCore
 
+# 主窗口背景透明度常量
+MIN_BACKGROUND_ALPHA = 128  # 透明度0时的alpha值(半透明,相当于原来50%的透明度)
+MAX_BACKGROUND_ALPHA = 255  # 透明度100时的alpha值(完全不透明)
+ALPHA_RANGE = MAX_BACKGROUND_ALPHA - MIN_BACKGROUND_ALPHA
+
+
+def compute_background_alpha(transparency) -> int:
+    """将 0-100 的透明度配置映射为背景 alpha 值（128-255，区间截断）。"""
+    alpha = int(MIN_BACKGROUND_ALPHA + (ALPHA_RANGE * transparency / 100))
+    return max(MIN_BACKGROUND_ALPHA, min(MAX_BACKGROUND_ALPHA, alpha))
+
+
+def sanitize_font_size(value, default: int = 13) -> int:
+    """解析字体大小配置：非法值或非正值回退为默认值。"""
+    try:
+        size = int(value)
+    except (ValueError, TypeError):
+        return default
+    return size if size > 0 else default
+
+
+def sort_stocks_by_user_order(data: list, user_stocks: list) -> list:
+    """按用户自选股顺序对刷新数据排序，未匹配的项排在末尾。"""
+    stock_order_map = {code: i for i, code in enumerate(user_stocks)}
+    return sorted(
+        data,
+        key=lambda x: stock_order_map.get(
+            x.code if hasattr(x, "code") else getattr(x, "name", ""), 999
+        ),
+    )
+
 
 def qt_message_handler(mode, context, message):
     """
