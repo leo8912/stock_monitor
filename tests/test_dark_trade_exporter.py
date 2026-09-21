@@ -52,7 +52,7 @@ class TestExportDarkTradeCsv(unittest.TestCase):
                 patch.object(exporter, "fetch_market_quotes_all", return_value=quotes),
                 patch.object(
                     exporter,
-                    "_get_recent_trade_dates",
+                    "get_recent_trade_dates",
                     return_value=[today_str, "20200102"],
                 ),
             ):

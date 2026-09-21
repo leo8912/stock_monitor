@@ -1,5 +1,7 @@
 """量化引擎使用的共享缓存入口。"""
 
+from __future__ import annotations
+
 from stock_monitor.core.cache_manager import LRUCache
 
 

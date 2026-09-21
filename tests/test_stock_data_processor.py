@@ -16,6 +16,7 @@ StockDataProcessor 单元测试模块
 import unittest
 
 from stock_monitor.core.data.stock_data_processor import StockDataProcessor
+from stock_monitor.core.data.stock_data_validator import StockDataValidator
 
 
 class TestStockDataProcessorBasic(unittest.TestCase):
@@ -70,26 +71,44 @@ class TestStockDataProcessorBasic(unittest.TestCase):
 
 
 class TestSpecialStockHandling(unittest.TestCase):
-    """特殊股票处理测试"""
+    """特殊股票处理测试
+
+    特殊名称兜底逻辑已由 ``StockDataProcessor._handle_special_stocks``
+    迁移至 :meth:`StockDataValidator.handle_special_cases`。
+    """
 
     def test_shanghai_index_name(self):
         """测试上证指数名称处理"""
         raw_data = {"name": "上证指数"}
-        result = StockDataProcessor._handle_special_stocks("sh000001", raw_data)
+        result = StockDataValidator.handle_special_cases(raw_data, "000001", "sh000001")
+
+        self.assertEqual(result["name"], "上证指数")
+
+    def test_shanghai_index_name_corrected(self):
+        """上证指数名称被错误填充时应被兜底修正"""
+        raw_data = {"name": "错误名称"}
+        result = StockDataValidator.handle_special_cases(raw_data, "000001", "sh000001")
 
         self.assertEqual(result["name"], "上证指数")
 
     def test_pingan_bank_name(self):
         """测试平安银行名称处理"""
         raw_data = {"name": "平安银行"}
-        result = StockDataProcessor._handle_special_stocks("sz000001", raw_data)
+        result = StockDataValidator.handle_special_cases(raw_data, "000001", "sz000001")
+
+        self.assertEqual(result["name"], "平安银行")
+
+    def test_pingan_bank_name_corrected(self):
+        """平安银行名称被错误填充时应被兜底修正"""
+        raw_data = {"name": "错误名称"}
+        result = StockDataValidator.handle_special_cases(raw_data, "000001", "sz000001")
 
         self.assertEqual(result["name"], "平安银行")
 
     def test_normal_stock_no_change(self):
         """测试普通股票不修改名称"""
         raw_data = {"name": "普通股票"}
-        result = StockDataProcessor._handle_special_stocks("sz000002", raw_data)
+        result = StockDataValidator.handle_special_cases(raw_data, "000002", "sz000002")
 
         self.assertEqual(result["name"], "普通股票")
 

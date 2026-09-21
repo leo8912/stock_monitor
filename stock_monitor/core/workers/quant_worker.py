@@ -19,10 +19,11 @@ from stock_monitor.utils.logger import app_logger
 from ...config.manager import get_config_dir
 from ...services.notifier import NotifierService
 from ..cache.cache_warmer import CacheWarmer, PerformanceMonitor
-from ..engine import WaveAnalyzer, WaveChart
+from ..engine import WaveAnalyzer, WaveChart, quant_report, wave_report
 from ..engine.backtest_engine import BacktestEngine
 from ..engine.quant_engine import QuantEngine
 from ..engine.quant_engine_constants import TF_CHINESE_MAP
+from . import alert_text, signal_cache
 from .base import DEFAULT_STOP_TIMEOUT_MS, wait_for_thread_stop
 
 CACHE_DIR = Path(get_config_dir()) / "cache"
@@ -107,43 +108,19 @@ class QuantWorker(QtCore.QThread):
             with open(SIGNAL_CACHE_FILE, encoding="utf-8") as f:
                 data = json.load(f)
 
+            # 在锁外解析，得到干净结果后一次性原子赋值
+            last_signal_time, signal_states, expired_count = (
+                signal_cache.parse_cache_payload(
+                    data, time.time(), SIGNAL_CACHE_EXPIRY_SECONDS
+                )
+            )
             with self._lock:
-                # 恢复_last_signal_time dict，需要转换key回tuple格式
-                self._last_signal_time = {}
-                self._signal_states = {}
-
-                for key_str, value in data.items():
-                    # key_str 格式: "symbol::signal_name"
-                    parts = key_str.split("::")
-                    if len(parts) == 2:
-                        symbol, sig_name = parts
-                        key_tuple = (symbol, sig_name)
-
-                        # 兼容旧格式（仅时间戳）和新格式（状态对象）
-                        if isinstance(value, dict):
-                            # 新格式：{"last_score": int, "last_push_ts": float}
-                            self._signal_states[key_tuple] = value
-                            self._last_signal_time[key_tuple] = value.get(
-                                "last_push_ts", 0
-                            )
-                        else:
-                            # 旧格式：直接是时间戳
-                            self._last_signal_time[key_tuple] = value
-
-                # 清理过期缓存项
-                now = time.time()
-                expired_keys = [
-                    k
-                    for k, v in self._last_signal_time.items()
-                    if now - v > SIGNAL_CACHE_EXPIRY_SECONDS
-                ]
-                for key in expired_keys:
-                    del self._last_signal_time[key]
-                    self._signal_states.pop(key, None)
+                self._last_signal_time = last_signal_time
+                self._signal_states = signal_states
 
             app_logger.info(
                 f"加载信号缓存成功：{len(self._last_signal_time)} 个活跃信号，"
-                f"已清理 {len(expired_keys)} 个过期项"
+                f"已清理 {expired_count} 个过期项"
             )
         except Exception as e:
             app_logger.error(f"加载信号缓存失败：{e}，使用空缓存")
@@ -164,26 +141,9 @@ class QuantWorker(QtCore.QThread):
 
             # 使用锁获取信号状态的快照
             with self._lock:
-                data = {}
-                for (symbol, sig_name), state in self._signal_states.items():
-                    key_str = f"{symbol}::{sig_name}"
-                    data[key_str] = state
+                data = signal_cache.build_cache_payload(self._signal_states)
 
-            # 每个线程用独立临时文件名，避免并发写同一临时文件
-            tmp_path = SIGNAL_CACHE_FILE.parent / (
-                f"{SIGNAL_CACHE_FILE.name}.tmp{threading.get_ident()}"
-            )
-            try:
-                with open(tmp_path, "w", encoding="utf-8") as f:
-                    json.dump(data, f, ensure_ascii=False, indent=2)
-                os.replace(tmp_path, SIGNAL_CACHE_FILE)
-            finally:
-                # 替换失败时清理残留临时文件
-                if tmp_path.exists():
-                    try:
-                        tmp_path.unlink()
-                    except OSError:
-                        pass
+            signal_cache.atomic_write_json(SIGNAL_CACHE_FILE, data)
 
             app_logger.debug(f"信号缓存已保存：{len(data)} 个信号状态")
         except Exception as e:
@@ -498,264 +458,61 @@ class QuantWorker(QtCore.QThread):
 
     def _get_prev_next_wave(self, wave: str) -> tuple[str, str]:
         """获取前一浪和预计下一浪"""
-        progression = ["1", "2", "3", "4", "5", "A", "B", "C"]
-        if wave not in progression:
-            return "未知", "未知"
-        idx = progression.index(wave)
-        prev_w = progression[(idx - 1) % len(progression)]
-        next_w = progression[(idx + 1) % len(progression)]
-        return prev_w, next_w
+        return wave_report.get_prev_next_wave(wave)
 
     def _analyze_major_and_sub_waves(self, df):
         """先按粗阈值寻找大浪结构，再以细阈值分析子浪，返回 (大浪, 子浪)。"""
-        major_res = None
-        for t in [0.08, 0.06, 0.05]:
-            major_res = WaveAnalyzer.analyze(df, threshold=t)
-            if major_res:
-                break
-        sub_res = WaveAnalyzer.analyze(df, threshold=0.03)
-        return major_res, sub_res
+        return wave_report.analyze_major_and_sub_waves(df)
 
     @staticmethod
     def _resolve_sub_wave(sub_res) -> tuple[str, str]:
         """从子浪分析结果解析浪型标识与说明，无结果时返回空串。"""
-        if sub_res and sub_res.current_wave:
-            return (
-                sub_res.current_wave.get("wave", "未知"),
-                sub_res.current_wave.get("desc", ""),
-            )
-        return "", ""
+        return wave_report.resolve_sub_wave(sub_res)
 
     @staticmethod
     def _build_fib_support_resistance(
         levels: dict, curr_price: float
     ) -> tuple[str, str]:
         """根据斐波那契位与当前价拆分支撑位与阻力位字符串。"""
-        supports, resistances = [], []
-        sorted_levels = sorted(
-            [(k, v) for k, v in levels.items() if k not in ("start", "end")],
-            key=lambda x: x[1],
-        )
-        for k, v in sorted_levels:
-            if v < curr_price:
-                supports.append(f"{v:.2f}")
-            elif v > curr_price:
-                resistances.append(f"{v:.2f}")
-
-        support_str = " / ".join(supports[-3:]) if supports else "无"
-        resistance_str = " / ".join(resistances[:3]) if resistances else "无"
-        return support_str, resistance_str
+        return wave_report.build_fib_support_resistance(levels, curr_price)
 
     @staticmethod
     def _format_wave_history_lines(all_waves: list[dict]) -> list[str]:
         """格式化历史波段（时间 + 空间）文本行，含当前位置标记。"""
-        lines = ["", "近期走势:"]
-        for wd in all_waves:
-            duration = f"{wd['duration_days']}天" if wd["duration_days"] > 0 else "?"
-            sign = "+" if wd["pct_change"] >= 0 else ""
-            arrow = "↓" if wd["direction"] == "down" else "↑"
-            marker = " ←当前位置" if wd["is_current"] else ""
-            lines.append(
-                f"  {arrow} {wd['label']}: "
-                f"{wd['from_date'][5:]}->{wd['to_date'][5:]} "
-                f"({duration}) {sign}{wd['pct_change']:.1f}%{marker}"
-            )
-        return lines
+        return wave_report.format_wave_history_lines(all_waves)
 
     @staticmethod
     def _format_remaining_space_lines(rs: dict) -> list[str]:
         """格式化剩余空间预估（目标位 / 空间 / 预计天数）文本行。"""
-        sign = "+" if rs["remaining_pct"] >= 0 else ""
-        return [
-            "",
-            "剩余空间预估:",
-            f"  目标位: {rs['target_price']:.2f} ({rs['basis']})",
-            f"  当前->目标: {sign}{rs['remaining_pct']:.1f}%",
-            f"  预计完成: 约{rs['remaining_days_est']}个交易日",
-        ]
+        return wave_report.format_remaining_space_lines(rs)
 
     def _format_wave_text_analysis(
         self, symbol: str, name: str, timeframe_name: str, df
     ) -> str:
         """将波浪分析结果格式化为简洁易懂的文本卡片"""
-        if df is None or df.empty or len(df) < 30:
-            return ""
-
-        # 大浪分析 + 子浪分析
-        major_res, sub_res = self._analyze_major_and_sub_waves(df)
-
-        if not major_res or not major_res.current_wave:
-            return ""
-
-        mw = major_res.current_wave
-        wave = mw.get("wave", "未知")
-        trend = mw.get("trend")
-        conf = mw.get("confidence", 0.5) * 100
-        rule_check = mw.get("rule_check", "")
-
-        sub_wave, sub_desc = QuantWorker._resolve_sub_wave(sub_res)
-
-        curr_price = float(major_res.df.iloc[-1]["close"])
-
-        support_str, resistance_str = QuantWorker._build_fib_support_resistance(
-            major_res.fib_levels or {}, curr_price
-        )
-
-        # 趋势判断
-        trend_tag = "看涨" if trend == "bullish" else "看跌"
-
-        # ── 构建简洁文案 ──────────────────────────────────────
-        lines = [
-            f"[波浪分析] {name} ({symbol})  {timeframe_name}",
-            f"趋势: {trend_tag} | 当前: 第{wave}浪 | 置信度: {conf:.0f}%",
-        ]
-
-        # 浪型通俗说明
-        wave_explain = self._explain_wave(wave, trend)
-        if wave_explain:
-            lines.append(f"状态: {wave_explain}")
-
-        if sub_wave:
-            lines.append(f"细分: 第{sub_wave}浪 ({sub_desc})")
-
-        if rule_check:
-            lines.append(f"规则: {rule_check}")
-
-        # 历史波段（时间 + 空间）— 只显示最近几段
-        if major_res.all_waves:
-            lines.extend(QuantWorker._format_wave_history_lines(major_res.all_waves))
-
-        lines.extend(
-            [
-                "",
-                f"价格: {curr_price:.2f}",
-                f"支撑: {support_str}",
-                f"阻力: {resistance_str}",
-            ]
-        )
-
-        # 剩余空间预估
-        if major_res.remaining_space:
-            lines.extend(
-                QuantWorker._format_remaining_space_lines(major_res.remaining_space)
-            )
-
-        lines.append("")
-        lines.append(self._wave_action_hint(wave, trend))
-
-        return "\n".join(lines)
+        return wave_report.format_wave_text_analysis(symbol, name, timeframe_name, df)
 
     @staticmethod
     def _explain_wave(wave: str, trend: str | None) -> str:
         """用通俗语言解释当前浪型含义"""
-        explanations = {
-            ("1", "bullish"): "筑底完成，刚刚启动上涨",
-            ("2", "bullish"): "上涨后回踩确认，正常调整",
-            ("3", "bullish"): "主升浪，涨幅最大、速度最快的阶段",
-            ("4", "bullish"): "上涨途中休整，蓄力后有望再冲高",
-            ("5", "bullish"): "上涨末期，动能衰减，追高风险大",
-            ("A", "bearish"): "上涨结束，开始下跌调整",
-            ("B", "bearish"): "下跌途中的反弹，空间有限",
-            ("C", "bearish"): "加速下跌阶段，杀伤力最大",
-        }
-        return explanations.get((wave, trend), "")
+        return wave_report.explain_wave(wave, trend)
 
     @staticmethod
     def _wave_action_hint(wave: str, trend: str | None) -> str:
         """给出简洁的操作建议"""
-        hints = {
-            ("1", "bullish"): "建议: 底部确认后可小仓试探",
-            ("2", "bullish"): "建议: 回调企稳是加仓机会",
-            ("3", "bullish"): "建议: 持股待涨，不轻易下车",
-            ("4", "bullish"): "建议: 耐心持有，等调整结束再加仓",
-            ("5", "bullish"): "建议: 逢高减仓，锁定利润",
-            ("A", "bearish"): "建议: 止损离场，不要死扛",
-            ("B", "bearish"): "建议: 反弹是逃命机会，别追",
-            ("C", "bearish"): "建议: 等企稳再考虑入场",
-        }
-        return hints.get((wave, trend), "建议: 观望为主，等方向明确")
+        return wave_report.wave_action_hint(wave, trend)
 
     def _get_report_title(self, report_type: str) -> str:
         """获取报告标题"""
-        from datetime import datetime
-
-        date_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-
-        titles = {
-            "morning": f"📊 早盘复盘 ({date_str})",
-            "afternoon": f"📈 午盘复盘 ({date_str})",
-            "manual": f"🔍 全量复盘 ({date_str})",
-            "auto": f"📉 自动复盘 ({date_str})",
-        }
-
-        return titles.get(report_type, titles["auto"])
+        return quant_report.get_report_title(report_type)
 
     def _format_report_content(
         self, title: str, all_signals: list, strong_signals: list, report_type: str
     ) -> str:
         """格式化报告内容（使用 Markdown 格式）"""
-        if not all_signals:
-            return "今日无显著信号"
-
-        # 按评分排序
-        all_signals.sort(key=lambda x: x["score"], reverse=True)
-        strong_signals.sort(key=lambda x: x["score"], reverse=True)
-
-        # Markdown 格式报告
-        md = [
-            f"**{title}**\n\n",
-            f"✅ 总信号数：{len(all_signals)} | 🔥 强信号：{len(strong_signals)}\n\n",
-        ]
-
-        # 强信号优先展示
-        if strong_signals:
-            md.append("**🌟 重点关注：**\n")
-            for sig in strong_signals[:5]:  # 最多显示 5 个
-                fin_label = sig["audit"].get("label", "")
-                wave_daily_desc = (
-                    f" | 🌊日线:{sig['wave_daily']['desc']}"
-                    if sig.get("wave_daily")
-                    else ""
-                )
-                wave_60m_desc = (
-                    f" | 🌊60m:{sig['wave_60m']['desc']}" if sig.get("wave_60m") else ""
-                )
-                md.append(
-                    f"> **{sig['name']}** ({sig['symbol']}) "
-                    f"[{sig['signals'][0]}] "
-                    f"评分:{sig['score']:+} "
-                    f"{fin_label}"
-                    f"{wave_daily_desc}"
-                    f"{wave_60m_desc}"
-                )
-            md.append("")
-
-        # 全部信号列表
-        if all_signals:
-            md.append("**📋 全部信号：**\n")
-            for sig in all_signals[:20]:  # 最多显示 20 个
-                price_info = (
-                    f"￥{sig['price']:.2f} ({sig['pct']:+.1f}%)"
-                    if sig["price"] > 0
-                    else "--"
-                )
-                wave_daily_desc = (
-                    f" (日线:{sig['wave_daily']['wave']}浪)"
-                    if sig.get("wave_daily")
-                    else ""
-                )
-                wave_60m_desc = (
-                    f" (60m:{sig['wave_60m']['wave']}浪)" if sig.get("wave_60m") else ""
-                )
-                md.append(
-                    f"• {sig['name']} [{sig['signals'][0]}] "
-                    f"+{sig['score']} "
-                    f"{price_info}"
-                    f"{wave_daily_desc}"
-                    f"{wave_60m_desc}"
-                )
-
-        return "\n".join(md)
+        return quant_report.format_report_content(
+            title, all_signals, strong_signals, report_type
+        )
 
     def run(self) -> None:
         from stock_monitor.core.config_center import config_center
@@ -1031,73 +788,13 @@ class QuantWorker(QtCore.QThread):
         if not signals_data:
             return None
 
-        # 取最高分作为主评分
-        max_score_sig = max(signals_data, key=lambda x: x["score"])
-
-        # 构建精简标题
-        is_confluence = any(s.get("is_confluence") for s in signals_data)
-        is_priority = any(s.get("is_priority") for s in signals_data)
-
-        if is_confluence:
-            title_prefix = "💎【策略共振】"
-        elif is_priority:
-            title_prefix = "🔥【精细关注】"
-        else:
-            title_prefix = "🚨"
-
-        # 价格信息
-        p_info = max_score_sig.get("p_info", {})
-
-        # 【优化】检查价格有效性
-        if p_info and p_info.get("price", 0) > 0:
-            pct = p_info.get("pct", 0.0)
-            sign = "+" if pct >= 0 else ""
-            price_suffix = f" {sign}{pct:.2f}%"
-        else:
-            price_suffix = " (价格待更新)"
-            app_logger.debug(f"[合并推送] {symbol} 价格数据缺失")
-
-        title = f"{title_prefix}{stock_name} ({symbol}){price_suffix}"
-
-        # 构建信号摘要
-        score_summary = ", ".join(
-            [f"{s['sig_name']}({s['score']:+})" for s in signals_data]
-        )
-
-        # 财务审计（取最优）
-        best_audit = max(
-            signals_data, key=lambda x: x.get("audit", {}).get("score_offset", 0)
-        )
-        fin_label = best_audit.get("audit", {}).get("label", "[财务稳健]")
-        fin_reasons = " / ".join(best_audit.get("audit", {}).get("reasons", []))
-        fin_info = f"{fin_label} {fin_reasons}" if fin_reasons else fin_label
-
-        # 历史轨迹
+        # 历史轨迹（取快照后由纯函数构建文案）
         with self._lock:
-            history_list = self._signals_history.get(symbol, [])
-        history_text = ""
-        if history_list:
-            history_text = "\n今日轨迹：" + " → ".join(
-                [f"{h['time']} {h['name']}" for h in history_list[-5:]]  # 最近5条
-            )
+            history_list = list(self._signals_history.get(symbol, []))
 
-        # 构建推送内容（Markdown 格式）
-        cycle_info = (
-            f"信号组合：{score_summary}\n\n"
-            f"🚀 **综合强度**：{max_score_sig['score']:+}分\n\n"
-            f"🏥 **财务审计**：{fin_info}"
+        return alert_text.merge_signals_text(
+            symbol, stock_name, signals_data, history_list
         )
-
-        if history_text:
-            cycle_info += f"\n{history_text}"
-
-        return {
-            "title": title,
-            "signals_text": f"检测到 {len(signals_data)} 个技术信号",
-            "cycle_info": cycle_info,
-            "p_info": p_info,
-            "max_score": max_score_sig["score"],
-        }
 
     def _collect_pending_signals(
         self, symbol, signals, score, audit, p_info, is_priority, is_confluence
@@ -1185,21 +882,13 @@ class QuantWorker(QtCore.QThread):
             1 if symbol.startswith("sh") else 0,
             min_score=min_backtest_score,
         )
-        if not (stats and stats.get("total_signals", 0) >= 3):
-            return ""
-        wr = stats["win_rate"] * 100
-        ap = stats["avg_profit"] * 100
-        icon = "✅" if wr >= 60 else ("⚡" if wr >= 45 else "⚠️")
-        return f"\n历史复盘：{icon} 同类评分胜率 {wr:.0f}% (均益 {ap:+.1f}%)"
+        return alert_text.format_backtest_stats(stats)
 
     def _build_display_labels(self, stock_name, ps) -> tuple[str, str]:
         """构建带优先级/共振标记的展示名称与信号后缀。"""
-        display_name = f"🔥 {stock_name}" if ps["is_priority"] else stock_name
-        display_sig = " [精细关注]" if ps["is_priority"] else ""
-        if ps["is_confluence"]:
-            display_name = f"💎【策略共振】{stock_name}"
-            display_sig = " [超高可靠/重仓机会]"
-        return display_name, display_sig
+        return alert_text.build_display_labels(
+            stock_name, ps["is_priority"], ps["is_confluence"]
+        )
 
     def _build_individual_cycle_info(
         self, symbol, stock_name, ps, daily_wave_text, h60_wave_text
@@ -1227,10 +916,7 @@ class QuantWorker(QtCore.QThread):
 
         with self._lock:
             history_list = self._signals_history.get(symbol, [])
-        if history_list:
-            cycle_info += "\n今日轨迹：" + " → ".join(
-                [f"{h['time']} {h['name']}" for h in history_list[-5:]]
-            )
+        cycle_info += alert_text.format_history_text(history_list)
 
         return {
             "display_name": display_name,

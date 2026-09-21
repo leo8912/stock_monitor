@@ -57,7 +57,7 @@ class CacheWarmer:
         self.cache_stats["total_symbols"] = len(symbols)
         self.cache_stats["warmed_symbols"] = 0
         self.cache_stats["failed_symbols"] = 0
-        self.cache_stats["start_time"] = time.time()
+        self.cache_stats["start_time"] = time.perf_counter()
 
         app_logger.info(
             f"开始缓存预热：{len(symbols)} 只股票，周期数 {len(categories)}，"
@@ -84,7 +84,7 @@ class CacheWarmer:
                     app_logger.warning(f"预热股票 {symbol} 缓存失败：{e}")
                     self.cache_stats["failed_symbols"] += 1
 
-        self.cache_stats["end_time"] = time.time()
+        self.cache_stats["end_time"] = time.perf_counter()
         self.cache_stats["duration_seconds"] = (
             self.cache_stats["end_time"] - self.cache_stats["start_time"]
         )

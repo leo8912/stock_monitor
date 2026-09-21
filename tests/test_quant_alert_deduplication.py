@@ -7,10 +7,25 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
+
 # 添加项目根目录到路径
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from stock_monitor.core.workers.quant_worker import QuantWorker
+
+
+@pytest.fixture(autouse=True)
+def _isolated_signal_cache(tmp_path, monkeypatch):
+    """隔离信号缓存路径：避免测试读写用户真实缓存文件造成跨测试污染。"""
+    monkeypatch.setattr(
+        "stock_monitor.core.workers.quant_worker.SIGNAL_CACHE_FILE",
+        tmp_path / "signal_cache.json",
+    )
+    monkeypatch.setattr(
+        "stock_monitor.core.workers.quant_worker.CACHE_DIR",
+        tmp_path,
+    )
 
 
 class MockFetcher:
