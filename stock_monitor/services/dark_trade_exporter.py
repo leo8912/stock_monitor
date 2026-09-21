@@ -16,6 +16,7 @@ import requests
 
 from stock_monitor.services.dark_trade.service import fetch_all_dark_trade
 from stock_monitor.services.dark_trade.utils import get_recent_trade_dates
+from stock_monitor.utils.helpers import safe_float
 from stock_monitor.utils.logger import app_logger
 
 # ── 明盘行情API（东方财富市场实时数据）──────────────────────────────────────
@@ -46,11 +47,8 @@ _BASE_HEADERS = [
 
 
 def _to_float(value, default: float = 0.0) -> float:
-    """容错地把值转换为 float，失败返回默认值。"""
-    try:
-        return float(value)
-    except Exception:
-        return default
+    """容错地把值转换为 float，失败返回默认值（共享实现见 utils.helpers.safe_float）。"""
+    return safe_float(value, default)
 
 
 def fetch_market_quotes_all() -> dict[str, dict]:

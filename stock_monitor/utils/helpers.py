@@ -75,6 +75,18 @@ def get_stock_emoji(code, name):
         return "⭐️"
 
 
+def safe_float(value, default: float = 0.0) -> float:
+    """尽力将 value 转为 float，失败（None/非数值）时返回 default，不抛异常。
+
+    供数据源解析与报表导出共享使用（原 market_data_adapter._safe_float /
+    dark_trade_exporter._to_float 的统一实现）。
+    """
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return default
+
+
 def is_equal(a, b, tol=0.01):
     """
     比较两个字符串数值是否近似相等

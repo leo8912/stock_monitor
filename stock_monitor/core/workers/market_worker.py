@@ -69,7 +69,11 @@ class MarketStatsWorker(BaseWorker):
 
             except Exception as e:
                 app_logger.error(f"市场统计线程异常：{e}")
-                self.sleep(10)
+                # 分片睡眠：异常退避期间仍能及时响应停止请求
+                for _ in range(10):
+                    if not self._is_running:
+                        break
+                    self.sleep(1)
 
     def _calculate_stats(self, data: dict[str, Any]) -> dict[str, int]:
         """计算市场统计数据"""

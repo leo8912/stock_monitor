@@ -63,11 +63,14 @@ class RefreshWorker(QtCore.QThread):
         self._lock.lock()
         self.current_user_stocks = user_stocks
         self.refresh_interval = refresh_interval
-        self._lock.unlock()
-
+        # 启动判定与 start() 必须在同一把锁内完成，避免快速连续调用时
+        # isRunning() 尚未变真而重复启动线程（QThread::start 重复调用告警）
         if not self.isRunning():
             self._is_running = True
+            self._lock.unlock()
             self.start()
+        else:
+            self._lock.unlock()
 
         app_logger.info_ctx("后台刷新线程已启动", interval=self.refresh_interval)
 

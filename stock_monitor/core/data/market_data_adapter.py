@@ -23,6 +23,7 @@ import threading
 import pandas as pd
 import requests
 
+from stock_monitor.utils.helpers import safe_float
 from stock_monitor.utils.logger import app_logger
 
 # ====== 常量 ======
@@ -68,11 +69,8 @@ def _tencent_kline_url(symbol: str, market: int, period: str, count: int = 250) 
 
 
 def _safe_float(val, default: float = 0.0) -> float:
-    """尽力将 val 转为 float，失败（None/非数值）时返回 default，不抛异常。"""
-    try:
-        return float(val)
-    except (ValueError, TypeError):
-        return default
+    """容错转换 float（共享实现见 utils.helpers.safe_float）。"""
+    return safe_float(val, default)
 
 
 class _ThreadLocalSession:

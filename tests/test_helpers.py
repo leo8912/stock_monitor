@@ -4,8 +4,26 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from stock_monitor.utils.helpers import get_stock_emoji, is_equal
+from stock_monitor.utils.helpers import get_stock_emoji, is_equal, safe_float
 from stock_monitor.utils.stock_utils import StockCodeProcessor
+
+
+class TestSafeFloat(unittest.TestCase):
+    """safe_float 统一容错转换（数据源解析 / 报表导出共享）"""
+
+    def test_valid_values(self):
+        self.assertEqual(safe_float("1.23"), 1.23)
+        self.assertEqual(safe_float(5), 5.0)
+        self.assertEqual(safe_float(-0.5), -0.5)
+
+    def test_invalid_returns_default(self):
+        self.assertEqual(safe_float(None), 0.0)
+        self.assertEqual(safe_float("abc"), 0.0)
+        self.assertEqual(safe_float(""), 0.0)
+        self.assertEqual(safe_float([], default=1.5), 1.5)
+
+    def test_custom_default_with_none(self):
+        self.assertEqual(safe_float(None, default=8.8), 8.8)
 
 
 class TestHelpers(unittest.TestCase):
