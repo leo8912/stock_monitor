@@ -22,7 +22,12 @@ from ..cache.cache_warmer import CacheWarmer, PerformanceMonitor
 from ..engine import WaveAnalyzer, WaveChart, quant_report, wave_report
 from ..engine.backtest_engine import BacktestEngine
 from ..engine.quant_engine import QuantEngine
-from ..engine.quant_engine_constants import TF_CHINESE_MAP
+from ..engine.quant_engine_constants import (
+    SIGNAL_MACD_BOTTOM,
+    SIGNAL_MACD_TOP,
+    TF_CHINESE_MAP,
+)
+from ..engine import quant_indicators
 from . import alert_text, scan_rules, signal_cache
 from .base import DEFAULT_STOP_TIMEOUT_MS, wait_for_thread_stop
 
@@ -198,26 +203,53 @@ class QuantWorker(QtCore.QThread):
         return True
 
     def check_and_trigger_reports(self) -> None:
-        """检查并触发定时报告生成（早盘/午盘复盘）"""
+        """检查并触发定时报告生成（早盘/午盘复盘）
+
+        触发规则：交易日（周一至周五）内，到达目标时刻后的
+        ``report_trigger_window_minutes`` 分钟窗口内触发一次（当日同类型
+        去重），避免扫描周期跨过精确分钟导致漏报。
+        """
         try:
-            from datetime import datetime
+            from datetime import datetime, timedelta
 
             now = datetime.now()
-            current_time = now.strftime("%H:%M")
             today = now.strftime("%Y-%m-%d")
 
-            # 检查是否需要生成定时报告
-            if current_time in self._daily_report_times:
-                # 避免同一天重复生成
-                report_type = "morning" if current_time == "11:35" else "afternoon"
-                report_key = f"{today}_{report_type}"
+            # 交易日守护：周末无交易数据，不生成复盘
+            if now.weekday() >= 5:
+                return
 
-                if self._last_report_date != report_key:
-                    app_logger.info(f"触发定时报告生成：{report_type}")
-                    self.generate_daily_summary_report(report_type)
-                    self.daily_report_ready.emit(report_type)
-                    self._last_report_date = report_key
-                    self._last_report_type = report_type
+            # 未来日期的去重标记视为异常状态（时钟回拨/脏状态），全面停止触发
+            if self._last_report_date:
+                marker_date = str(self._last_report_date).split("_", 1)[0]
+                if marker_date > today:
+                    return
+
+            window_minutes = int(self.config.get("report_trigger_window_minutes", 30))
+            for time_str in self._daily_report_times:
+                try:
+                    hh, mm = time_str.split(":")
+                    target = now.replace(
+                        hour=int(hh), minute=int(mm), second=0, microsecond=0
+                    )
+                except Exception:
+                    app_logger.warning(f"无效的报告时间配置: {time_str}")
+                    continue
+
+                if now < target or now > target + timedelta(minutes=window_minutes):
+                    continue
+
+                report_type = "morning" if time_str == "11:35" else "afternoon"
+                report_key = f"{today}_{report_type}"
+                if self._last_report_date == report_key:
+                    continue  # 当日该类型已生成
+
+                app_logger.info(f"触发定时报告生成：{report_type}")
+                self.generate_daily_summary_report(report_type)
+                self.daily_report_ready.emit(report_type)
+                self._last_report_date = report_key
+                self._last_report_type = report_type
+                break
         except Exception as e:
             app_logger.error(f"检查报告生成失败：{e}")
 
@@ -850,21 +882,61 @@ class QuantWorker(QtCore.QThread):
             daily_res = WaveAnalyzer.analyze(daily_df)
             h60_res = WaveAnalyzer.analyze(h60_df)
             if daily_res:
-                daily_wave_text = f"\n🌊 **波浪定位(日线)**：{daily_res.current_wave.get('desc', '判断中')} (第 {daily_res.current_wave.get('wave', '')} 浪)"
+                daily_wave_text = f"\n🌊 波浪定位(日线)：{daily_res.current_wave.get('desc', '判断中')} (第 {daily_res.current_wave.get('wave', '')} 浪)"
             if h60_res:
-                h60_wave_text = f"\n🌊 **波浪定位(60m)**：{h60_res.current_wave.get('desc', '判断中')} (第 {h60_res.current_wave.get('wave', '')} 浪)"
+                h60_wave_text = f"\n🌊 波浪定位(60m)：{h60_res.current_wave.get('desc', '判断中')} (第 {h60_res.current_wave.get('wave', '')} 浪)"
         except Exception as wave_err:
             app_logger.warning(f"即时扫描分析波浪异常 ({symbol}): {wave_err}")
         return daily_wave_text, h60_wave_text, daily_res, h60_res
 
+    def _build_metric_text(self, symbol, signals, daily_df=None) -> str:
+        """构建推送用"指标快照 + 背离量化详情"文本，数据不足返回空串。
+
+        - 指标快照：RSI14 / 量比 / 布林位置 / MACD 柱 / 趋势 / 支撑压力。
+        - 背离详情：当轮信号包含 MACD 顶/底背离时，量化两个低/高点的
+          价格与柱体变化幅度。
+        """
+        try:
+            df = daily_df
+            if df is None or getattr(df, "empty", True):
+                df = self.engine.fetch_bars(symbol, category=9, offset=100)
+            if df is None or getattr(df, "empty", True):
+                return ""
+
+            parts: list[str] = []
+            snapshot = self.engine.build_push_snapshot(df)
+            if isinstance(snapshot, str) and snapshot:
+                parts.append(snapshot)
+
+            joined = "".join(s.get("name", "") for s in signals or []).replace(" ", "")
+            if SIGNAL_MACD_BOTTOM.replace(" ", "") in joined:
+                detail = self.engine.describe_macd_divergence(df, top=False)
+                if detail:
+                    text = quant_indicators.format_divergence_detail(detail, top=False)
+                    if text:
+                        parts.append(text)
+            if SIGNAL_MACD_TOP.replace(" ", "") in joined:
+                detail = self.engine.describe_macd_divergence(df, top=True)
+                if detail:
+                    text = quant_indicators.format_divergence_detail(detail, top=True)
+                    if text:
+                        parts.append(text)
+
+            return "\n".join(parts)
+        except Exception as e:
+            app_logger.debug(f"[{symbol}] 推送指标快照构建失败: {e}")
+            return ""
+
     def _push_merged_signals(
-        self, symbol, stock_name, pending_signals, daily_wave_text, h60_wave_text
+        self, symbol, stock_name, pending_signals, daily_wave_text, h60_wave_text, metric_text=""
     ) -> list[str]:
         """合并推送模式：一次推送该股票的全部信号，返回已触发的信号名。"""
         triggered = []
         merged = self._merge_signals_for_symbol(symbol, stock_name, pending_signals)
         if merged:
-            # 注入波浪文本
+            # 注入指标快照与背离详情、波浪文本
+            if metric_text:
+                merged["cycle_info"] += f"\n{metric_text}"
             merged["cycle_info"] += f"\n{daily_wave_text}{h60_wave_text}"
             NotifierService.dispatch_alert(
                 config=self.config,
@@ -899,7 +971,7 @@ class QuantWorker(QtCore.QThread):
         )
 
     def _build_individual_cycle_info(
-        self, symbol, stock_name, ps, daily_wave_text, h60_wave_text
+        self, symbol, stock_name, ps, daily_wave_text, h60_wave_text, metric_text=""
     ) -> dict:
         """构建单个信号的推送文案（含 Alpha、回测胜率、财务审计与今日轨迹）。"""
         benchmark_pct, is_valid = self.engine.get_market_relative_strength()
@@ -916,8 +988,11 @@ class QuantWorker(QtCore.QThread):
         display_name, display_sig = self._build_display_labels(stock_name, ps)
 
         cycle_info = f"信号详情：{ps['sig_name']}\n\n"
-        cycle_info += f"🚀 **超值强度**：{ps['score']:+}分 (Alpha: {alpha:+.2f}%)\n\n"
-        cycle_info += f"🏥 **财务审计**：{fin_info}\n"
+        cycle_info += f"🚀 超值强度：{ps['score']:+}分 (Alpha: {alpha:+.2f}%)\n\n"
+        cycle_info += f"🏥 财务审计：{fin_info}\n"
+        # 注入指标快照与背离量化详情
+        if metric_text:
+            cycle_info += f"{metric_text}\n"
         # 注入波浪文本
         cycle_info += f"{daily_wave_text}\n{h60_wave_text}\n"
         cycle_info += stats_text
@@ -934,13 +1009,13 @@ class QuantWorker(QtCore.QThread):
         }
 
     def _push_individual_signals(
-        self, symbol, stock_name, pending_signals, daily_wave_text, h60_wave_text
+        self, symbol, stock_name, pending_signals, daily_wave_text, h60_wave_text, metric_text=""
     ) -> list[str]:
         """单独推送模式：为每个信号分别构建并发送推送，返回已触发的信号名。"""
         triggered = []
         for ps in pending_signals:
             info = self._build_individual_cycle_info(
-                symbol, stock_name, ps, daily_wave_text, h60_wave_text
+                symbol, stock_name, ps, daily_wave_text, h60_wave_text, metric_text
             )
             NotifierService.dispatch_alert(
                 config=self.config,
@@ -1050,14 +1125,17 @@ class QuantWorker(QtCore.QThread):
             self._analyze_waves_for_signal(symbol, cached_daily_df)
         )
 
+        # 1b. 构建指标快照与背离量化详情（微信推送接入具体指标数据）
+        metric_text = self._build_metric_text(symbol, signals, cached_daily_df)
+
         # 【阶段2】根据配置决定是合并推送还是单独推送
         if merge_enabled and len(pending_signals) > 1:
             triggered = self._push_merged_signals(
-                symbol, stock_name, pending_signals, daily_wave_text, h60_wave_text
+                symbol, stock_name, pending_signals, daily_wave_text, h60_wave_text, metric_text
             )
         else:
             triggered = self._push_individual_signals(
-                symbol, stock_name, pending_signals, daily_wave_text, h60_wave_text
+                symbol, stock_name, pending_signals, daily_wave_text, h60_wave_text, metric_text
             )
 
         # 3. 统一生成并推送波浪分析 K 线图

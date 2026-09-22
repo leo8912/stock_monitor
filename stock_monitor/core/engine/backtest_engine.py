@@ -9,6 +9,8 @@ from stock_monitor.core.engine.quant_engine import QuantEngine
 from stock_monitor.core.engine.quant_engine_constants import (
     BACKTEST_STOP_LOSS,
     BACKTEST_TARGET_PROFIT,
+    SIGNAL_MACD_BOTTOM,
+    SIGNAL_OBV_ACCUM,
 )
 from stock_monitor.utils.logger import app_logger
 
@@ -315,9 +317,9 @@ class BacktestEngine:
                 # 模拟历史信号：底背离 + OBV
                 signals = []
                 if self.qe.check_macd_bullish_divergence(df, end_idx=i):
-                    signals.append({"name": "MACD底背离"})
+                    signals.append({"name": SIGNAL_MACD_BOTTOM})
                 if self.qe.check_accumulation(df, end_idx=i):
-                    signals.append({"name": "OBV碎步吸筹"})
+                    signals.append({"name": SIGNAL_OBV_ACCUM})
 
                 score = self.qe.calculate_intensity_score(df, signals, end_idx=i)
                 if score >= min_score:

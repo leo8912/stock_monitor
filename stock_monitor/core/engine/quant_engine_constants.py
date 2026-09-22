@@ -68,6 +68,22 @@ SIGNAL_INTENSITY_HIGH = 0.8  # 高强度信号阈值
 SIGNAL_INTENSITY_MEDIUM = 0.5  # 中等强度信号阈值
 SIGNAL_COOLDOWN_MINUTES = 30  # 信号冷却期 (分钟)
 
+# ====== 信号名称（唯一真源：引擎产出与判定/评分/回测必须引用同一常量） ======
+# 历史教训：引擎产出 "MACD底背离"（无空格）而 scan_rules 比对 "MACD 底背离"
+# （有空格），导致策略共振在生产环境从未触发。所有信号名一律从这里取。
+SIGNAL_MACD_BOTTOM = "MACD底背离"
+SIGNAL_MACD_TOP = "MACD顶背离"
+SIGNAL_OBV_ACCUM = "OBV碎步吸筹"
+SIGNAL_RSRS_EXTREME = "RSRS极强"
+SIGNAL_RSRS_STRONG = "RSRS走强"
+SIGNAL_BB_SQUEEZE = "BB收口变盘"
+SIGNAL_VOL_PRICE_TOP = "量价背离(顶)"
+SIGNAL_VOL_PRICE_BOTTOM = "量价背离(底)"
+SIGNAL_KDJ_GOLDEN = "KDJ金叉"
+SIGNAL_KDJ_DEAD = "KDJ死叉"
+SIGNAL_EMA_GOLDEN = "均线金叉"
+SIGNAL_EMA_DEAD = "均线死叉"
+
 # ====== 基本面筛选阈值 ======
 MIN_MARKET_CAP = 1e9  # 最小市值 (元)
 MAX_PE_RATIO = 100  # 最大市盈率

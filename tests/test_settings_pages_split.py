@@ -311,6 +311,10 @@ class TestQuantRoundTrip(unittest.TestCase):
                 "wave_4_retrace": 0.382,
                 "wave_b_retrace": 0.5,
             },
+            "quant_min_push_score": 3,
+            "quant_alert_cooldown": 900,
+            "quant_alert_merge_enabled": False,
+            "report_trigger_window_minutes": 15,
         }
         self.page.load(source)
         out: dict = {}

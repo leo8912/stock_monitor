@@ -1,5 +1,30 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.9.0] - 2026-09-22
+
+> 量化推送接入具体指标数据、新增背离类信号、修复一批 P0 缺陷并把推送防抖配置接入设置界面。
+
+### 🚀 新功能 (Features)
+- **微信推送接入指标快照与背离量化详情**：新增 `build_push_snapshot`（RSI14 / 量比 / 布林位置 / MACD 柱 / 趋势 / 支撑压力 / 放量脉冲）与 `describe_macd_divergence` + `format_divergence_detail`（量化两个低/高点价格变化与 MACD 柱变化幅度），合并推送与单独推送两条路径均注入
+- **新增信号**：MACD 顶背离（`check_macd_bearish_divergence`）、量价背离顶/底（`check_volume_price_divergence`，基于 OBV）、KDJ 金叉/死叉（`check_kdj_cross`）、均线金叉/死叉（`check_ema_cross`）；扫描接入产出并计入强度评分（底背离 +3、量价背离(底) +2、金叉类 +1；顶背离 -3、量价背离(顶) -2、死叉类 -1）
+- **设置页新增「推送防抖」分组**：最低推送评分、同信号冷却（秒）、复盘触发窗口（分钟）、多信号合并推送开关，均接入 load/collect 与配置默认值（`quant_min_push_score`、`quant_alert_cooldown`、`quant_alert_merge_enabled`、`report_trigger_window_minutes`）
+- **信号名唯一真源**：`quant_engine_constants.py` 新增 `SIGNAL_*` 常量块，引擎、扫描、回测、对比弹窗、推送统一引用
+
+### 🐛 修复 (Fixes)
+- **策略共振死代码**：引擎产出无空格名 "MACD底背离" 而 `is_confluence` 精确比对带空格名，生产环境共振从未触发；现比对前做空格归一化
+- **OBV 信号重复**：引擎日线已产出 "OBV碎步吸筹" 时 `append_obv_signals` 跳过追加，同一现象不再推两条
+- **对比弹窗 RSI 恒为 0**：`calculate_comprehensive_indicators` 缺 `rsi` 数值键，现补齐并新增 `volume_ratio`
+- **报告负分显示 `+-3`**：`quant_report.format_report_content` 改用 `{score:+}` 格式化
+- **BB 收口判定从未生效**：`check_bbands_squeeze` 要求 df 预含 `BBB_` 列而调用方原始 df 没有，现惰性补算且不污染调用者数据；扫描同步接入 BB 收口变盘信号产出
+- **定时复盘漏报**：精确分钟相等匹配改为目标时刻后 `report_trigger_window_minutes`（默认 30）分钟窗口触发 + 当日同类型去重 + 周末交易日守护 + 时钟回拨/脏状态防护
+- **推送文案字面 `**` 星号**：App/Webhook 均为 `msgtype=text` 不渲染 Markdown，`dispatch_alert` / `dispatch_report` / `dispatch_custom_message` 及 `alert_text`、`quant_worker` 上游文案统一剥离
+- **报告负分与信号行格式**：报告信号行评分统一 `{score:+}`，与告警文案一致
+
+### 🧪 测试 (Tests)
+- `test_quant_indicators.py` 新增 BB 收口惰性补算两用例（不污染原始 df / 收口可判 True）
+- `test_settings_pages_split.py` 设置页回环 source 补四个防抖键
+- 全量门禁：`python -m pytest tests/ -q` → 731 passed, 11 skipped
+
 ## [v4.8.4] - 2026-09-22
 
 > 修复 v4.8.3 引入的回归：更新后任务栏行情条在桌面状态下被任务栏盖住、无法恢复显示（全屏时因任务栏隐藏反而能看到）。

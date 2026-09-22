@@ -83,7 +83,7 @@ def format_report_content(
             )
             md.append(
                 f"• {sig['name']} [{sig['signals'][0]}] "
-                f"+{sig['score']} "
+                f"{sig['score']:+} "
                 f"{price_info}"
                 f"{wave_daily_desc}"
                 f"{wave_60m_desc}"

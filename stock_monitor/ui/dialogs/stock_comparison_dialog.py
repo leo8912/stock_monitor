@@ -6,6 +6,10 @@ from PyQt6 import QtWidgets
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QColor
 
+from ...core.engine.quant_engine_constants import (
+    SIGNAL_MACD_BOTTOM,
+    SIGNAL_MACD_TOP,
+)
 from ...utils.logger import app_logger
 
 
@@ -57,7 +61,9 @@ class _DataLoadWorker(QThread):
 
                     signals = []
                     if self.engine.check_macd_bullish_divergence(df):
-                        signals.append("MACD底背离")
+                        signals.append(SIGNAL_MACD_BOTTOM)
+                    if self.engine.check_macd_bearish_divergence(df):
+                        signals.append(SIGNAL_MACD_TOP)
                     if self.engine.check_bbands_squeeze(df):
                         signals.append("BB收口")
                     if self.engine.check_accumulation(df):

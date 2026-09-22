@@ -32,10 +32,36 @@ class TestQuantIndicators(unittest.TestCase):
         df = _make_ohlcv(50)
         self.assertFalse(quant_indicators.check_bbands_squeeze(df))
 
-    def test_check_bbands_squeeze_no_bbb_column(self):
-        """缺少 BBB_ 列时返回 False"""
-        df = _make_ohlcv(120)
-        self.assertFalse(quant_indicators.check_bbands_squeeze(df))
+    def test_check_bbands_squeeze_no_bbb_column_lazy(self):
+        """缺少 BBB_ 列时惰性补算：末段剧烈波动 → 不判定收口，且不污染原始 df"""
+        close = np.full(120, 10.0)
+        close[-3:] = [14.0, 6.0, 15.0]  # 末段波动远大于历史 → 带宽不收口
+        df = pd.DataFrame(
+            {
+                "open": close,
+                "high": close + 0.1,
+                "low": close - 0.1,
+                "close": close,
+                "volume": np.full(120, 1000.0),
+            }
+        )
+        cols_before = list(df.columns)
+        self.assertFalse(bool(quant_indicators.check_bbands_squeeze(df)))
+        self.assertEqual(list(df.columns), cols_before)  # 未污染调用者 df
+
+    def test_check_bbands_squeeze_no_bbb_column_squeeze(self):
+        """缺少 BBB_ 列且历史带宽收口时惰性补算也能判定 True"""
+        close = np.full(120, 10.0)  # 全程零波动 → 带宽恒为 0 → 收口
+        df = pd.DataFrame(
+            {
+                "open": close,
+                "high": close + 0.1,
+                "low": close - 0.1,
+                "close": close,
+                "volume": np.full(120, 1000.0),
+            }
+        )
+        self.assertTrue(bool(quant_indicators.check_bbands_squeeze(df)))
 
     def test_check_bbands_squeeze_with_column(self):
         """带宽等于近 100 根最小值时判定为收窄"""

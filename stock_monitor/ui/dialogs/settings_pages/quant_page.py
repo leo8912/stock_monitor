@@ -28,6 +28,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
@@ -57,6 +58,10 @@ class QuantSettingsPage(SettingsPage):
         "wecom_corpsecret",
         "wecom_agentid",
         "fib_target_coefficients",
+        "quant_min_push_score",
+        "quant_alert_cooldown",
+        "quant_alert_merge_enabled",
+        "report_trigger_window_minutes",
     )
 
     def __init__(self, ctx: SettingsContext, parent=None) -> None:
@@ -109,6 +114,60 @@ class QuantSettingsPage(SettingsPage):
             "3. 保存全A股行情快照"
         )
         quant_layout.addWidget(self.auto_close_export_checkbox)
+
+        # --- 推送防抖设置区域 ---
+        debounce_group = QGroupBox("🔔 推送防抖")
+        debounce_layout = QVBoxLayout()
+        debounce_layout.setContentsMargins(10, 10, 10, 10)
+        debounce_layout.setSpacing(8)
+        debounce_group.setLayout(debounce_layout)
+
+        # 最低推送评分
+        score_layout = QHBoxLayout()
+        score_layout.addWidget(QLabel("最低推送评分:"))
+        self.min_push_score_spin = QSpinBox()
+        self.min_push_score_spin.setRange(0, 5)
+        self.min_push_score_spin.setValue(2)
+        self.min_push_score_spin.setToolTip(
+            "综合强度评分低于该值的信号不会推送（0 表示不拦截）"
+        )
+        score_layout.addWidget(self.min_push_score_spin)
+        score_layout.addStretch()
+        debounce_layout.addLayout(score_layout)
+
+        # 冷却时间
+        cooldown_layout = QHBoxLayout()
+        cooldown_layout.addWidget(QLabel("同信号冷却(秒):"))
+        self.alert_cooldown_spin = QSpinBox()
+        self.alert_cooldown_spin.setRange(0, 86400)
+        self.alert_cooldown_spin.setSingleStep(60)
+        self.alert_cooldown_spin.setValue(1800)
+        self.alert_cooldown_spin.setToolTip(
+            "同一只股票同一信号在此冷却时间内不会重复推送"
+        )
+        cooldown_layout.addWidget(self.alert_cooldown_spin)
+        cooldown_layout.addStretch()
+        debounce_layout.addLayout(cooldown_layout)
+
+        # 复盘触发时间窗
+        window_layout = QHBoxLayout()
+        window_layout.addWidget(QLabel("复盘触发窗口(分钟):"))
+        self.report_window_spin = QSpinBox()
+        self.report_window_spin.setRange(1, 120)
+        self.report_window_spin.setValue(30)
+        self.report_window_spin.setToolTip(
+            "到达目标时刻后在此窗口内触发复盘即可（防止扫描跨分钟漏报）"
+        )
+        window_layout.addWidget(self.report_window_spin)
+        window_layout.addStretch()
+        debounce_layout.addLayout(window_layout)
+
+        # 合并推送开关
+        self.merge_push_checkbox = QCheckBox("同一股票多信号合并为一条推送")
+        self.merge_push_checkbox.setChecked(True)
+        debounce_layout.addWidget(self.merge_push_checkbox)
+
+        quant_layout.addWidget(debounce_group)
 
         # --- 斐波那契设置区域 ---
         fib_group = QGroupBox("📐 斐波那契分析设置")
@@ -341,6 +400,16 @@ class QuantSettingsPage(SettingsPage):
         self.wecom_corpsecret_input.setText(settings.get("wecom_corpsecret", ""))
         self.wecom_agentid_input.setText(settings.get("wecom_agentid", ""))
 
+        # 推送防抖设置
+        self.min_push_score_spin.setValue(int(settings.get("quant_min_push_score", 2)))
+        self.alert_cooldown_spin.setValue(int(settings.get("quant_alert_cooldown", 1800)))
+        self.report_window_spin.setValue(
+            int(settings.get("report_trigger_window_minutes", 30))
+        )
+        self.merge_push_checkbox.setChecked(
+            bool(settings.get("quant_alert_merge_enabled", True))
+        )
+
         # 斐波那契设置
         fib_coefficients = settings.get("fib_target_coefficients", {})
         self.fib_wave5_spin.setValue(fib_coefficients.get("wave_5_target", 0.618))
@@ -360,6 +429,10 @@ class QuantSettingsPage(SettingsPage):
         settings["wecom_corpid"] = self.wecom_corpid_input.text().strip()
         settings["wecom_corpsecret"] = self.wecom_corpsecret_input.text().strip()
         settings["wecom_agentid"] = self.wecom_agentid_input.text().strip()
+        settings["quant_min_push_score"] = self.min_push_score_spin.value()
+        settings["quant_alert_cooldown"] = self.alert_cooldown_spin.value()
+        settings["report_trigger_window_minutes"] = self.report_window_spin.value()
+        settings["quant_alert_merge_enabled"] = self.merge_push_checkbox.isChecked()
         settings["fib_target_coefficients"] = {
             "wave_5_target": self.fib_wave5_spin.value(),
             "wave_4_retrace": self.fib_wave4_spin.value(),

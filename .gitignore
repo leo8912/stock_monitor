@@ -80,3 +80,4 @@ VENV_GUIDE.md
 
 # 运行期生成的报表产物
 analysis_reports/
+.pytest_tmp/

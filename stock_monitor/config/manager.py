@@ -239,6 +239,8 @@ class ConfigManager:
             "quant_alert_cooldown": 1800,  # 基础冷却时间（秒），默认30分钟
             "quant_alert_score_threshold": 2,  # 评分变化阈值，超过此值才重新推送
             "quant_alert_merge_enabled": True,  # 是否启用信号合并推送
+            "quant_min_push_score": 2,  # 最低推送评分，低于该分值不推送
+            "report_trigger_window_minutes": 30,  # 定时复盘触发时间窗（分钟）
             "quant_max_workers": None,  # 量化扫描线程数（None=自动）
             # 斐波那契配置
             "fib_levels": ["0.382", "0.500", "0.618"],  # 显示的斐波那契级别

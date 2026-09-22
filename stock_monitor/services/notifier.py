@@ -260,24 +260,27 @@ class NotifierService:
             return False
 
         # 【优化】优雅处理缺失的价格数据
+        # 注意：App/Webhook 均为 msgtype=text，不渲染 Markdown，正文一律不带 **
         if price_info and price_info.get("price", 0) > 0:
             p = price_info.get("price", 0.0)
             pct = price_info.get("pct", 0.0)
             sign = "+" if pct >= 0 else ""
             price_display = f"{sign}{pct:.2f}%"
-            price_detail = f"📊 **实时股价**: ¥{p:.2f} ({sign}{pct:.2f}%)"
+            price_detail = f"📊 实时股价: ¥{p:.2f} ({sign}{pct:.2f}%)"
         else:
             # 价格数据缺失时的降级显示
             price_display = "价格待更新"
-            price_detail = "📊 **实时股价**: -- (数据获取中)"
+            price_detail = "📊 实时股价: -- (数据获取中)"
             app_logger.debug(f"[推送降级] {symbol} 价格数据缺失，使用降级显示")
 
         title = f"🚨 异动: {stock_name} ({symbol}) {price_display}"
 
         # 【优化】使用纯文本格式以确保个人微信链接可点击
         signal_rows = "\n".join([f"• {s}" for s in signals])
+        # cycle_info 等上游文案可能带 Markdown 星号，text 通道不渲染，发送前统一剥离
+        clean_body = (cycle_info or "").replace("**", "")
         desc_body = (
-            f"{price_detail}\n\n关键信号：\n{signal_rows}\n\n---\n\n{cycle_info}"
+            f"{price_detail}\n\n关键信号：\n{signal_rows}\n\n---\n\n{clean_body}"
         )
 
         success = False
@@ -331,7 +334,7 @@ class NotifierService:
                 app_logger.info(
                     "企微应用推送未成功（可能是IP白名单限制），正在回退至 Webhook 渠道推送预警..."
                 )
-                body = f"{title}\n\n{price_detail}\n\n**关键信号：**\n{signal_rows}\n\n---\n\n{cycle_info}"
+                body = f"{title}\n\n{price_detail}\n\n关键信号：\n{signal_rows}\n\n---\n\n{clean_body}"
                 return cls.send_wecom_webhook_text(webhook_url, body)
             else:
                 app_logger.warning(
@@ -352,10 +355,10 @@ class NotifierService:
         success = False
         if config.get("push_mode") == "app" or config.get("wecom_corpsecret"):
             try:
-                # 发送概览总卡片
+                # 发送概览总卡片（text 通道不渲染 Markdown，统一去星号）
                 header_desc = (
                     f"{footer}\n\n**报告时间**: {time.strftime('%Y-%m-%d %H:%M')}"
-                )
+                ).replace("**", "")
                 if cls.send_wecom_app_message(
                     config, f"📊 {title} (总览)", header_desc
                 ):
@@ -371,7 +374,7 @@ class NotifierService:
                             "\n".join(item.split("\n")[1:]) if "\n" in item else item
                         )
                         cls.send_wecom_app_message(
-                            config, f"📈 {card_title}", card_desc
+                            config, f"📈 {card_title}", card_desc.replace("**", "")
                         )
                         time.sleep(0.5)
             except Exception as app_err:
@@ -425,11 +428,13 @@ class NotifierService:
             bool: 是否发送成功
         """
         try:
-            # 1. 企业应用通道
+            # 1. 企业应用通道（msgtype=text 不渲染 Markdown，发送前去星号）
             success = False
             if config.get("push_mode") == "app" or config.get("wecom_corpsecret"):
                 try:
-                    success = cls.send_wecom_app_message(config, title, content)
+                    success = cls.send_wecom_app_message(
+                        config, title, (content or "").replace("**", "")
+                    )
                 except Exception as app_err:
                     app_logger.error(f"企业应用推送异常: {app_err}")
                     success = False

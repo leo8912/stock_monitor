@@ -104,11 +104,11 @@ def merge_signals_text(
     # 历史轨迹
     history_text = format_history_text(history_list)
 
-    # 构建推送内容（Markdown 格式）
+    # 构建推送内容（text 通道不渲染 Markdown，不使用 ** 星号）
     cycle_info = (
         f"信号组合：{score_summary}\n\n"
-        f"🚀 **综合强度**：{max_score_sig['score']:+}分\n\n"
-        f"🏥 **财务审计**：{fin_info}"
+        f"🚀 综合强度：{max_score_sig['score']:+}分\n\n"
+        f"🏥 财务审计：{fin_info}"
     )
 
     if history_text:

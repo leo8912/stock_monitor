@@ -2,6 +2,8 @@
 量化分析引擎模块
 """
 
+from __future__ import annotations
+
 import os
 import sys
 import threading
@@ -27,7 +29,21 @@ from stock_monitor.utils.logger import app_logger
 from . import quant_indicators
 from .financial_filter import FinancialFilter
 from .quant_cache import LRUCacheWithTTL, get_bars_cache
-from .quant_engine_constants import FreqMap
+from .quant_engine_constants import (
+    FreqMap,
+    SIGNAL_BB_SQUEEZE,
+    SIGNAL_EMA_DEAD,
+    SIGNAL_EMA_GOLDEN,
+    SIGNAL_KDJ_DEAD,
+    SIGNAL_KDJ_GOLDEN,
+    SIGNAL_MACD_BOTTOM,
+    SIGNAL_MACD_TOP,
+    SIGNAL_OBV_ACCUM,
+    SIGNAL_RSRS_EXTREME,
+    SIGNAL_RSRS_STRONG,
+    SIGNAL_VOL_PRICE_BOTTOM,
+    SIGNAL_VOL_PRICE_TOP,
+)
 
 try:
     import akshare as ak
@@ -296,6 +312,24 @@ class QuantEngine:
         """检测 MACD 底背离：价格创新低而 MACD 柱不再创新低。"""
         return quant_indicators.check_macd_bullish_divergence(df, window, end_idx)
 
+    def check_macd_bearish_divergence(
+        self, df: pd.DataFrame, window: int = 30, end_idx: int = None
+    ) -> bool:
+        """检测 MACD 顶背离：价格创新高而 MACD 柱不再创新高。"""
+        return quant_indicators.check_macd_bearish_divergence(df, window, end_idx)
+
+    def describe_macd_divergence(
+        self, df: pd.DataFrame, window: int = 30, end_idx: int = None, top: bool = False
+    ) -> dict | None:
+        """量化 MACD 背离详情（供推送展示），未背离返回 None。"""
+        return quant_indicators.describe_macd_divergence(
+            df, window=window, end_idx=end_idx, top=top
+        )
+
+    def build_push_snapshot(self, df: pd.DataFrame) -> str:
+        """构建推送用指标快照文本。"""
+        return quant_indicators.build_push_snapshot(df)
+
     def check_bbands_squeeze(self, df: pd.DataFrame, end_idx: int = None) -> bool:
         """检测布林带收窄（变盘前兆）：当前带宽接近近 100 根最小带宽。"""
         return quant_indicators.check_bbands_squeeze(df, end_idx)
@@ -384,13 +418,30 @@ class QuantEngine:
             return 0
 
         score = 0
-        signal_names = [s["name"] for s in signals]
+        # 归一化信号名后比对：兼容引擎无空格名与历史带空格名两种写法
+        signal_names = [s["name"].replace(" ", "") for s in signals]
 
         # 1. 核心信号权重
-        if "MACD底背离" in signal_names:
+        if SIGNAL_MACD_BOTTOM.replace(" ", "") in signal_names:
             score += 3
-        if "OBV碎步吸筹" in signal_names:
+        if SIGNAL_OBV_ACCUM.replace(" ", "") in signal_names:
             score += 2
+        if SIGNAL_VOL_PRICE_BOTTOM.replace(" ", "") in signal_names:
+            score += 2
+        if SIGNAL_KDJ_GOLDEN.replace(" ", "") in signal_names:
+            score += 1
+        if SIGNAL_EMA_GOLDEN.replace(" ", "") in signal_names:
+            score += 1
+
+        # 1b. 离场/风险信号（负向权重）
+        if SIGNAL_MACD_TOP.replace(" ", "") in signal_names:
+            score -= 3
+        if SIGNAL_VOL_PRICE_TOP.replace(" ", "") in signal_names:
+            score -= 2
+        if SIGNAL_KDJ_DEAD.replace(" ", "") in signal_names:
+            score -= 1
+        if SIGNAL_EMA_DEAD.replace(" ", "") in signal_names:
+            score -= 1
 
         # 2. 辅助技术面验证
         try:
@@ -623,17 +674,57 @@ class QuantEngine:
                 pos = self.get_bbands_position_desc(df)
                 if self.check_macd_bullish_divergence(df):
                     results.append(
-                        {"tf": tf, "category": cat, "name": "MACD底背离", "desc": pos}
+                        {"tf": tf, "category": cat, "name": SIGNAL_MACD_BOTTOM, "desc": pos}
+                    )
+                if self.check_macd_bearish_divergence(df):
+                    results.append(
+                        {"tf": tf, "category": cat, "name": SIGNAL_MACD_TOP, "desc": pos}
+                    )
+                vp = quant_indicators.check_volume_price_divergence(df)
+                if vp == "top":
+                    results.append(
+                        {"tf": tf, "category": cat, "name": SIGNAL_VOL_PRICE_TOP, "desc": pos}
+                    )
+                elif vp == "bottom":
+                    results.append(
+                        {"tf": tf, "category": cat, "name": SIGNAL_VOL_PRICE_BOTTOM, "desc": pos}
                     )
                 if cat in (3, 9) and self.check_accumulation(df):
                     results.append(
                         {
                             "tf": tf,
                             "category": cat,
-                            "name": "OBV碎步吸筹",
+                            "name": SIGNAL_OBV_ACCUM,
                             "desc": f"(主力蓄势){pos}",
                         }
                     )
+
+                # BBands 收口变盘（设置页 tooltip 承诺的信号，此前从未产出）
+                if self.check_bbands_squeeze(df):
+                    results.append(
+                        {"tf": tf, "category": cat, "name": SIGNAL_BB_SQUEEZE, "desc": pos}
+                    )
+
+                # KDJ 金叉/死叉、均线金叉/死叉（日线/60m 级别，避免过短周期噪音）
+                if cat in (3, 9):
+                    cross = quant_indicators.check_kdj_cross(df)
+                    if cross == "golden":
+                        results.append(
+                            {"tf": tf, "category": cat, "name": SIGNAL_KDJ_GOLDEN, "desc": "K上穿D"}
+                        )
+                    elif cross == "dead":
+                        results.append(
+                            {"tf": tf, "category": cat, "name": SIGNAL_KDJ_DEAD, "desc": "K下穿D"}
+                        )
+                    macross = quant_indicators.check_ema_cross(df)
+                    if macross == "golden":
+                        results.append(
+                            {"tf": tf, "category": cat, "name": SIGNAL_EMA_GOLDEN, "desc": "EMA5上穿EMA20"}
+                        )
+                    elif macross == "dead":
+                        results.append(
+                            {"tf": tf, "category": cat, "name": SIGNAL_EMA_DEAD, "desc": "EMA5下穿EMA20"}
+                        )
 
                 # 3. RSRS 择时信号
                 z, _ = self.calculate_rsrs(df)
@@ -642,7 +733,7 @@ class QuantEngine:
                         {
                             "tf": tf,
                             "category": cat,
-                            "name": "RSRS极强",
+                            "name": SIGNAL_RSRS_EXTREME,
                             "desc": f"阻力极小(Z:{z})",
                         }
                     )
@@ -651,7 +742,7 @@ class QuantEngine:
                         {
                             "tf": tf,
                             "category": cat,
-                            "name": "RSRS走强",
+                            "name": SIGNAL_RSRS_STRONG,
                             "desc": f"突破压力(Z:{z})",
                         }
                     )
