@@ -19,7 +19,13 @@ from stock_monitor.utils.logger import app_logger
 from ...config.manager import get_config_dir
 from ...services.notifier import NotifierService
 from ..cache.cache_warmer import CacheWarmer, PerformanceMonitor
-from ..engine import WaveAnalyzer, WaveChart, quant_report, wave_report
+from ..engine import (
+    WaveAnalyzer,
+    WaveChart,
+    quant_indicators,
+    quant_report,
+    wave_report,
+)
 from ..engine.backtest_engine import BacktestEngine
 from ..engine.quant_engine import QuantEngine
 from ..engine.quant_engine_constants import (
@@ -27,7 +33,6 @@ from ..engine.quant_engine_constants import (
     SIGNAL_MACD_TOP,
     TF_CHINESE_MAP,
 )
-from ..engine import quant_indicators
 from . import alert_text, scan_rules, signal_cache
 from .base import DEFAULT_STOP_TIMEOUT_MS, wait_for_thread_stop
 
@@ -928,7 +933,13 @@ class QuantWorker(QtCore.QThread):
             return ""
 
     def _push_merged_signals(
-        self, symbol, stock_name, pending_signals, daily_wave_text, h60_wave_text, metric_text=""
+        self,
+        symbol,
+        stock_name,
+        pending_signals,
+        daily_wave_text,
+        h60_wave_text,
+        metric_text="",
     ) -> list[str]:
         """合并推送模式：一次推送该股票的全部信号，返回已触发的信号名。"""
         triggered = []
@@ -1009,7 +1020,13 @@ class QuantWorker(QtCore.QThread):
         }
 
     def _push_individual_signals(
-        self, symbol, stock_name, pending_signals, daily_wave_text, h60_wave_text, metric_text=""
+        self,
+        symbol,
+        stock_name,
+        pending_signals,
+        daily_wave_text,
+        h60_wave_text,
+        metric_text="",
     ) -> list[str]:
         """单独推送模式：为每个信号分别构建并发送推送，返回已触发的信号名。"""
         triggered = []
@@ -1131,11 +1148,21 @@ class QuantWorker(QtCore.QThread):
         # 【阶段2】根据配置决定是合并推送还是单独推送
         if merge_enabled and len(pending_signals) > 1:
             triggered = self._push_merged_signals(
-                symbol, stock_name, pending_signals, daily_wave_text, h60_wave_text, metric_text
+                symbol,
+                stock_name,
+                pending_signals,
+                daily_wave_text,
+                h60_wave_text,
+                metric_text,
             )
         else:
             triggered = self._push_individual_signals(
-                symbol, stock_name, pending_signals, daily_wave_text, h60_wave_text, metric_text
+                symbol,
+                stock_name,
+                pending_signals,
+                daily_wave_text,
+                h60_wave_text,
+                metric_text,
             )
 
         # 3. 统一生成并推送波浪分析 K 线图

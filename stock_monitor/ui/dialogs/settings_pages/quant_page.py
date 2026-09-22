@@ -402,7 +402,9 @@ class QuantSettingsPage(SettingsPage):
 
         # 推送防抖设置
         self.min_push_score_spin.setValue(int(settings.get("quant_min_push_score", 2)))
-        self.alert_cooldown_spin.setValue(int(settings.get("quant_alert_cooldown", 1800)))
+        self.alert_cooldown_spin.setValue(
+            int(settings.get("quant_alert_cooldown", 1800))
+        )
         self.report_window_spin.setValue(
             int(settings.get("report_trigger_window_minutes", 30))
         )

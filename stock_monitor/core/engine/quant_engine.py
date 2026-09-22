@@ -30,7 +30,6 @@ from . import quant_indicators
 from .financial_filter import FinancialFilter
 from .quant_cache import LRUCacheWithTTL, get_bars_cache
 from .quant_engine_constants import (
-    FreqMap,
     SIGNAL_BB_SQUEEZE,
     SIGNAL_EMA_DEAD,
     SIGNAL_EMA_GOLDEN,
@@ -43,6 +42,7 @@ from .quant_engine_constants import (
     SIGNAL_RSRS_STRONG,
     SIGNAL_VOL_PRICE_BOTTOM,
     SIGNAL_VOL_PRICE_TOP,
+    FreqMap,
 )
 
 try:
@@ -674,20 +674,40 @@ class QuantEngine:
                 pos = self.get_bbands_position_desc(df)
                 if self.check_macd_bullish_divergence(df):
                     results.append(
-                        {"tf": tf, "category": cat, "name": SIGNAL_MACD_BOTTOM, "desc": pos}
+                        {
+                            "tf": tf,
+                            "category": cat,
+                            "name": SIGNAL_MACD_BOTTOM,
+                            "desc": pos,
+                        }
                     )
                 if self.check_macd_bearish_divergence(df):
                     results.append(
-                        {"tf": tf, "category": cat, "name": SIGNAL_MACD_TOP, "desc": pos}
+                        {
+                            "tf": tf,
+                            "category": cat,
+                            "name": SIGNAL_MACD_TOP,
+                            "desc": pos,
+                        }
                     )
                 vp = quant_indicators.check_volume_price_divergence(df)
                 if vp == "top":
                     results.append(
-                        {"tf": tf, "category": cat, "name": SIGNAL_VOL_PRICE_TOP, "desc": pos}
+                        {
+                            "tf": tf,
+                            "category": cat,
+                            "name": SIGNAL_VOL_PRICE_TOP,
+                            "desc": pos,
+                        }
                     )
                 elif vp == "bottom":
                     results.append(
-                        {"tf": tf, "category": cat, "name": SIGNAL_VOL_PRICE_BOTTOM, "desc": pos}
+                        {
+                            "tf": tf,
+                            "category": cat,
+                            "name": SIGNAL_VOL_PRICE_BOTTOM,
+                            "desc": pos,
+                        }
                     )
                 if cat in (3, 9) and self.check_accumulation(df):
                     results.append(
@@ -702,7 +722,12 @@ class QuantEngine:
                 # BBands 收口变盘（设置页 tooltip 承诺的信号，此前从未产出）
                 if self.check_bbands_squeeze(df):
                     results.append(
-                        {"tf": tf, "category": cat, "name": SIGNAL_BB_SQUEEZE, "desc": pos}
+                        {
+                            "tf": tf,
+                            "category": cat,
+                            "name": SIGNAL_BB_SQUEEZE,
+                            "desc": pos,
+                        }
                     )
 
                 # KDJ 金叉/死叉、均线金叉/死叉（日线/60m 级别，避免过短周期噪音）
@@ -710,20 +735,40 @@ class QuantEngine:
                     cross = quant_indicators.check_kdj_cross(df)
                     if cross == "golden":
                         results.append(
-                            {"tf": tf, "category": cat, "name": SIGNAL_KDJ_GOLDEN, "desc": "K上穿D"}
+                            {
+                                "tf": tf,
+                                "category": cat,
+                                "name": SIGNAL_KDJ_GOLDEN,
+                                "desc": "K上穿D",
+                            }
                         )
                     elif cross == "dead":
                         results.append(
-                            {"tf": tf, "category": cat, "name": SIGNAL_KDJ_DEAD, "desc": "K下穿D"}
+                            {
+                                "tf": tf,
+                                "category": cat,
+                                "name": SIGNAL_KDJ_DEAD,
+                                "desc": "K下穿D",
+                            }
                         )
                     macross = quant_indicators.check_ema_cross(df)
                     if macross == "golden":
                         results.append(
-                            {"tf": tf, "category": cat, "name": SIGNAL_EMA_GOLDEN, "desc": "EMA5上穿EMA20"}
+                            {
+                                "tf": tf,
+                                "category": cat,
+                                "name": SIGNAL_EMA_GOLDEN,
+                                "desc": "EMA5上穿EMA20",
+                            }
                         )
                     elif macross == "dead":
                         results.append(
-                            {"tf": tf, "category": cat, "name": SIGNAL_EMA_DEAD, "desc": "EMA5下穿EMA20"}
+                            {
+                                "tf": tf,
+                                "category": cat,
+                                "name": SIGNAL_EMA_DEAD,
+                                "desc": "EMA5下穿EMA20",
+                            }
                         )
 
                 # 3. RSRS 择时信号
