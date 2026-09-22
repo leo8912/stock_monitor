@@ -73,6 +73,12 @@ if _IS_WINDOWS:
     _user32.RegisterWindowMessageW.argtypes = [wintypes.LPCWSTR]
     _user32.BringWindowToTop.restype = wintypes.BOOL
     _user32.BringWindowToTop.argtypes = [wintypes.HWND]
+    _user32.WindowFromPoint.restype = wintypes.HWND
+    _user32.WindowFromPoint.argtypes = [wintypes.POINT]
+    _user32.IsChild.restype = wintypes.BOOL
+    _user32.IsChild.argtypes = [wintypes.HWND, wintypes.HWND]
+    _user32.GetWindow.restype = wintypes.HWND
+    _user32.GetWindow.argtypes = [wintypes.HWND, wintypes.UINT]
 
     # GetWindowLongPtrW/SetWindowLongPtrW 仅在 64 位存在；32 位回退到 Long 版本
     if ctypes.sizeof(ctypes.c_void_p) == 8:
@@ -205,6 +211,10 @@ class TaskbarQuoteBar(QtWidgets.QWidget):
 
         self._bar_width = 220
         self._bar_height = 40
+        # 置顶维持防抖：同一遮挡期只重抢一次 z-order（见 _keep_on_top）
+        self._topmost_reasserted = False
+        # 上次 SetWindowPos 的几何，未变化时跳过重定位（见 _reposition）
+        self._last_rect: tuple[int, int, int, int] | None = None
 
     # ── 公共 API ────────────────────────────────────────────────
 
@@ -327,6 +337,9 @@ class TaskbarQuoteBar(QtWidgets.QWidget):
         self._topmost_timer.stop()
         self._detach_from_taskbar()
         self.hide()
+        # 复位几何/防抖缓存，下次 start 后重新定位
+        self._last_rect = None
+        self._topmost_reasserted = False
 
     # ── 翻页 ────────────────────────────────────────────────────
 
@@ -735,15 +748,19 @@ class TaskbarQuoteBar(QtWidgets.QWidget):
                 if y < tb_t:
                     y = tb_t
                 hwnd = int(self.winId())
+                new_rect = (int(x), int(y), int(bar_w_phys), int(bar_h_phys))
+                if new_rect == self._last_rect:
+                    return  # 几何未变：跳过 SetWindowPos，避免高频打扰 DWM 合成
                 _user32.SetWindowPos(
                     hwnd,
                     _HWND_TOPMOST,
-                    int(x),
-                    int(y),
-                    int(bar_w_phys),
-                    int(bar_h_phys),
+                    new_rect[0],
+                    new_rect[1],
+                    new_rect[2],
+                    new_rect[3],
                     _SWP_NOACTIVATE | _SWP_SHOWWINDOW,
                 )
+                self._last_rect = new_rect
                 return
 
             # 嵌入模式：坐标相对任务栏父窗口
@@ -756,36 +773,73 @@ class TaskbarQuoteBar(QtWidgets.QWidget):
                 y = 0
 
             hwnd = int(self.winId())
+            new_rect = (int(x), int(y), int(bar_w_phys), int(bar_h_phys))
+            if new_rect == self._last_rect:
+                return  # 几何未变：跳过 SetWindowPos
             _user32.SetWindowPos(
                 hwnd,
                 0,
-                int(x),
-                int(y),
-                int(bar_w_phys),
-                int(bar_h_phys),
+                new_rect[0],
+                new_rect[1],
+                new_rect[2],
+                new_rect[3],
                 _SWP_NOZORDER | _SWP_NOACTIVATE | _SWP_SHOWWINDOW,
             )
+            self._last_rect = new_rect
         except Exception as e:
             app_logger.debug(f"[TaskbarQuoteBar] 重定位异常: {e}")
 
-    def _keep_on_top(self) -> None:
-        """仅悬浮模式：把窗口重新抬到最顶层 z-order，不移动/缩放。
+    def _is_covered(self) -> bool:
+        """检测行情条当前是否真的被其它窗口遮挡（仅查询，无副作用）。
 
-        点击开始菜单/搜索等沉浸式 UI 会盖住本窗口；关闭后 Windows 不会主动把
-        本窗口重新抬起，需等用户点击别处触发 z-order 重算才恢复。
-        由于窗口“已是 topmost”时再次 SetWindowPos(HWND_TOPMOST) 是 no-op，
-        这里用 NOTOPMOST→TOPMOST 强制切换，逼 Windows 把窗口重新插入 topmost
-        band 顶部并重绘，从而在遮挡层消失后立即恢复显示。
+        两个视角同时判断：
+        1. z-order：GetWindow(GW_HWNDFIRST) 不是自己 → 同层有窗口压在我们上面；
+        2. 命中测试：行情条中心点 WindowFromPoint 命中的不是自己（也不是自己的
+           子窗口）→ 有点覆盖在上面的可见窗口。
+        两者都干净时说明未被遮挡，置顶维持应完全静默。
+        """
+        try:
+            hwnd = int(self.winId())
+            # 1. z-order 检查（GW_HWNDFIRST = 0：同类型中 Z 序最高者）
+            if _user32.GetWindow(hwnd, 0) != hwnd:
+                return True
+            # 2. 命中测试检查（覆盖层不是独立窗口时 z-order 查不出来）
+            x, y, w, h = self._get_window_rect(hwnd)
+            pt = wintypes.POINT(x + w // 2, y + h // 2)
+            hit = _user32.WindowFromPoint(pt)
+            if hit and hit != hwnd and not _user32.IsChild(hwnd, hit):
+                return True
+            return False
+        except Exception:
+            # 查询失败时保持旧行为（重抢一次），宁可多一次也不让行情条消失
+            return True
+
+    def _keep_on_top(self) -> None:
+        """仅悬浮模式：检测到被真正遮挡时才重抢 z-order；未遮挡时完全静默。
+
+        点击开始菜单/搜索等沉浸式 UI 会盖住本窗口，关闭后 Windows 不会主动把
+        本窗口重新抬起。历史实现每 300ms 无条件执行 NOTOPMOST→TOPMOST 翻转，
+        等于持续打断 DWM 桌面合成，导致整个桌面一闪一闪（独全屏游戏绕过 DWM
+        所以看不出异常）。现在改为：先廉价查询是否被遮挡，未遮挡不做任何
+        SetWindowPos，从源头消除高频 z-order 抖动。
         """
         if not (_IS_WINDOWS and self._embedded and self._overlay_mode):
             return
+        if not self._is_covered():
+            self._topmost_reasserted = False  # 遮挡解除，复位防抖
+            return  # 未被遮挡：不碰 z-order
+        if self._topmost_reasserted:
+            return  # 同一遮挡期已重抢过一次，不重复抖动
         try:
             hwnd = int(self.winId())
             flags = _SWP_NOMOVE | _SWP_NOSIZE | _SWP_NOACTIVATE
+            # 已是 topmost 时 HWND_TOPMOST 是 no-op，必须 NOTOPMOST→TOPMOST
+            # 强制切换才能把窗口重新插入 topmost band 顶部并重绘。
             _user32.SetWindowPos(hwnd, _HWND_NOTOPMOST, 0, 0, 0, 0, flags)
             _user32.SetWindowPos(
                 hwnd, _HWND_TOPMOST, 0, 0, 0, 0, flags | _SWP_SHOWWINDOW
             )
+            self._topmost_reasserted = True
         except Exception as e:
             app_logger.debug(f"[TaskbarQuoteBar] 置顶维持异常: {e}")
 

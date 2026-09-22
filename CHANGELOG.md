@@ -1,5 +1,19 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.8.3] - 2026-09-22
+
+> 修复更新后桌面环境持续闪烁（全屏游戏内正常）：根因是程序以定时器高频抢占窗口 z-order，持续打断 DWM 桌面合成。本版将置顶维持从「定时盲抢」改为「按需重抢」，正常使用下不再发出任何无效 `SetWindowPos`。
+
+### 🐛 修复 (Fixes)
+- **任务栏行情条不再每 300ms 盲翻 z-order**：`_keep_on_top` 原先无条件执行 `NOTOPMOST→TOPMOST` 翻转（每秒 3 次，还带 `SWP_SHOWWINDOW`），等于持续打断 DWM 合成，导致整个桌面一闪一闪（独全屏游戏绕过 DWM 所以看不出）。现改为先用 `GetWindow(GW_HWNDFIRST)` + `WindowFromPoint` 做两个纯查询判断是否真的被遮挡：未遮挡完全静默；被遮挡时**同一遮挡期只重抢一次**（防抖），遮挡解除自动复位
+- **主浮窗 `_ensure_topmost` 去掉 `SWP_FRAMECHANGED`**：该标志强制重建无边框半透明窗的整个帧并整帧重绘，旧实现在失焦/激活/每次行情刷新 resize 时都会触发。现已处于同层 Z 序顶端时直接返回（零原生调用），仅置顶位丢失或确实被压住时才调用 `SetWindowPos`
+- **`moveEvent`/`resizeEvent` 不再重复抢置顶**：移动/缩放不改变 z-order，而行情每轮刷新都会触发 `resize`，是闪烁的高频触发源
+- **任务栏行情条 2 秒重定位去抖**：`_reposition` 记录上次几何（`_last_rect`），位置未变化时跳过 `SetWindowPos`；`stop()` 时复位缓存
+
+### 🧪 测试 (Tests)
+- UI 相关测试子集 59 项全部通过（`test_main_window_shutdown`、`test_qa_shutdown_real`、`test_division_guards`、`test_market_bar`、`test_qa_edge_cases`、`test_settings_pages_split`）
+- 全量门禁本地预跑通过：ruff check / ruff format --check / 725 passed, 11 skipped
+
 ## [v4.8.2] - 2026-09-24
 
 > 测试覆盖率补充：填充空壳测试、添加异常路径测试、完善 safe_call 测试、添加有数据测试、网络异常测试、mock 替代 time.sleep、边界输入测试、事件总线场景补充。

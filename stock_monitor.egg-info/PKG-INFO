@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: stock_monitor
-Version: 4.8.2
+Version: 4.8.3
 Summary: A real-time stock monitoring application for A-shares
 Author: Stock Monitor Team
 Requires-Python: >=3.9

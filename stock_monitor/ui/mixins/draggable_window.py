@@ -17,8 +17,15 @@ try:
             ("cy", ctypes.c_int),
             ("flags", ctypes.c_uint),
         ]
-except ImportError:
+
+    # GetWindow(GW_HWNDFIRST)：查询自己是否处于同层 Z 序最顶端，
+    # 供 _ensure_topmost 判断是否真的需要重抢置顶（纯查询，无副作用）
+    _user32 = ctypes.windll.user32
+    _user32.GetWindow.restype = wintypes.HWND
+    _user32.GetWindow.argtypes = [wintypes.HWND, ctypes.c_uint]
+except Exception:
     _WINDOWPOS = None  # 非 Windows 平台
+    _user32 = None
 
 
 class DraggableWindowMixin:
@@ -188,7 +195,13 @@ class DraggableWindowMixin:
                     QtCore.QTimer.singleShot(100, self._ensure_topmost)
 
     def _ensure_topmost(self):
-        """使用 Windows 原生 API 确保窗口置顶（兜底方案）"""
+        """使用 Windows 原生 API 确保窗口置顶（兜底方案）。
+
+        仅在“置顶位丢失”或“被同层其它置顶窗口压住”时才调用 SetWindowPos，
+        且不再携带 ``SWP_FRAMECHANGED``——它会强制重建无边框半透明窗的整个
+        帧并整帧重绘，在高频调用（失焦/刷新 resize）下是桌面闪烁的来源之一。
+        已处于同层 Z 序顶端时直接返回，不做任何原生调用。
+        """
         if isinstance(self, QtWidgets.QWidget):
             # 菜单保护：如果当前有活跃的弹出窗口（如右键菜单），跳过置顶纠正，避免干扰交互
             if QtWidgets.QApplication.activePopupWidget():
@@ -201,24 +214,37 @@ class DraggableWindowMixin:
                 SWP_NOMOVE = 0x0002
                 SWP_NOSIZE = 0x0001
                 SWP_NOACTIVATE = 0x0010
-                SWP_FRAMECHANGED = 0x0020
                 GWL_EXSTYLE = -20
                 WS_EX_TOPMOST = 0x00000008
 
                 hwnd = int(self.winId())
 
-                # 1. 检查当前样式，如果置顶位丢失，则强行补全
+                # 1. 检查当前样式，如果置顶位丢失，则强行补全并重新应用
                 style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
                 if not (style & WS_EX_TOPMOST):
                     ctypes.windll.user32.SetWindowLongW(
                         hwnd, GWL_EXSTYLE, style | WS_EX_TOPMOST
                     )
+                    ctypes.windll.user32.SetWindowPos(
+                        hwnd,
+                        HWND_TOPMOST,
+                        0,
+                        0,
+                        0,
+                        0,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                    )
+                    return
 
-                # 2. 重新应用位置（不激活窗口，仅强制置顶）
+                # 2. 已是 topmost：先做廉价 z-order 查询，处于同层最顶端就
+                #    直接返回。高频的无效 SetWindowPos 会持续打扰 DWM 桌面
+                #    合成，造成“桌面一直一闪一闪”（独全屏游戏绕过 DWM 所以
+                #    看不出）。仅当确实被压在下面时才重新声明置顶。
+                if _user32 is not None and _user32.GetWindow(hwnd, 0) == hwnd:
+                    return  # 同层 Z 序最高：无需任何操作
 
-                # 核心突破：Windows 的置顶窗口(TopMost)是有层级栈的。
-                # 当有新的别的置顶窗口出现时，原来置顶的窗口就会被压在下面。
-                # 只有先取消置顶（NOTOPMOST），再重新置顶（TOPMOST），系统才会把它拔出来插到栈的最顶层！
+                # 被压在下面：重新应用位置（不激活窗口，仅强制置顶）。
+                # 注意：不再带 SWP_FRAMECHANGED，避免整帧重建导致闪烁。
                 ctypes.windll.user32.SetWindowPos(
                     hwnd,
                     HWND_TOPMOST,
@@ -226,7 +252,7 @@ class DraggableWindowMixin:
                     0,
                     0,
                     0,
-                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
                 )
             except Exception:
                 pass  # 非 Windows 平台静默忽略
@@ -323,14 +349,14 @@ class DraggableWindowMixin:
                     self.save_position()
 
     def moveEvent(self, event):
-        """移动位置后确保置顶"""
-        self._ensure_topmost()
+        """移动位置。不再在此重抢置顶：移动不改变 z-order，而旧实现里的
+        SetWindowPos(FRAMECHANGED) 会触发半透明窗整帧重绘（桌面闪烁源）。"""
         if hasattr(super(), "moveEvent"):
             super().moveEvent(event)
 
     def resizeEvent(self, event):
-        """大小改变后确保置顶"""
-        self._ensure_topmost()
+        """大小改变。不再在此重抢置顶：行情刷新每轮都会 resize，旧实现的
+        高频 SetWindowPos(FRAMECHANGED) 是桌面闪烁的主因之一。"""
         if hasattr(super(), "resizeEvent"):
             super().resizeEvent(event)
 
