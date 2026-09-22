@@ -1,5 +1,21 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.8.4] - 2026-09-22
+
+> 修复 v4.8.3 引入的回归：更新后任务栏行情条在桌面状态下被任务栏盖住、无法恢复显示（全屏时因任务栏隐藏反而能看到）。
+
+### 🐛 修复 (Fixes)
+- **任务栏行情条被遮挡后无法恢复显示（v4.8.3 回归）**：`_is_covered` 的两个判定同时失效，导致置顶维持从"按需重抢"退化成"永不重抢"：
+  - **z-order 视角**：`GetWindow(GW_HWNDFIRST)` 只比对带顶第一名，而 topmost 带顶常年驻留输入法/Shell 的**隐藏**窗口（`MSCTFIME UI`、`ForegroundStaging` 等），使"被遮挡"恒为真、防抖标志一次置位永不清零。现改为从带顶下行遍历，只认**可见且与行情条矩形真实相交**的窗口（`_rect_intersects`），上限 `_MAX_Z_PROBE` 步防死循环；
+  - **命中测试视角**：`_get_window_rect` 返回 `(left, top, right, bottom)`，旧代码误按 `(x, y, w, h)` 解包，中心点算到屏幕外（如 `(1616, 1552)`），`WindowFromPoint` 恒返回 NULL。现新增 `_rect_center` 按边界求中心，并对命中窗口补充可见性过滤；
+- **任务栏压住行情条后无任何抬升路径**：v4.8.3 同时给 `_reposition` 加了几何去抖（位置未变即 `return`），把附带的 `HWND_TOPMOST` 抬升也一并跳过。两处叠加后，任务栏重建 Z 序把行情条压到下面时再无代码将其抬回——桌面状态下行情条"消失"，全屏时任务栏隐藏、遮挡源消失反而能显示。现 `_keep_on_top` 改为：**未遮挡完全静默；被遮挡按 `_REASSERT_COOLDOWN_SEC`（0.5s）冷却重抢**——既保留 v4.8.3 消除 300ms 高频盲抢闪烁的收益，又保证遮挡源持续存在时最迟约 1 秒恢复一次显示；
+- **辅助加固**：`_start_overlay` 重新嵌入时作废 `_last_rect` 几何缓存，强制重定位并抬升一次（覆盖 explorer 重启场景）；右键菜单弹出期间跳过 z-order 重抢，避免菜单被压住；`IsWindowVisible` 补齐 ctypes原型声明。
+
+### 🧪 测试 (Tests)
+- `test_market_bar.py` 新增 5 项回归用例：`_rect_center` 四边界解包（复现中心点算出屏幕的缺陷）、奇数跨度取整、`_rect_intersects` 相交/不相交/仅边线接触
+- 实测脚本 `scripts/verify_taskbar_fix.py`：真实桌面上启动行情条 → 置顶窗口覆盖 → 断言 `_is_covered()` 判定正确且 **0.10s 恢复显示**、遮挡移除后正确复位、无遮挡 2s 完全静默（零 `SetWindowPos`）
+- 相关测试子集 56 项通过（`test_market_bar`、`test_division_guards`、`test_qa_edge_cases`、`test_settings_pages_split`）；ruff check / format 通过
+
 ## [v4.8.3] - 2026-09-22
 
 > 修复更新后桌面环境持续闪烁（全屏游戏内正常）：根因是程序以定时器高频抢占窗口 z-order，持续打断 DWM 桌面合成。本版将置顶维持从「定时盲抢」改为「按需重抢」，正常使用下不再发出任何无效 `SetWindowPos`。
