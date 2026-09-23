@@ -1,5 +1,17 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.10.2] - 2026-09-24
+
+> 修复本地/打包环境版本号被过期 egg-info 盖住，导致界面版本与更新检查停在旧号。
+
+### 🐛 修复 (Fixes)
+- **版本解析优先级**：`version.py` 改为 `pyproject.toml` > installed metadata > dev；过期 `egg-info`/`dist-info` 不再覆盖唯一真源
+- **更新检测**：当前版本能正确读到 `pyproject.toml` 后，GitHub Release `stock_monitor_v4.10.1` 可被正常比较（已实测 `4.10.0 → 4.10.1` 可发现、`4.10.1 → 4.10.1` 为已最新）
+
+### 🧪 测试 (Tests)
+- 新增 `tests/test_version_resolution.py`：pyproject 真源、过期 metadata 覆盖、metadata/dev 兜底
+- 全量门禁：`ruff check` / `ruff format --check` / `pytest tests/ -q` → **784 passed, 9 skipped, 13 deselected**
+
 ## [v4.10.1] - 2026-09-24
 
 > 设置界面自适应与滚动、升级说明可滚动确认、升级下载改为后台线程，修复 UI 卡死与显示不全。
