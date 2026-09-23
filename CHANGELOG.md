@@ -1,5 +1,24 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.10.5] - 2026-09-24
+
+> 整理全部文档与过时介绍：对齐版本/发布说明，归档历史报告，修正打包清单与死代码。
+
+### 📚 文档 (Docs)
+- **README**：去掉写死的 v4.9.0，改为指向 `pyproject.toml` 真源；升级机制改为多镜像 + 官方 SHA 信任说明
+- **开发指南** `stock_monitor/docs/development_guide.md`：Python 3.11+、真实路径（`core/config/container` 等）、测试布局、**仅改 pyproject + CHANGELOG** 的发布流程
+- **新增** `docs/README.md` 文档索引；导出指南指向 `services/reporting` 真源；防抖指南补全 UI/配置键对照
+- **归档** `docs/archive/`：`REVIEW_REPORT-2025-04-09.md`、`新功能说明-收盘自动抓取.md`（带归档说明）
+- 本地 Agent 规范（`.agents/`，不入库）同步：版本真源与 CI 触发条件纠正
+
+### 🧹 清理 (Cleanup)
+- **删除死代码** `ui/dialogs/backtest_result_dialog.py`（全库无引用）
+- **stock_monitor.spec**：修正已不存在的 `dark_trade_service` / `dark_trade_stats` 隐藏导入为现包路径，并显式收集 `services.reporting`
+- **scripts/\_\_init\_\_**：去掉不存在的 `data/` / `backtest/` / `research/` 目录描述
+
+### 🧪 测试 (Tests)
+- 全量门禁：`ruff check` / `ruff format --check` / `pytest tests/ -q`
+
 ## [v4.10.4] - 2026-09-24
 
 > 精简发布流水线：打包不再重复跑 CI 已做过的 ruff/pytest，升级链路保持多镜像加速。

@@ -70,10 +70,18 @@ hiddenimports = [
     'pandas_ta.momentum',
     # scipy (pandas-ta 的核心隐式依赖)
     'scipy',
-    # 暗盘数据服务
-    'stock_monitor.services.dark_trade_service',
-    'stock_monitor.services.dark_trade_stats',
+    # 暗盘 / 导出（运行时动态导入，必须显式收集）
+    'stock_monitor.services.dark_trade',
+    'stock_monitor.services.dark_trade.service',
+    'stock_monitor.services.dark_trade.calculator',
+    'stock_monitor.services.dark_trade.exporter',
+    'stock_monitor.services.dark_trade.formatter',
+    'stock_monitor.services.dark_trade.pusher',
+    'stock_monitor.services.dark_trade.utils',
+    'stock_monitor.services.dark_trade.cli',
     'stock_monitor.services.dark_trade_exporter',
+    'stock_monitor.services.reporting',
+    'stock_monitor.services.reporting.export_stocks_to_excel',
     'stock_monitor.services.close_export_scheduler',
     'scipy.signal',
     'scipy.stats',

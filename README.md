@@ -4,7 +4,7 @@
 
 ![应用截图](docs/assets/image.png)
 
-**当前版本**: **v4.9.0**（唯一版本来源：[`pyproject.toml`](pyproject.toml)）
+**当前版本**: 见 [`pyproject.toml`](pyproject.toml) 的 `version`（唯一版本真源，同步更新 [`CHANGELOG.md`](CHANGELOG.md)）
 
 ## ✨ 功能特性
 
@@ -42,8 +42,9 @@
 - SQLite 本地缓存与基础股票库（`resources/stocks_base.db`）
 
 ### 自动更新
-- BAT 脚本无感热更新，SHA256 校验，支持备用下载源
-- 日志自动清理（默认保留 7 天）
+- 设置内检查 GitHub Release，多加速镜像下载 ZIP，失败回退官方源
+- SHA256 校验（仅信任官方域名 / Release 说明）
+- BAT 脚本无感热更新；日志自动清理（默认保留 7 天）
 
 ## 🛠 技术栈
 
@@ -159,10 +160,10 @@ pre-commit run --all-files
 
 ## 🔄 更新机制
 
-1. 主程序下载 ZIP 并校验 SHA256  
-2. 解压到临时目录并生成更新脚本  
-3. 主程序退出，BAT 执行 `xcopy` 替换文件  
-4. 脚本重启主程序并自删除  
+1. 设置 → 检查更新：请求 GitHub `releases/latest`（tag 形如 `stock_monitor_vX.Y.Z`）
+2. 下载 ZIP：多 GitHub 加速镜像优先，失败回退官方 `browser_download_url`
+3. 校验 SHA256（仅官方域名 / Release body），解压到临时目录并生成更新脚本
+4. 主程序退出，BAT 执行 `xcopy` 替换文件，脚本重启主程序并自删除  
 
 零外部依赖，兼容中文 Windows（GBK）。
 
@@ -178,4 +179,4 @@ pre-commit run --all-files
 
 ## 📝 更新日志
 
-详见 [CHANGELOG.md](CHANGELOG.md)。
+详见 [CHANGELOG.md](CHANGELOG.md)。更多说明见 [docs/README.md](docs/README.md)。
