@@ -1,5 +1,20 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.10.3] - 2026-09-24
+
+> 升级下载接入多 GitHub 加速镜像（替换已失效的 mirror.ghproxy.com），被墙/变慢时自动回退。
+
+### 🚀 新功能 (Features)
+- **多镜像加速下载**：`GITHUB_MIRROR_PREFIXES` 实测可用前缀（按速度粗排）`gh.ddlc.top` → `gh-proxy.cn` → `ghproxy.net` → `ghfast.top` → `gh-proxy.com`，再回退官方 `browser_download_url`
+- **源失败自动切换**：沿用断点续传与多源轮询；SHA256 仍只信官方域名/Release body（镜像不参与哈希信任）
+
+### 🔧 性能 (Performance)
+- 实测（本机，Release `stock_monitor_v4.10.2`，512KB Range）：`gh.ddlc.top` ≈470 KB/s，`gh-proxy.cn`≈101、`ghproxy.net`≈91、官方≈80；旧 `mirror.ghproxy.com` SSL 失败已移除首选
+
+### 🧪 测试 (Tests)
+- `test_app_updater.py`：多镜像优先于官方、失效旧镜像不再作首源
+- 全量门禁：`ruff check` / `ruff format --check` / `pytest tests/ -q`
+
 ## [v4.10.2] - 2026-09-24
 
 > 修复本地/打包环境版本号被过期 egg-info 盖住，导致界面版本与更新检查停在旧号。

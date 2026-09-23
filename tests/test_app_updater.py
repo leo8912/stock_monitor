@@ -16,8 +16,38 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
-from stock_monitor.core.app_update.downloader import UpdateDownloader
+from stock_monitor.core.app_update.downloader import (
+    GITHUB_MIRROR_PREFIXES,
+    UpdateDownloader,
+)
 from stock_monitor.core.updater import AppUpdater
+
+
+class TestBuildDownloadUrls(unittest.TestCase):
+    """多镜像加速 URL 构造（GitHub 被墙时的回退顺序）。"""
+
+    def test_mirrors_before_official(self):
+        official = "https://github.com/o/r/releases/download/v1/app.zip"
+        urls = UpdateDownloader.build_download_urls(official)
+
+        self.assertEqual(urls[-1], ("GitHub原始地址", official))
+        self.assertEqual(len(urls), len(GITHUB_MIRROR_PREFIXES) + 1)
+        for i, prefix in enumerate(GITHUB_MIRROR_PREFIXES):
+            name, url = urls[i]
+            self.assertTrue(name.startswith("镜像"))
+            self.assertEqual(url, f"{prefix}{official}")
+
+    def test_dead_legacy_mirror_not_first(self):
+        """旧失效镜像不得再作为唯一/首选源。"""
+        urls = UpdateDownloader.build_download_urls(
+            "https://github.com/o/r/releases/download/v1/app.zip"
+        )
+        first = urls[0][1]
+        self.assertNotIn("mirror.ghproxy.com", first)
+        # 至少一个可用加速前缀（实测存活集合）
+        joined = " ".join(u for _, u in urls)
+        self.assertIn("gh.ddlc.top", joined)
+        self.assertIn("gh-proxy.cn", joined)
 
 
 class TestAppUpdaterInitialization(unittest.TestCase):

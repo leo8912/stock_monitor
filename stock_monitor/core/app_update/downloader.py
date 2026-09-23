@@ -16,8 +16,19 @@ from requests.exceptions import (
 from stock_monitor.network.manager import NetworkManager
 from stock_monitor.utils.logger import app_logger
 
-# 镜像源配置：国内环境优先使用镜像加速下载
-GITHUB_MIRROR_PREFIX = "https://mirror.ghproxy.com/"
+# 镜像源配置：国内环境优先使用镜像加速下载（前缀 + 完整 GitHub URL）
+# 2026-09-24 实测：内容与官方一致、支持 Range；按实测速度粗排。
+# 旧 mirror.ghproxy.com 已失效，勿再单独依赖。
+GITHUB_MIRROR_PREFIXES: tuple[str, ...] = (
+    "https://gh.ddlc.top/",
+    "https://gh-proxy.cn/",
+    "https://ghproxy.net/",
+    "https://ghfast.top/",
+    "https://gh-proxy.com/",
+)
+
+# 兼容旧引用（单镜像常量）：仍指向当前首选镜像
+GITHUB_MIRROR_PREFIX = GITHUB_MIRROR_PREFIXES[0]
 
 # 官方发布域名白名单（精确匹配 hostname，禁止子串匹配）
 OFFICIAL_HOSTS = {
@@ -95,6 +106,23 @@ class UpdateDownloader:
             enable_retry=False,
         )
 
+    @staticmethod
+    def build_download_urls(download_url: str) -> list[tuple[str, str]]:
+        """按优先级构造下载 URL 列表：多镜像加速 → 官方地址。
+
+        Args:
+            download_url: 官方 ``browser_download_url``。
+
+        Returns:
+            ``[(源名称, URL), ...]``，至少包含官方地址。
+        """
+        urls: list[tuple[str, str]] = [
+            (f"镜像{i + 1}", f"{prefix}{download_url}")
+            for i, prefix in enumerate(GITHUB_MIRROR_PREFIXES)
+        ]
+        urls.append(("GitHub原始地址", download_url))
+        return urls
+
     def download_update(
         self,
         latest_release_info: dict[Any, Any],
@@ -151,14 +179,8 @@ class UpdateDownloader:
             temp_dir = tempfile.mkdtemp()
             download_path = os.path.join(temp_dir, file_name)
 
-            # 构造镜像URL
-            mirror_url = f"{GITHUB_MIRROR_PREFIX}{download_url}"
-
-            # 优先使用镜像源下载，失败回退到原始 GitHub
-            download_urls = [
-                ("镜像源", mirror_url),
-                ("GitHub原始地址", download_url),
-            ]
+            # 多镜像 + 官方源回退（镜像挂了不至于整条链路失败）
+            download_urls = self.build_download_urls(download_url)
 
             result = self._download_with_resume(
                 download_urls,
