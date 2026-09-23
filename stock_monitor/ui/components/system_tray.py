@@ -76,21 +76,33 @@ class SystemTray(QtWidgets.QSystemTrayIcon):
 
     def show_main_window(self) -> None:
         """显示主窗口"""
-        self.main_window.show()
-        self.main_window.raise_()
-        self.main_window.activateWindow()
+        mw = self.main_window
+        if mw is None:
+            app_logger.debug("托盘: 主窗口已释放，跳过显示")
+            return
+        mw.show()
+        mw.raise_()
+        mw.activateWindow()
         # 确保置顶生效
-        if hasattr(self.main_window, "_ensure_topmost"):
-            self.main_window._ensure_topmost()
+        if hasattr(mw, "_ensure_topmost"):
+            mw._ensure_topmost()
 
     def open_settings(self) -> None:
         """打开设置窗口"""
-        self.main_window.open_settings()
+        mw = self.main_window
+        if mw is None:
+            app_logger.debug("托盘: 主窗口已释放，跳过设置")
+            return
+        mw.open_settings()
 
     def quit_application(self) -> None:
         """退出应用程序"""
-        # 调用主窗口的退出方法
-        self.main_window.quit_application()
+        mw = self.main_window
+        if mw is None:
+            app_logger.debug("托盘: 主窗口已释放，跳过退出转发")
+            QtWidgets.QApplication.quit()
+            return
+        mw.quit_application()
 
     def on_activated(self, reason) -> None:
         """
@@ -100,14 +112,18 @@ class SystemTray(QtWidgets.QSystemTrayIcon):
             reason: 激活原因
         """
         if reason == QtWidgets.QSystemTrayIcon.ActivationReason.Trigger:
-            if self.main_window.isVisible():
-                self.main_window.hide()
+            mw = self.main_window
+            if mw is None:
+                app_logger.debug("托盘: 主窗口已释放，跳过显隐切换")
+                return
+            if mw.isVisible():
+                mw.hide()
             else:
-                self.main_window.show()
-                self.main_window.raise_()
-                self.main_window.activateWindow()
+                mw.show()
+                mw.raise_()
+                mw.activateWindow()
                 # 确保置顶生效
-                if hasattr(self.main_window, "_ensure_topmost"):
-                    self.main_window._ensure_topmost()
+                if hasattr(mw, "_ensure_topmost"):
+                    mw._ensure_topmost()
         elif reason == QtWidgets.QSystemTrayIcon.ActivationReason.Context:
             self.contextMenu().popup(QtGui.QCursor.pos())

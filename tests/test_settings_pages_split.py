@@ -185,6 +185,19 @@ class TestGeneralRoundTrip(unittest.TestCase):
         self.page.collect(out)
         self.assertEqual(out, source)
 
+    def test_custom_refresh_interval_round_trip(self) -> None:
+        """非预设值（如 7 秒）也必须原样往返——不再限定 1/2/5/10/30。"""
+        source = {"auto_start": False, "refresh_interval": 7}
+        self.page.load(source)
+        out: dict = {}
+        self.page.collect(out)
+        self.assertEqual(out["refresh_interval"], 7)
+
+    def test_refresh_interval_bounds(self) -> None:
+        """控件范围锁定 1-60 秒。"""
+        self.assertEqual(self.page.refresh_spin.minimum(), 1)
+        self.assertEqual(self.page.refresh_spin.maximum(), 60)
+
     def test_load_defaults_and_unknown(self) -> None:
         self.page.load({"refresh_interval": 999})
         out: dict = {}
@@ -299,6 +312,8 @@ class TestQuantRoundTrip(unittest.TestCase):
     def test_load_collect_round_trip(self) -> None:
         source = {
             "quant_enabled": True,
+            "quant_scan_interval": 120,
+            "daily_report_times": ["09:30", "14:45"],
             "auto_export_excel": True,
             "auto_close_export": False,
             "wecom_webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=x",
@@ -321,6 +336,18 @@ class TestQuantRoundTrip(unittest.TestCase):
         self.page.collect(out)
         self.assertEqual(out, source)
 
+    def test_default_scan_interval_and_report_times_round_trip(self) -> None:
+        """默认值 300 秒 / ['11:35','15:05'] 原样往返。"""
+        source = {
+            "quant_scan_interval": 300,
+            "daily_report_times": ["11:35", "15:05"],
+        }
+        self.page.load(source)
+        out: dict = {}
+        self.page.collect(out)
+        self.assertEqual(out["quant_scan_interval"], 300)
+        self.assertEqual(out["daily_report_times"], ["11:35", "15:05"])
+
     def test_load_defaults_when_missing(self) -> None:
         self.page.load({})
         out: dict = {}
@@ -330,10 +357,24 @@ class TestQuantRoundTrip(unittest.TestCase):
         self.assertEqual(out["auto_close_export"], False)
         self.assertEqual(out["wecom_webhook"], "")
         self.assertEqual(out["push_mode"], "webhook")
+        self.assertEqual(out["quant_scan_interval"], 300)
+        self.assertEqual(out["daily_report_times"], ["11:35", "15:05"])
         self.assertEqual(
             out["fib_target_coefficients"],
             {"wave_5_target": 0.618, "wave_4_retrace": 0.382, "wave_b_retrace": 0.5},
         )
+
+    def test_invalid_scan_interval_falls_back_to_default(self) -> None:
+        self.page.load({"quant_scan_interval": 0})
+        out: dict = {}
+        self.page.collect(out)
+        self.assertEqual(out["quant_scan_interval"], 300)
+
+    def test_invalid_report_times_fall_back_to_default(self) -> None:
+        self.page.load({"daily_report_times": ["99:99"]})
+        out: dict = {}
+        self.page.collect(out)
+        self.assertEqual(out["daily_report_times"], ["11:35", "15:05"])
 
 
 class TestReExports(unittest.TestCase):
@@ -451,6 +492,35 @@ class TestShellAntiRegression(unittest.TestCase):
     def test_shell_line_budget(self) -> None:
         line_count = len(self.source.splitlines())
         self.assertLessEqual(line_count, 500, f"settings_dialog.py 行数={line_count}")
+
+
+class TestConfigKeysAndDefaults(unittest.TestCase):
+    """ConfigKeys / ConfigManager 默认值契约（新配置键往返）。"""
+
+    def test_config_keys_declared(self) -> None:
+        from stock_monitor.utils.config_helper import ConfigKeys
+
+        self.assertEqual(ConfigKeys.QUANT_SCAN_INTERVAL, "quant_scan_interval")
+        self.assertEqual(ConfigKeys.DAILY_REPORT_TIMES, "daily_report_times")
+        self.assertEqual(ConfigKeys.REFRESH_INTERVAL, "refresh_interval")
+
+    def test_default_config_matches_legacy_hardcodes(self) -> None:
+        from stock_monitor.config.manager import ConfigManager
+
+        defaults = ConfigManager()._get_default_config()
+        self.assertEqual(defaults["quant_scan_interval"], 5 * 60)
+        self.assertEqual(defaults["quant_scan_interval"], 300)
+        self.assertEqual(defaults["daily_report_times"], ["11:35", "15:05"])
+        self.assertEqual(defaults["refresh_interval"], 5)
+
+    def test_ensure_required_keys_injects_new_defaults(self) -> None:
+        from stock_monitor.config.manager import ConfigManager
+
+        cfg: dict = {"quant_enabled": True}
+        ConfigManager()._ensure_required_keys_exist(cfg)
+        self.assertEqual(cfg["quant_scan_interval"], 300)
+        self.assertEqual(cfg["daily_report_times"], ["11:35", "15:05"])
+        self.assertEqual(cfg["quant_enabled"], True)  # 既有键不被覆盖
 
 
 if __name__ == "__main__":

@@ -72,7 +72,9 @@ class ExcelExportThread(TaskThread):
         """在后台线程导出 Excel 并发出完成信号（成功/失败+信息）。"""
 
         def task():
-            from scripts.reporting.export_stocks_to_excel import export_to_excel
+            from stock_monitor.services.reporting.export_stocks_to_excel import (
+                export_to_excel,
+            )
 
             output_path = "analysis_reports/stock_export_report.xlsx"
             export_to_excel(

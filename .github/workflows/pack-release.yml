@@ -24,12 +24,16 @@ jobs:
         python-version: '3.13'  # Windows 下 Python 3.9 + PyQt6/pytest 会出现 heap corruption 崩溃；
         # 该项目在本地 3.13 环境中已稳定通过完整测试，CI 需保持一致。
         cache: 'pip' # 启用 pip 缓存
+        cache-dependency-path: |
+          pyproject.toml
+          requirements.txt
+          requirements-dev.txt
 
     - name: 缓存 PyInstaller # Cache PyInstaller builds
       uses: actions/cache@v4
       with:
         path: ~\AppData\Roaming\pyinstaller
-        key: ${{ runner.os }}-pyinstaller-${{ hashFiles('**/requirements.txt', '**/requirements-dev.txt') }}
+        key: ${{ runner.os }}-pyinstaller-${{ hashFiles('pyproject.toml', '**/requirements.txt', '**/requirements-dev.txt') }}
         restore-keys: |
           ${{ runner.os }}-pyinstaller-
 

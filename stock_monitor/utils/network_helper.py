@@ -3,13 +3,13 @@
 提供统一的 HTTP 请求封装和错误处理机制
 """
 
-from typing import Any, Optional
+from typing import Any
 
 import requests
 from requests.exceptions import HTTPError, RequestException, Timeout
 
 
-def create_session(headers: Optional[dict[str, str]] = None) -> requests.Session:
+def create_session(headers: dict[str, str] | None = None) -> requests.Session:
     """创建统一配置的 HTTP 会话。
 
     会话所有权仍属于调用方：并发代码必须每个线程各自调用本函数，不能跨线程共享。
@@ -49,10 +49,10 @@ class SafeRequest:
     def get(
         url: str,
         timeout: int = 10,
-        headers: Optional[dict] = None,
-        params: Optional[dict] = None,
+        headers: dict | None = None,
+        params: dict | None = None,
         **kwargs,
-    ) -> Optional[requests.Response]:
+    ) -> requests.Response | None:
         """
         安全的 GET 请求
 
@@ -105,12 +105,12 @@ class SafeRequest:
     @staticmethod
     def post(
         url: str,
-        json: Optional[dict] = None,
-        data: Optional[dict] = None,
+        json: dict | None = None,
+        data: dict | None = None,
         timeout: int = 10,
-        headers: Optional[dict] = None,
+        headers: dict | None = None,
         **kwargs,
-    ) -> Optional[requests.Response]:
+    ) -> requests.Response | None:
         """
         安全的 POST 请求
 
@@ -164,7 +164,7 @@ class SafeRequest:
 
 def safe_request_get(
     url: str, timeout: int = 10, expect_json: bool = True, **kwargs
-) -> Optional[Any]:
+) -> Any | None:
     """
     便捷函数：安全的 GET 请求并返回解析后的数据
 
@@ -196,11 +196,11 @@ def safe_request_get(
 
 def safe_request_post(
     url: str,
-    json_data: Optional[dict] = None,
+    json_data: dict | None = None,
     timeout: int = 10,
     expect_json: bool = True,
     **kwargs,
-) -> Optional[Any]:
+) -> Any | None:
     """
     便捷函数：安全的 POST 请求并返回解析后的数据
 

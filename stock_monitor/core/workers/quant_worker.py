@@ -40,6 +40,8 @@ CACHE_DIR = Path(get_config_dir()) / "cache"
 SIGNAL_CACHE_FILE = CACHE_DIR / "signal_cache.json"
 
 # 常量定义
+DEFAULT_SCAN_INTERVAL = 5 * 60  # 量化扫描默认间隔（秒），与 ConfigManager 默认一致
+DEFAULT_DAILY_REPORT_TIMES = ["11:35", "15:05"]  # 每日复盘默认触发时刻
 SIGNAL_CACHE_EXPIRY_SECONDS = 86400  # 信号缓存过期时间（24小时）
 SIGNAL_CACHE_MAX_HISTORY_PER_SYMBOL = 100  # 每个符号最大历史记录数
 
@@ -51,7 +53,10 @@ class QuantWorker(QtCore.QThread):
     daily_report_ready = QtCore.pyqtSignal(str)
 
     def __init__(
-        self, stock_fetcher, wecom_webhook: str, scan_interval: int = 5 * 60
+        self,
+        stock_fetcher,
+        wecom_webhook: str,
+        scan_interval: int = DEFAULT_SCAN_INTERVAL,
     ) -> None:
         super().__init__()
         self.fetcher = stock_fetcher
@@ -72,7 +77,8 @@ class QuantWorker(QtCore.QThread):
         self._active_signals: dict[str, dict[str, dict]] = {}
         self._last_signal_time = {}  # 从磁盘加载持久化数据
         self._signals_history = {}
-        self._daily_report_times = ["11:35", "15:05"]
+        # 复盘时刻兜底值：运行时优先读 config["daily_report_times"]（见 check_and_trigger_reports）
+        self._daily_report_times = list(DEFAULT_DAILY_REPORT_TIMES)
         self._last_report_type = ""
         self._last_report_date = ""
 
@@ -231,7 +237,10 @@ class QuantWorker(QtCore.QThread):
                     return
 
             window_minutes = int(self.config.get("report_trigger_window_minutes", 30))
-            for time_str in self._daily_report_times:
+            report_times = self.config.get("daily_report_times")
+            if not isinstance(report_times, list) or not report_times:
+                report_times = self._daily_report_times
+            for time_str in report_times:
                 try:
                     hh, mm = time_str.split(":")
                     target = now.replace(
@@ -244,7 +253,8 @@ class QuantWorker(QtCore.QThread):
                 if now < target or now > target + timedelta(minutes=window_minutes):
                     continue
 
-                report_type = "morning" if time_str == "11:35" else "afternoon"
+                # 午前（含 12:00 前）为早盘复盘，其余为午盘/收盘复盘
+                report_type = "morning" if int(hh) < 13 else "afternoon"
                 report_key = f"{today}_{report_type}"
                 if self._last_report_date == report_key:
                     continue  # 当日该类型已生成
@@ -445,7 +455,9 @@ class QuantWorker(QtCore.QThread):
             return
         app_logger.info("自动导出配置已启用，正在生成自选股 Excel 报表...")
         try:
-            from scripts.reporting.export_stocks_to_excel import export_to_excel
+            from stock_monitor.services.reporting.export_stocks_to_excel import (
+                export_to_excel,
+            )
 
             export_to_excel(
                 output_path="analysis_reports/stock_export_report.xlsx",
@@ -621,6 +633,12 @@ class QuantWorker(QtCore.QThread):
             current_interval = self.config.get(
                 "quant_scan_interval", self.scan_interval
             )
+            try:
+                current_interval = int(current_interval)
+            except (TypeError, ValueError):
+                current_interval = self.scan_interval
+            if current_interval < 1:
+                current_interval = self.scan_interval
             if (
                 symbols_snapshot
                 and time.time() - self.last_scan_time >= current_interval

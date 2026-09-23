@@ -290,8 +290,16 @@ class MainWindowViewModel(QObject):
             app_logger.warning(f"Failed to load session cache: {e}")
             return {}
 
-    def save_session(self, position: list[int], stock_data: list) -> None:
-        """Save session cache"""
+    def save_session(
+        self, position: list[int], stock_data: list, *, force: bool = False
+    ) -> None:
+        """Save session cache
+
+        Args:
+            position: 窗口位置
+            stock_data: 行情行数据
+            force: True 时绕过节流立即落盘（关机/隐藏时使用）
+        """
         try:
             import dataclasses
 
@@ -306,7 +314,7 @@ class MainWindowViewModel(QObject):
                 "window_position": position,
                 "stock_data": serialized_stock_data,
             }
-            save_session_cache(session_data)
+            save_session_cache(session_data, force=force)
         except Exception as e:
             app_logger.warning(f"Failed to save session cache: {e}")
 

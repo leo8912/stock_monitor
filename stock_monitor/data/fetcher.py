@@ -1,3 +1,4 @@
+import atexit
 import io
 import warnings
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -38,11 +39,23 @@ class StockFetcher:
         # 长生命周期线程池，避免每次调用都创建/销毁
         self._executor = ThreadPoolExecutor(max_workers=PARALLEL_BATCHES)
         self._network = NetworkManager(timeout=30)
+        self._closed = False
+        # 注册应用退出清理钩子，防止线程池/会话句柄泄露
+        atexit.register(self.close)
 
     def close(self) -> None:
-        """释放线程池和网络连接资源。"""
-        self._executor.shutdown(wait=False)
-        self._network.close()
+        """释放线程池和网络连接资源（幂等，可安全重复调用）。"""
+        if self._closed:
+            return
+        self._closed = True
+        # 注意：atexit 触发时不要调用 app_logger（见 StockDataFetcher.close）
+        if hasattr(self, "_executor") and self._executor is not None:
+            self._executor.shutdown(wait=False, cancel_futures=True)
+        if hasattr(self, "_network") and self._network is not None:
+            self._network.close()
+
+    # 兼容别名
+    shutdown = close
 
     def fetch_all_stocks(self) -> list[dict[str, str]]:
         """获取所有 A 股和港股数据（并行优化版）"""

@@ -9,6 +9,7 @@ StockManager 单元测试模块
 - 大单流向缓存
 - 集合竞价缓存
 - 边界情况处理
+- close/shutdown 幂等释放线程池
 """
 
 import unittest
@@ -30,6 +31,8 @@ class TestStockManagerInitialization(unittest.TestCase):
         self.assertIsNotNone(manager._executor)
         self.assertEqual(len(manager._large_orders_cache), 0)
         self.assertEqual(len(manager._auction_cache), 0)
+        self.assertFalse(manager._closed)
+        manager.close()
 
     def test_initialization_with_custom_service(self):
         """测试使用自定义服务初始化"""
@@ -37,6 +40,36 @@ class TestStockManagerInitialization(unittest.TestCase):
         manager = StockManager(stock_data_service=mock_service)
 
         self.assertIs(manager._stock_data_service, mock_service)
+        manager.close()
+
+
+class TestStockManagerClose(unittest.TestCase):
+    """StockManager.close / shutdown 资源释放测试"""
+
+    def test_close_shuts_down_executor(self):
+        """close 后线程池不可再提交任务"""
+        manager = StockManager()
+        executor = manager._executor
+
+        manager.close()
+
+        self.assertTrue(manager._closed)
+        self.assertTrue(executor._shutdown, "executor 未被 shutdown")
+
+    def test_close_is_idempotent(self):
+        """重复 close/shutdown 不抛异常"""
+        manager = StockManager()
+        manager.close()
+        manager.close()
+        manager.shutdown()
+        self.assertTrue(manager._closed)
+
+    def test_shutdown_alias_closes_executor(self):
+        """shutdown 为 close 的兼容别名"""
+        manager = StockManager()
+        manager.shutdown()
+        self.assertTrue(manager._closed)
+        self.assertTrue(manager._executor._shutdown)
 
 
 class TestStockManagerChangeDetection(unittest.TestCase):

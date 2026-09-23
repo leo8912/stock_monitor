@@ -1,70 +1,34 @@
 #!/usr/bin/env python
-"""QA 独立验证：Python 3.9 语法兼容性静态扫描（自研，未复用工程师脚本）。
+"""QA 独立验证：Python 3.11 语法兼容性静态扫描（自研，未复用工程师脚本）。
 
-CI 使用 Python 3.9，本地为 3.13 —— "本地绿 != CI 绿" 的高危区。本扫描在
-AST 层检测会导致 3.9 直接报错/运行期 TypeError 的构造：
+历史背景：本文件原为 Python 3.9 兼容性守卫（CI 曾用 3.9）。项目
+``requires-python`` 已提升为 ``>=3.11``，守卫基线随之切换到 3.11：
 
-* 硬失败（Hard）：
-  - ``match`` 语句（3.9 语法错误）
-  - 函数签名注解中的 ``X | Y``（PEP 604，3.9 求值时 ``TypeError``），
-    除非该模块含 ``from __future__ import annotations``
-  - 类/模块级变量注解中的 ``X | Y``（同样会被求值）
+* 硬失败（Hard）——在 3.11 上会直接 ``SyntaxError`` / 不可运行：
+  - 使用 ``ast.parse(..., feature_version=(3, 11))`` 解析失败的源码
+    （按最低支持版本语法面解析；不能再用 3.9 口径，否则 3.10+ 语法会误报）。
   - **重复装饰器**（同一函数上同一装饰器出现两次，如 ``@staticmethod`` 两次）：
-    解析出的属性会成为装饰器对象本身；``staticmethod`` 对象"可调用"是 Python
-    3.10 才引入的（CPython bpo-43682），3.9 调用即 ``TypeError``。本地 3.13 掩盖。
+    解析出的属性会成为装饰器对象本身；在 3.9 上 ``staticmethod`` 对象
+    “可调用”是 3.10 才引入的（CPython bpo-43682）。虽最低版本已到 3.11，
+    重复装饰器仍是明确的逻辑缺陷，保留硬失败。
 * 软提示（Soft，供人工复核）：
-  - 函数体内局部变量注解 ``X | Y``（PEP 526 不求值，3.9 安全）
+  - 函数体内局部变量注解 ``X | Y``（PEP 526 不求值）等历史 3.9 观察项。
 
 用法：``python tests/test_qa_py39_compat.py`` 直接查看命中清单。
 """
+
+from __future__ import annotations
 
 import ast
 import os
 import sys
 import unittest
 
+_MIN_FEATURE = (3, 11)
+
 
 def _is_bitor(node: ast.AST) -> bool:
     return isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr)
-
-
-# 关键：``ast.Match`` 是 Python 3.10 才加入的，3.9 的 ast 模块**没有该属性**。
-# 本守卫自身要在 CI 的 Python 3.9 上运行，直接写 ``isinstance(node, ast.Match)``
-# 会抛 ``AttributeError: module 'ast' has no attribute 'Match'``，导致守卫在 3.9
-# 上全线 FAIL —— 即"3.9 兼容性守卫自己不兼容 3.9"的自指陷阱（v4.8.0 CI 真实踩到）。
-# 因此用 getattr 安全降级：属性缺失时按「无 match 语句」处理。
-_AST_MATCH_NODES = tuple(
-    node_type for node_type in (getattr(ast, "Match", None),) if node_type is not None
-)
-
-
-def _has_future_annotations(tree: ast.Module) -> bool:
-    for node in tree.body:
-        if isinstance(node, ast.ImportFrom) and node.module == "__future__":
-            for alias in node.names:
-                if alias.name == "annotations":
-                    return True
-    return False
-
-
-def _iter_annotation_nodes(func: ast.AST):
-    """产出函数签名里所有会被求值的注解表达式。"""
-    args = func.args
-    for arg in list(args.posonlyargs) + list(args.args) + list(args.kwonlyargs):
-        if arg.annotation is not None:
-            yield arg.annotation
-    if args.vararg is not None and args.vararg.annotation is not None:
-        yield args.vararg.annotation
-    if args.kwarg is not None and args.kwarg.annotation is not None:
-        yield args.kwarg.annotation
-    if func.returns is not None:
-        yield func.returns
-
-
-def _walk_annotations(node: ast.AST):
-    for child in ast.walk(node):
-        if isinstance(child, ast.AnnAssign):
-            yield child.annotation
 
 
 def _duplicated_decorators(func: ast.AST) -> list:
@@ -86,34 +50,34 @@ def _duplicated_decorators(func: ast.AST) -> list:
 def _scan_source(source: str, path: str) -> dict:
     """扫描一段源码文本（``path`` 仅用于报告与解析文件名）。"""
     result = {"hard": [], "soft": [], "syntax_error": None}
+    # feature_version=(3, 11)：按最低支持版本语法面解析，抓 3.11 无法解析的源码。
     try:
-        tree = ast.parse(source, filename=path)
+        tree = ast.parse(source, filename=path, feature_version=_MIN_FEATURE)
     except SyntaxError as e:
         result["syntax_error"] = (path, e.lineno, str(e))
         return result
+    except TypeError:
+        # 极老的 CPython 无 feature_version kwarg：退回默认解析。
+        try:
+            tree = ast.parse(source, filename=path)
+        except SyntaxError as e:
+            result["syntax_error"] = (path, e.lineno, str(e))
+            return result
 
-    has_future = _has_future_annotations(tree)
-
-    # 1. match 语句：3.9 语法错误（本地能解析出来即已命中）
-    #    注意：3.9 无 ast.Match，故用降级元组；为空元组时短路跳过。
-    for node in ast.walk(tree):
-        if _AST_MATCH_NODES and isinstance(node, _AST_MATCH_NODES):
-            result["hard"].append((path, node.lineno, "match 语句（3.9 语法错误）"))
-
-    # 2. 函数签名注解中的 X | Y
+    # 1. 重复装饰器：同一函数上同一装饰器出现多次（如 @staticmethod 两次）
+    #    解析后属性 = 装饰器对象本身；仍是明确缺陷，保留为硬失败。
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            for ann in _iter_annotation_nodes(node):
-                if _is_bitor(ann):
-                    kind = "签名注解 X | Y"
-                    if not has_future:
-                        result["hard"].append((path, ann.lineno, kind))
-                    else:
-                        result["soft"].append(
-                            (path, ann.lineno, kind + "（有 future import，安全）")
-                        )
+            for deco_name in _duplicated_decorators(node):
+                result["hard"].append(
+                    (
+                        path,
+                        node.lineno,
+                        f"重复装饰器 @{deco_name}（装饰器对象覆盖函数定义）",
+                    )
+                )
 
-    # 3. 变量注解：区分函数体内（安全）与模块/类级（会被求值）
+    # 2. 软提示：函数体内局部变量注解 X | Y（历史观察项，3.11 安全）
     func_local_anns = set()
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -128,28 +92,11 @@ def _scan_source(source: str, path: str) -> dict:
                     (
                         path,
                         node.lineno,
-                        "函数内变量注解 X | Y（PEP526 不求值，3.9 安全）",
-                    )
-                )
-            elif not has_future:
-                result["hard"].append(
-                    (path, node.lineno, "模块/类级变量注解 X | Y（会被求值）")
-                )
-
-    # 4. 重复装饰器：同一函数上同一装饰器出现多次（如 @staticmethod 两次）
-    #    解析后属性 = 装饰器对象本身；装饰器对象"可调用"是 3.10 才引入的
-    #    （CPython bpo-43682），3.9 调用即 TypeError。本地 3.13 会掩盖该缺陷。
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            for deco_name in _duplicated_decorators(node):
-                result["hard"].append(
-                    (
-                        path,
-                        node.lineno,
-                        f"重复装饰器 @{deco_name}（3.9 运行期 TypeError，bpo-43682）",
+                        "函数内变量注解 X | Y（PEP526 不求值，3.11 安全）",
                     )
                 )
 
+    # 签名注解 X | Y 在 3.10+ 合法，不再作为 hard/soft 计入。
     return result
 
 
@@ -172,8 +119,8 @@ def scan_tree(root: str) -> dict:
     return agg
 
 
-class TestPy39Compatibility(unittest.TestCase):
-    """若命中硬失败项，CI 在 3.9 下必然失败 → 断言应为空。"""
+class TestPy311Compatibility(unittest.TestCase):
+    """若命中硬失败项，在 requires-python>=3.11 下仍属缺陷 → 断言应为空。"""
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -186,24 +133,24 @@ class TestPy39Compatibility(unittest.TestCase):
         for path, lineno, kind in agg["soft"]:
             lines.append(f"SOFT {path}:{lineno} {kind}")
         if lines:
-            print("\n=== 3.9 兼容性扫描命中 ===")
+            print("\n=== 3.11 兼容性扫描命中 ===")
             print("\n".join(lines))
 
     def test_source_hard_compat(self) -> None:
         agg = scan_tree(os.path.join(self.repo_root, "stock_monitor"))
         self._report(agg)
         self.assertEqual(agg["syntax_error"], [], f"解析失败: {agg['syntax_error']!r}")
-        self.assertEqual(agg["hard"], [], f"3.9 硬不兼容命中: {agg['hard']!r}")
+        self.assertEqual(agg["hard"], [], f"3.11 硬不兼容命中: {agg['hard']!r}")
 
     def test_tests_hard_compat(self) -> None:
         agg = scan_tree(os.path.join(self.repo_root, "tests"))
         self._report(agg)
         self.assertEqual(agg["syntax_error"], [], f"解析失败: {agg['syntax_error']!r}")
-        self.assertEqual(agg["hard"], [], f"3.9 硬不兼容命中: {agg['hard']!r}")
+        self.assertEqual(agg["hard"], [], f"3.11 硬不兼容命中: {agg['hard']!r}")
 
 
 class TestGuardSelfCheck(unittest.TestCase):
-    """守卫自检：证明扫描器确实能抓到"已知 P0"（重复装饰器）。
+    """守卫自检：证明扫描器确实能抓到“已知 P0”（重复装饰器）。
 
     一个抓不到已知缺陷的门禁等于没有门禁。本类用**内联源码**复现
     wave_analyzer 曾出现的 ``staticmethod(staticmethod(f))`` 场景，
@@ -222,7 +169,7 @@ class TestGuardSelfCheck(unittest.TestCase):
         self.assertEqual(res["syntax_error"], None)
         self.assertTrue(
             any("重复装饰器" in kind for _p, _l, kind in res["hard"]),
-            f"守卫未抓到重复装饰器，hard={res['hard']!r}",
+            f"守卫未抓到重复装饰器, hard={res['hard']!r}",
         )
 
     def test_duplicate_arbitrary_decorator_is_flagged(self) -> None:
@@ -236,7 +183,7 @@ class TestGuardSelfCheck(unittest.TestCase):
         res = _scan_source(src, "<inline-duplicate2>")
         self.assertTrue(
             any("重复装饰器" in kind for _p, _l, kind in res["hard"]),
-            f"守卫未抓到重复装饰器，hard={res['hard']!r}",
+            f"守卫未抓到重复装饰器, hard={res['hard']!r}",
         )
 
     def test_single_decorator_not_flagged(self) -> None:

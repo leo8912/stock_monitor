@@ -98,6 +98,8 @@ class WaveChartDialog(QtWidgets.QDialog):
         self.stock_name = stock_name
         self.engine = engine
         self._card_labels: dict[str, QtWidgets.QLabel] = {}
+        self._wave_worker = None
+        self._wave_generation = 0
         self.setup_ui()
         self.load_and_plot()
 
@@ -287,6 +289,7 @@ class WaveChartDialog(QtWidgets.QDialog):
         return lbl
 
     def closeEvent(self, event):
+        self._stop_wave_worker()
         try:
             plt.close(self.figure)
             self.figure.clear()
@@ -301,11 +304,35 @@ class WaveChartDialog(QtWidgets.QDialog):
             pass
         super().closeEvent(event)
 
+    def _stop_wave_worker(self, timeout_ms: int = 3000) -> None:
+        """停止并等待旧后台线程，避免 Destroyed while running。"""
+        worker = getattr(self, "_wave_worker", None)
+        if worker is None:
+            return
+        try:
+            worker.finished.disconnect()
+        except (TypeError, RuntimeError):
+            pass
+        try:
+            worker.error.disconnect()
+        except (TypeError, RuntimeError):
+            pass
+        if worker.isRunning():
+            worker.requestInterruption()
+            if not worker.wait(timeout_ms):
+                app_logger.warning("[波浪图弹窗] 等待旧 worker 超时")
+        self._wave_worker = None
+
     def load_and_plot(self):
         self._card_labels["wave_main"].setText("加载中...")
         self._card_labels["wave_trend"].setText("")
         self._card_labels["wave_desc"].setText("")
         self._card_labels["wave_hint"].setText("")
+
+        # 重载前停掉旧线程，防止结果交叉与 QThread 销毁崩溃
+        self._stop_wave_worker()
+        self._wave_generation = getattr(self, "_wave_generation", 0) + 1
+        generation = self._wave_generation
 
         timeframe_name = self.period_combo.currentText()
         timeframe_key = self.period_combo.currentData()
@@ -316,7 +343,7 @@ class WaveChartDialog(QtWidgets.QDialog):
         )
 
         # 在后台线程中执行网络拉取 + 波浪分析，避免阻塞 UI
-        self._wave_worker = _WaveDataWorker(
+        worker = _WaveDataWorker(
             engine=self.engine,
             symbol=self.symbol,
             category=category,
@@ -326,12 +353,23 @@ class WaveChartDialog(QtWidgets.QDialog):
             fib_coefficients=self._get_fib_coefficients(),
             parent=self,
         )
-        self._wave_worker.finished.connect(self._on_wave_data_ready)
-        self._wave_worker.error.connect(self._on_wave_data_error)
-        self._wave_worker.start()
+        worker.finished.connect(
+            lambda result, name, gen=generation: self._on_wave_data_ready(
+                result, name, gen
+            )
+        )
+        worker.error.connect(
+            lambda msg, gen=generation: self._on_wave_data_error(msg, gen)
+        )
+        self._wave_worker = worker
+        worker.start()
 
-    def _on_wave_data_ready(self, result, timeframe_name):
+    def _on_wave_data_ready(self, result, timeframe_name, generation=None):
         """后台数据就绪后，在主线程绘图和更新卡片。"""
+        if generation is not None and generation != getattr(
+            self, "_wave_generation", None
+        ):
+            return
         if result is None:
             self._card_labels["wave_main"].setText(
                 "数据不足" if not result else "无法识别波浪"
@@ -345,10 +383,15 @@ class WaveChartDialog(QtWidgets.QDialog):
             app_logger.error(f"[波浪图弹窗] 绘图异常: {e}", exc_info=True)
             self._card_labels["wave_main"].setText(f"失败: {e}")
 
-    def _on_wave_data_error(self, error_msg):
+    def _on_wave_data_error(self, error_msg, generation=None):
         """后台线程出错回调。"""
-        app_logger.error(f"[波浪图弹窗] 异常: {error_msg}", exc_info=True)
-        self._card_labels["wave_main"].setText(f"失败: {error_msg}")
+        if generation is not None and generation != getattr(
+            self, "_wave_generation", None
+        ):
+            return
+        app_logger.error(f"[波浪图弹窗] 数据加载失败: {error_msg}")
+        if "wave_main" in self._card_labels:
+            self._card_labels["wave_main"].setText(f"失败: {error_msg}")
 
     def _update_cards(self, result):
         cw = result.current_wave

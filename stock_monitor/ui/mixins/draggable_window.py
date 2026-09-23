@@ -1,5 +1,3 @@
-from typing import Optional
-
 from PyQt6 import QtCore, QtGui, QtWidgets
 
 # Windows API 结构体定义（模块级别，避免在热路径中重复创建）
@@ -37,7 +35,7 @@ class DraggableWindowMixin:
     def __init__(self, *args, **kwargs):
         # We don't call super().__init__ here because we don't know the MRO
         # The host class should handle its own initialization
-        self.drag_position: Optional[QtCore.QPoint] = None
+        self.drag_position: QtCore.QPoint | None = None
 
     def _apply_windows_11_corner_fix(self):
         """通过 Windows API 强制禁用 Windows 11 的窗口圆角（支持重试）"""

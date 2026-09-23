@@ -104,7 +104,7 @@ class TestAllowDirection(BaseHashTest):
             {"name": "update.zip", "browser_download_url": "https://x/y.zip"},
         ]
         with patch(
-            "stock_monitor.core.app_update.downloader.requests.get",
+            "stock_monitor.network.manager.NetworkManager.get",
             return_value=_HashResp(_sha(content)),
         ):
             result = UpdateDownloader()._verify_hash(path, assets, {"body": ""})

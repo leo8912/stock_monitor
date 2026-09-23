@@ -6,7 +6,8 @@
 import inspect
 import threading
 import warnings
-from typing import Any, Callable, Optional, TypeVar, Union
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 from stock_monitor.config.manager import ConfigManager
 from stock_monitor.core.data import StockDataFetcher
@@ -54,13 +55,13 @@ class DIContainer:
         with self._lock:
             if self._initialized:
                 return
-            self._factories: dict[Union[type, str], Callable] = {}
-            self._singletons: dict[Union[type, str], Any] = {}
+            self._factories: dict[type | str, Callable] = {}
+            self._singletons: dict[type | str, Any] = {}
             self._access_lock = threading.Lock()
             self._initialized = True
             app_logger.debug("DI容器初始化完成")
 
-    def register_singleton(self, key: Union[type, str], instance: Any) -> None:
+    def register_singleton(self, key: type | str, instance: Any) -> None:
         """
         注册单例服务
 
@@ -72,7 +73,7 @@ class DIContainer:
             self._singletons[key] = instance
         app_logger.debug(f"注册单例服务: {key}")
 
-    def register_factory(self, key: Union[type, str], factory: Callable) -> None:
+    def register_factory(self, key: type | str, factory: Callable) -> None:
         """
         注册工厂函数
 
@@ -84,7 +85,7 @@ class DIContainer:
             self._factories[key] = factory
         app_logger.debug(f"注册工厂: {key}")
 
-    def register(self, key: Union[type, str], instance: Any) -> None:
+    def register(self, key: type | str, instance: Any) -> None:
         """
         注册服务实例(向后兼容)
 
@@ -94,7 +95,7 @@ class DIContainer:
         """
         self.register_singleton(key, instance)
 
-    def get(self, key: Union[type, str]) -> Any:
+    def get(self, key: type | str) -> Any:
         """
         获取服务实例
 
@@ -153,7 +154,7 @@ class DIContainer:
 
         raise KeyError(f"服务未注册: {key}")
 
-    def _auto_create(self, service_type: type[T]) -> Optional[T]:
+    def _auto_create(self, service_type: type[T]) -> T | None:
         """
         自动创建服务实例(向后兼容)
 
@@ -176,9 +177,10 @@ class DIContainer:
             app_logger.debug("自动创建StockDataService")
             return StockDataService()
         elif service_type is StockManager:
-            app_logger.debug("自动创建StockManager")
-            stock_data_service = self.get(StockDataService)
-            return StockManager(stock_data_service=stock_data_service)
+            app_logger.debug("复用模块级 StockManager 单例")
+            from stock_monitor.core.market.stock_manager import stock_manager
+
+            return stock_manager
         elif service_type is StockDatabase:
             app_logger.debug("自动创建StockDatabase")
             return StockDatabase()
@@ -249,7 +251,7 @@ class DIContainer:
             app_logger.error(f"解析依赖失败: {cls.__name__}, 错误: {e}")
             raise
 
-    def has(self, key: Union[type, str]) -> bool:
+    def has(self, key: type | str) -> bool:
         """
         检查服务是否已注册
 

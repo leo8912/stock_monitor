@@ -3,7 +3,8 @@
 提供 QRunnable 包装器，替代直接使用 threading.Thread
 """
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from PyQt6.QtCore import QRunnable, pyqtSlot
 

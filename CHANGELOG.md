@@ -1,5 +1,39 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.10.0] - 2026-09-23
+
+> 全项目审查驱动的大范围优化：线程/资源安全、UI 热路径减负、HTTP 与配置收敛、工程化与 README 对齐（激进重构，部分行为可变更）。
+
+### 🚀 新功能 (Features)
+- **刷新间隔 1–60 秒自定义**：设置页由固定预设改为 spinbox，与文档一致
+- **量化扫描调度可配置**：新增 `quant_scan_interval`（默认 300s）与 `daily_report_times`（默认 `11:35,15:05`）配置键及设置页「扫描调度」分组
+- **独立 CI**：新增 `.github/workflows/ci.yml`（push/PR：ruff + format + pytest，Windows / Python 3.13）
+
+### 🔧 性能 (Performance)
+- **会话缓存节流**：行情刷新不再每轮主线程 `fsync` 写盘；≥30s 节流 + 关机/退出 `force`/`flush`，全部写盘在锁内串行
+- **表格按需列宽**：仅布局变化或内容可能变宽时 `resizeColumnsToContents`
+- **StockManager 单实例**：DI auto-create 复用模块级 `stock_manager`，消除双实例与变更检测分叉
+- **去 JSON 热路径往返**：`fetch_and_process_stocks` 直接传 `dict`
+- **配置写盘**：默认配置原子创建；设置批量保存改为 `set_deferred` + 一次 `flush`
+
+### 🐛 修复 (Fixes)
+- **波浪/对比弹窗 QThread 生命周期**：重载与关窗前 stop/wait，generation 丢弃过期结果
+- **托盘 weakref**：主窗口已释放时回调安全跳过
+- **收盘导出调度 stop**：改用 `wait_for_thread_stop`，避免固定 3s 返回
+- **Excel 导出打包**：迁入 `stock_monitor/services/reporting/`，消除运行时 `from scripts.` 导入
+- **线程池关闭**：`StockManager` / `stock_fetcher` atexit + 应用退出关闭
+- **HTTP 统一**：`NetworkManager` 为规范客户端（共享 retry、显式 timeout、thread-local Session）；暗盘/更新下载改走该路径；失败统一返回 `None`
+
+### 🧹 工程化 (Engineering)
+- 移除 black（仅保留 ruff check/format）；`requires-python >=3.11`；pre-commit ruff 对齐
+- 取消跟踪 `stock_monitor.egg-info/`、`test_output.txt`、`test_error.txt`、`.pytest_tmp_clean/` 并 gitignore
+- pack-release 缓存键纳入 `pyproject.toml`
+- README 重写：真实目录树、完整功能列表、版本以 `pyproject.toml` 为唯一真源
+
+### 🧪 测试 (Tests)
+- 新增：`test_project_optimization_core.py`、`test_network_manager.py`、`test_resource_close_and_excel_import.py` 及设置/资源相关补测
+- 全量门禁：`ruff check stock_monitor tests` / `ruff format --check stock_monitor tests` / `pytest tests/ -q` → **778 passed, 9 skipped, 13 deselected**
+
 ## [v4.9.0] - 2026-09-22
 
 > 量化推送接入具体指标数据、新增背离类信号、修复一批 P0 缺陷并把推送防抖配置接入设置界面。

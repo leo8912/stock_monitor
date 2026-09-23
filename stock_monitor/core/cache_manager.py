@@ -11,7 +11,7 @@ import time
 from collections import OrderedDict
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from stock_monitor.utils.logger import app_logger
 
@@ -46,7 +46,7 @@ class LRUCache:
         self._hits = 0
         self._misses = 0
 
-    def get(self, key: str, ttl_override: float = None) -> Optional[Any]:
+    def get(self, key: str, ttl_override: float = None) -> Any | None:
         """读取键值；命中且未过期返回值并刷新 LRU 次序，否则返回 None。"""
         with self._lock:
             if key in self._cache:
@@ -172,7 +172,7 @@ class SQLiteCache:
         finally:
             conn.close()
 
-    def get(self, key: str) -> Optional[str]:
+    def get(self, key: str) -> str | None:
         """从 SQLite 读取未过期值；过期或异常返回 None。"""
         with self._lock:
             try:
@@ -282,7 +282,7 @@ class TwoLevelCache:
         self._l2_ttl = l2_ttl
         self._name = cache_name
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         """按 L1 → L2 顺序查找，L2 命中时回填 L1。"""
         # L1 查找
         value = self._l1.get(key)

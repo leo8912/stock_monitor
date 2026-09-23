@@ -11,15 +11,13 @@ shell 级的「确定 / 取消」按钮。为保持一行内的控件顺序、st
 
 from __future__ import annotations
 
-import re
-
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
-    QComboBox,
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QSpinBox,
     QVBoxLayout,
 )
 
@@ -61,11 +59,13 @@ class GeneralSettingsPage(SettingsPage):
         # 添加鼠标悬停反馈
         # 注意：大部分样式已在全局样式表中定义，这里只需要补充悬停效果
 
-        # 刷新频率
-        self.refresh_combo = QComboBox()
-        self.refresh_combo.addItems(["1 秒", "2 秒", "5 秒", "10 秒", "30 秒"])
-        self.refresh_combo.setMinimumWidth(80)
-        # 样式已在全局样式表中定义
+        # 刷新频率：1-60 秒自由输入（不再限定 1/2/5/10/30 预设）
+        self.refresh_spin = QSpinBox()
+        self.refresh_spin.setRange(1, 60)
+        self.refresh_spin.setValue(5)
+        self.refresh_spin.setSuffix(" 秒")
+        self.refresh_spin.setMinimumWidth(80)
+        self.refresh_spin.setToolTip("行情自动刷新间隔（1-60 秒，可直接输入任意值）")
 
         # 检查更新
         update_layout = QHBoxLayout()
@@ -82,7 +82,7 @@ class GeneralSettingsPage(SettingsPage):
         system_layout.addWidget(self.auto_start_checkbox)
         system_layout.addSpacing(6)  # 调整为 6px 间距
         system_layout.addWidget(QLabel("刷新频率:"))
-        system_layout.addWidget(self.refresh_combo)
+        system_layout.addWidget(self.refresh_spin)
         system_layout.addSpacing(6)  # 调整为 6px 间距
 
         # 添加版本号标签
@@ -108,24 +108,16 @@ class GeneralSettingsPage(SettingsPage):
         """把开机启动与刷新频率灌入控件。"""
         self.auto_start_checkbox.setChecked(settings.get("auto_start", False))
 
-        # Refresh interval logic
+        # Refresh interval：仅接受 1-60 整数，越界/非法值回落默认 5
         ri = settings.get("refresh_interval", 5)
-        map_val_to_text = {1: "1秒", 2: "2秒", 5: "5秒", 10: "10秒", 30: "30秒"}
-        text = map_val_to_text.get(ri, "5秒")
-        index = self.refresh_combo.findText(text)
-        if index < 0:
-            index = self.refresh_combo.findText(text.replace("秒", " 秒"))
-        if index >= 0:
-            self.refresh_combo.setCurrentIndex(index)
-        else:
-            self.refresh_combo.setCurrentIndex(0)
+        if isinstance(ri, bool) or not isinstance(ri, int) or not (1 <= ri <= 60):
+            ri = 5
+        self.refresh_spin.setValue(ri)
 
     def collect(self, settings: dict) -> None:
         """把开机启动与刷新频率写回配置字典。"""
         settings["auto_start"] = self.auto_start_checkbox.isChecked()
-        settings["refresh_interval"] = self._map_refresh_text_to_value(
-            self.refresh_combo.currentText()
-        )
+        settings["refresh_interval"] = self.refresh_spin.value()
 
     def apply_auto_start(self) -> None:
         """应用开机启动设置（``accept`` 时调用）。"""
@@ -134,7 +126,7 @@ class GeneralSettingsPage(SettingsPage):
 
     def get_refresh_interval(self) -> int:
         """返回当前刷新频率数值（供 shell 发信号时使用）。"""
-        return self._map_refresh_text_to_value(self.refresh_combo.currentText())
+        return self.refresh_spin.value()
 
     def check_for_updates(self) -> None:
         """检查更新"""
@@ -369,16 +361,3 @@ class GeneralSettingsPage(SettingsPage):
             )
             # 不再创建批处理文件作为备选，因为安全性和用户体验较差
             return False
-
-    def _map_refresh_text_to_value(self, text) -> int:
-        """将刷新频率文本映射为数值"""
-        match = re.search(r"(\d+)", str(text))
-        if not match:
-            return 5
-        value = int(match.group(1))
-        return value if value in {1, 2, 5, 10, 30} else 5
-
-    def _map_refresh_value_to_text(self, value) -> str:
-        """将刷新频率数值映射为文本（保留，当前无引用）"""
-        mapping = {1: "1秒", 2: "2秒", 5: "5秒", 10: "10秒", 30: "30秒"}
-        return mapping.get(value, "5秒")

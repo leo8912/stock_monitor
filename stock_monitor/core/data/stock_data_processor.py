@@ -4,7 +4,7 @@
 """
 
 import math
-from typing import Any, Optional
+from typing import Any
 
 from stock_monitor.models.stock_data import StockRowData
 from stock_monitor.utils.logger import app_logger
@@ -129,7 +129,7 @@ class StockDataProcessor:
         return name
 
     @staticmethod
-    def _extract_price_info(code: str, info: dict[str, Any]) -> Optional[tuple]:
+    def _extract_price_info(code: str, info: dict[str, Any]) -> tuple | None:
         """
         提取价格信息
         Returns:

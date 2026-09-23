@@ -3,16 +3,17 @@ import os
 import re
 import tempfile
 import urllib.parse
-from typing import Any, Optional
+from typing import Any
 
-import requests
 from requests.exceptions import (
+    ChunkedEncodingError,
     ConnectionError,
     HTTPError,
     RequestException,
     Timeout,
 )
 
+from stock_monitor.network.manager import NetworkManager
 from stock_monitor.utils.logger import app_logger
 
 # 镜像源配置：国内环境优先使用镜像加速下载
@@ -86,6 +87,14 @@ def _calculate_sha256(file_path: str) -> str:
 class UpdateDownloader:
     """负责下载应用更新包"""
 
+    def __init__(self) -> None:
+        # 统一 HTTP 客户端：流式下载由本类的断点续传循环负责重试，
+        # 关闭客户端级共享重试以免双重重试放大延迟
+        self._network = NetworkManager(
+            timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
+            enable_retry=False,
+        )
+
     def download_update(
         self,
         latest_release_info: dict[Any, Any],
@@ -93,7 +102,7 @@ class UpdateDownloader:
         is_cancelled_callback=None,
         security_warning_callback=None,
         error_callback=None,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         下载更新包
 
@@ -253,13 +262,18 @@ class UpdateDownloader:
                             f"重试下载（第{retry + 1}/{MAX_RETRIES}次尝试）"
                         )
 
-                    response = requests.get(
+                    response = self._network.get(
                         url,
                         stream=True,
                         timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
                         headers=headers,
                     )
-                    response.raise_for_status()
+                    if response is None:
+                        # 失败已在统一客户端内记录日志；按可重试网络错误处理
+                        app_logger.warning(
+                            f"{source_name}请求失败（第{retry + 1}/{MAX_RETRIES}次）"
+                        )
+                        continue
 
                     # 解析文件总大小
                     if response.status_code == 206:
@@ -315,21 +329,21 @@ class UpdateDownloader:
                     )
                     return True
 
-                except requests.exceptions.Timeout:
+                except Timeout:
                     app_logger.warning(
                         f"{source_name}下载超时（第{retry + 1}/{MAX_RETRIES}次）"
                     )
-                except requests.exceptions.ConnectionError:
+                except ConnectionError:
                     app_logger.warning(
                         f"{source_name}连接失败（第{retry + 1}/{MAX_RETRIES}次）"
                     )
-                except requests.exceptions.ChunkedEncodingError:
+                except ChunkedEncodingError:
                     app_logger.warning(
                         f"{source_name}下载中断"
                         f"（第{retry + 1}/{MAX_RETRIES}次），"
                         "将尝试断点续传"
                     )
-                except requests.exceptions.RequestException as e:
+                except RequestException as e:
                     app_logger.warning(
                         f"{source_name}请求异常（第{retry + 1}/{MAX_RETRIES}次）: {e}"
                     )
@@ -425,11 +439,12 @@ class UpdateDownloader:
                     )
                 app_logger.info("正在下载哈希校验文件...")
                 try:
-                    hash_resp = requests.get(
+                    hash_resp = self._network.get(
                         hash_url,
                         timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
+                        enable_retry=True,
                     )
-                    if hash_resp.status_code == 200:
+                    if hash_resp is not None and hash_resp.status_code == 200:
                         expected_hash = hash_resp.text.strip()
                 except (Timeout, ConnectionError):
                     # 网络问题不立即判失败，允许回退到 release body 解析

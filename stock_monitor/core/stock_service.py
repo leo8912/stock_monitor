@@ -3,7 +3,7 @@
 提供统一的股票数据获取接口
 """
 
-from typing import Any, Optional
+from typing import Any
 
 from stock_monitor.utils.logger import app_logger
 
@@ -17,9 +17,9 @@ class StockDataService:
 
     def __init__(
         self,
-        fetcher: Optional[StockDataFetcher] = None,
-        validator: Optional[StockDataValidator] = None,
-        processor: Optional[StockDataProcessor] = None,
+        fetcher: StockDataFetcher | None = None,
+        validator: StockDataValidator | None = None,
+        processor: StockDataProcessor | None = None,
     ):
         """
         初始化股票数据服务
@@ -35,7 +35,7 @@ class StockDataService:
         self.processor = processor or StockDataProcessor()
         app_logger.info("股票数据服务初始化完成")
 
-    def get_stock_data(self, code: str) -> Optional[dict[str, Any]]:
+    def get_stock_data(self, code: str) -> dict[str, Any] | None:
         """
         获取单只股票数据,带重试机制
 
@@ -49,7 +49,7 @@ class StockDataService:
 
     def get_multiple_stocks_data(
         self, codes: list[str]
-    ) -> dict[str, Optional[dict[str, Any]]]:
+    ) -> dict[str, dict[str, Any] | None]:
         """
         批量获取多只股票数据,按市场类型分组处理
 
@@ -126,7 +126,7 @@ class StockDataService:
         engine = self._init_sina_if_needed()
         return engine.market_snapshot(prefix=True)
 
-    def get_all_market_data(self) -> Optional[dict[str, Any]]:
+    def get_all_market_data(self) -> dict[str, Any] | None:
         """
         获取全市场股票数据
 

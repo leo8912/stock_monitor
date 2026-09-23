@@ -1,7 +1,7 @@
 import json
 import os
 import time
-from typing import Any, Optional
+from typing import Any
 
 from stock_monitor.config.manager import get_config_dir
 from stock_monitor.utils.logger import app_logger
@@ -118,7 +118,7 @@ class FinancialFilter:
             },
         }
 
-    def _get_cached_data(self, symbol: str) -> Optional[list[dict[str, Any]]]:
+    def _get_cached_data(self, symbol: str) -> list[dict[str, Any]] | None:
         """读取本地缓存"""
         cache_path = os.path.join(self.cache_dir, f"{symbol}.json")
 
@@ -139,7 +139,7 @@ class FinancialFilter:
             app_logger.error(f"读取财务缓存 IO 错误 {symbol}: {e}")
             return None
 
-    def _fetch_and_cache(self, symbol: str) -> Optional[list[dict[str, Any]]]:
+    def _fetch_and_cache(self, symbol: str) -> list[dict[str, Any]] | None:
         """抓取并缓存数据"""
         try:
             # 延迟导入 akshare - 在打包环境中更可靠

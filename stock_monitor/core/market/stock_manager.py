@@ -2,6 +2,7 @@
 负责处理股票相关的业务逻辑
 """
 
+import atexit
 import concurrent.futures
 import json
 import threading
@@ -35,10 +36,26 @@ class StockManager:
         self._stock_data_service = stock_data_service or global_stock_data_service
         self._quant_engine = None  # 延迟初始化
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        self._closed = False
         self._large_orders_cache = {}
         self._auction_cache = {}  # [NEW] 集合竞价缓存
         # 线程安全锁 - 保护缓存读写
         self._cache_lock = threading.Lock()
+        # 注册应用退出清理钩子，防止线程池句柄泄露（与 StockDataFetcher 一致）
+        atexit.register(self.close)
+
+    def close(self) -> None:
+        """释放线程池资源（幂等，可安全重复调用）。"""
+        if self._closed:
+            return
+        self._closed = True
+        executor = self._executor
+        # 注意：atexit 触发时不要调用 app_logger（见 StockDataFetcher.close）
+        if executor is not None:
+            executor.shutdown(wait=True, cancel_futures=True)
+
+    # 兼容别名
+    shutdown = close
 
     def has_stock_data_changed(self, stocks: list[StockRowData]) -> bool:
         """检查股票数据是否发生变化"""
@@ -135,11 +152,8 @@ class StockManager:
                 # 注入竞价数据 [NEW]
                 info["auction_data"] = auction_data
 
-                try:
-                    info_json = json.dumps(info, sort_keys=True)
-                    stock_item = self._process_single_stock_data(code, info_json)
-                except Exception:
-                    stock_item = self._process_single_stock_data_impl(code, info)
+                # 直接传 dict，避免热路径 json.dumps→loads 往返
+                stock_item = self._process_single_stock_data_impl(code, info)
                 stocks.append(stock_item)
             else:
                 stocks.append(
@@ -190,5 +204,5 @@ class StockManager:
         return self._process_single_stock_data_impl(code, info)
 
 
-# 创建全局股票管理器实例
+# 进程内唯一实例：Worker 与 ViewModel 均应引用此对象
 stock_manager = StockManager()

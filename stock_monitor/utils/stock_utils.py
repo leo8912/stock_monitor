@@ -3,14 +3,12 @@
 提供统一的股票代码处理功能
 """
 
-from typing import Optional
-
 
 class StockCodeProcessor:
     """股票代码处理器"""
 
     @staticmethod
-    def format_stock_code(code: str) -> Optional[str]:
+    def format_stock_code(code: str) -> str | None:
         """
         格式化股票代码，确保正确的前缀
 
@@ -101,7 +99,7 @@ class StockCodeProcessor:
         return formatted if formatted else stock_code
 
     @staticmethod
-    def extract_code_from_text(text: str) -> tuple[Optional[str], str]:
+    def extract_code_from_text(text: str) -> tuple[str | None, str]:
         """
         从文本中提取股票代码
 

@@ -3,7 +3,7 @@
 负责验证股票数据的完整性和正确性
 """
 
-from typing import Any, Optional
+from typing import Any
 
 
 class StockDataValidator:
@@ -40,7 +40,7 @@ class StockDataValidator:
     @staticmethod
     def handle_special_cases(
         info: dict[str, Any], pure_code: str, code: str, should_copy: bool = False
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         处理特殊情况下的股票数据名称安全网。
         quotes() 现已通过腾讯接口正确获取指数数据，此处仅兜底修正名称。
@@ -57,7 +57,7 @@ class StockDataValidator:
         return info
 
     @staticmethod
-    def get_stock_info(data: dict[str, Any], code: str) -> Optional[dict[str, Any]]:
+    def get_stock_info(data: dict[str, Any], code: str) -> dict[str, Any] | None:
         """
         获取股票信息并进行验证
 

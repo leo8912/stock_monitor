@@ -95,8 +95,10 @@ class StockIndicatorsTask:
         self._enabled = enabled
 
     def execute(self) -> str | None:
-        from scripts.reporting.export_stocks_to_excel import export_to_excel
         from stock_monitor.core.config_center import config_center
+        from stock_monitor.services.reporting.export_stocks_to_excel import (
+            export_to_excel,
+        )
 
         try:
             user_stocks = config_center.user_stocks
@@ -324,9 +326,13 @@ class CloseExportScheduler(QtCore.QThread):
 
     def stop_scheduler(self):
         """停止调度器"""
+        from stock_monitor.core.workers.base import wait_for_thread_stop
+
         self._running = False
-        self.wait(3000)
-        app_logger.info("[CloseExportScheduler] 调度器线程已停止")
+        if not wait_for_thread_stop(self):
+            app_logger.warning("[CloseExportScheduler] 调度器线程未能在超时内停止")
+        else:
+            app_logger.info("[CloseExportScheduler] 调度器线程已停止")
 
     def trigger_now(self, task_name: str | None = None):
         """立即触发一次导出（用于测试）

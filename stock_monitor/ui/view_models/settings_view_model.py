@@ -143,6 +143,14 @@ class SettingsViewModel(QObject):
             "drag_sensitivity": self._config_manager.get("drag_sensitivity", 5),
             # Add missing quant settings for persistence
             "quant_enabled": self._config_manager.get(ConfigKeys.QUANT_ENABLED, False),
+            "quant_scan_interval": self._config_manager.get(
+                ConfigKeys.QUANT_SCAN_INTERVAL, 5 * 60
+            ),
+            "daily_report_times": list(
+                self._config_manager.get(
+                    ConfigKeys.DAILY_REPORT_TIMES, ["11:35", "15:05"]
+                )
+            ),
             "auto_export_excel": self._config_manager.get(
                 ConfigKeys.AUTO_EXPORT_EXCEL, False
             ),
@@ -174,6 +182,24 @@ class SettingsViewModel(QObject):
                 ConfigKeys.WECOM_CORPSECRET, ""
             ),
             "wecom_agentid": self._config_manager.get(ConfigKeys.WECOM_AGENTID, ""),
+            "quant_min_push_score": self._config_manager.get("quant_min_push_score", 2),
+            "quant_alert_cooldown": self._config_manager.get(
+                "quant_alert_cooldown", 1800
+            ),
+            "quant_alert_merge_enabled": self._config_manager.get(
+                "quant_alert_merge_enabled", True
+            ),
+            "report_trigger_window_minutes": self._config_manager.get(
+                "report_trigger_window_minutes", 30
+            ),
+            "fib_target_coefficients": self._config_manager.get(
+                "fib_target_coefficients",
+                {
+                    "wave_5_target": 0.618,
+                    "wave_4_retrace": 0.382,
+                    "wave_b_retrace": 0.5,
+                },
+            ),
         }
         self.settings_loaded.emit(settings)
         return settings
@@ -186,11 +212,12 @@ class SettingsViewModel(QObject):
                 # 验证失败时 validation_failed 信号已触发，直接返回
                 return False
 
-            # 统一通过 config_center.set() 写入，保证持锁且发布 CONFIG_CHANGED 事件
+            # 批量写入：先防抖内存更新，最后一次 flush 落盘（避免 N 次整文件重写）
             from stock_monitor.core.config_center import config_center
 
             for key, value in settings.items():
-                config_center.set(key, value)
+                config_center.set_deferred(key, value)
+            config_center.flush()
 
             self.save_completed.emit()
             return True

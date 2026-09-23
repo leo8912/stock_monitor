@@ -10,13 +10,13 @@ import time
 from datetime import datetime
 from datetime import time as dtime
 
-import requests
 from PyQt6 import QtCore
 
 from stock_monitor.core.workers.base import (
     DEFAULT_STOP_TIMEOUT_MS,
     wait_for_thread_stop,
 )
+from stock_monitor.network.manager import NetworkManager
 from stock_monitor.services.dark_trade.utils import get_recent_trade_dates
 from stock_monitor.utils.logger import app_logger
 
@@ -25,6 +25,9 @@ _HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     "Referer": "https://emrnweb.eastmoney.com/",
 }
+# 统一 HTTP 客户端（共享 utils.retry 重试策略 + 显式超时 + 线程本地会话）
+DARKTRADE_TIMEOUT = 12
+_http_client = NetworkManager(timeout=DARKTRADE_TIMEOUT)
 
 # 交易时段边界
 _MARKET_START = dtime(9, 15)
@@ -64,9 +67,17 @@ def fetch_all_dark_trade(date_str=None) -> list:
             "datetype": "",
         }
         try:
-            resp = requests.get(
-                DARKTRADE_URL, params=params, headers=_HEADERS, timeout=12
+            resp = _http_client.get(
+                DARKTRADE_URL,
+                params=params,
+                headers=_HEADERS,
+                timeout=DARKTRADE_TIMEOUT,
             )
+            if resp is None:
+                app_logger.warning_ctx(
+                    "[DarkTrade] 抓取失败", page=page, error="request failed"
+                )
+                break
             records: list[dict] = resp.json().get("data", [])
         except Exception as e:
             app_logger.warning_ctx("[DarkTrade] 抓取失败", page=page, error=str(e))

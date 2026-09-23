@@ -3,7 +3,7 @@
 提取重复的配置读取逻辑，提供统一的访问接口
 """
 
-from typing import Any, Optional
+from typing import Any
 
 
 class ConfigHelper:
@@ -101,7 +101,7 @@ class ConfigHelper:
                 pass
         return default
 
-    def get_list(self, key: str, default: Optional[list] = None) -> list:
+    def get_list(self, key: str, default: list | None = None) -> list:
         """
         安全地获取列表配置
 
@@ -148,6 +148,8 @@ class ConfigKeys:
 
     # 量化相关
     QUANT_ENABLED = "quant_enabled"
+    QUANT_SCAN_INTERVAL = "quant_scan_interval"  # 量化扫描间隔（秒）
+    DAILY_REPORT_TIMES = "daily_report_times"  # 每日复盘报告触发时刻列表 ["HH:MM", ...]
 
     # 显示相关
     FONT_FAMILY = "font_family"

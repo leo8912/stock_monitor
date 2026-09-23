@@ -1,11 +1,10 @@
 import os
 import time
-from typing import Optional
 
 from .logger import app_logger
 
 
-def clean_old_logs(log_dir: Optional[str] = None, days_to_keep: int = 7) -> int:
+def clean_old_logs(log_dir: str | None = None, days_to_keep: int = 7) -> int:
     """
     清理指定目录下超过指定天数的日志文件
 

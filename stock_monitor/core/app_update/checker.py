@@ -1,5 +1,5 @@
 from json import JSONDecodeError
-from typing import Any, Optional
+from typing import Any
 
 from packaging import version
 from requests.exceptions import HTTPError, RequestException, Timeout
@@ -15,9 +15,9 @@ class UpdateChecker:
         self.github_repo = github_repo
         self.current_version = current_version
         self.network_manager = NetworkManager()
-        self.latest_release_info: Optional[dict[Any, Any]] = None
+        self.latest_release_info: dict[Any, Any] | None = None
 
-    def check_for_updates(self) -> Optional[bool]:
+    def check_for_updates(self) -> bool | None:
         """
         检查是否有新版本可用
 

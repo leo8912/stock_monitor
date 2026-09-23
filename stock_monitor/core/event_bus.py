@@ -5,9 +5,10 @@
 
 import threading
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable
+from typing import Any
 
 from stock_monitor.utils.logger import app_logger
 

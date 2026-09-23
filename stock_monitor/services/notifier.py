@@ -6,7 +6,6 @@
 import os
 import threading
 import time
-from typing import Optional
 
 import requests
 
@@ -38,21 +37,22 @@ from stock_monitor.utils.retry import network_retry as retry
 class NotifierService:
     # 简单的应用 Token 缓存: {(corp_id, secret): (token, expiry_ts)}
     _token_cache = {}
-    # 共享 HTTP 会话（连接池复用）
-    _session = None
+    # 共享 HTTP 会话改为 thread-local（requests.Session 非线程安全，
+    # 推送可能从多个工作线程并发调用）；测试仍可 patch Session.get/post
+    _local = threading.local()
     _lock = threading.Lock()
 
     @classmethod
     def _get_session(cls) -> requests.Session:
-        """获取共享的 requests.Session"""
-        if cls._session is None:
-            with cls._lock:
-                if cls._session is None:
-                    cls._session = create_session({"Content-Type": "application/json"})
-        return cls._session
+        """获取当前线程绑定的 requests.Session（惰性创建）"""
+        session = getattr(cls._local, "session", None)
+        if session is None:
+            session = create_session({"Content-Type": "application/json"})
+            cls._local.session = session
+        return session
 
     @classmethod
-    def _get_app_token(cls, corp_id: str, secret: str) -> Optional[str]:
+    def _get_app_token(cls, corp_id: str, secret: str) -> str | None:
         """获取并缓存企业微信应用 AccessToken（仅返回 token）。"""
         token, _error = cls._resolve_app_token(corp_id, secret)
         return token
@@ -250,7 +250,7 @@ class NotifierService:
         stock_name: str,
         signals: list[str],
         cycle_info: str = "",
-        price_info: Optional[dict] = None,
+        price_info: dict | None = None,
     ) -> bool:
         """
         分发预警：优先使用企业应用通道，若未配置则回退到 Webhook 文字。
@@ -413,7 +413,7 @@ class NotifierService:
         config: dict,
         title: str,
         content: str,
-        webhook_override: Optional[str] = None,
+        webhook_override: str | None = None,
     ) -> bool:
         """
         发送自定义消息（用于定时复盘报告，使用 markdown 格式）

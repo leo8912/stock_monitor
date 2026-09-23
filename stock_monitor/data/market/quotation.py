@@ -5,14 +5,14 @@
 该模块包含获取行情数据、处理行情数据等功能。
 """
 
-from typing import Any, Optional
+from typing import Any
 
 import easyquotation
 
 from stock_monitor.utils.logger import app_logger
 
 
-def get_quotation_engine(market_type: str = "sina") -> Optional[Any]:
+def get_quotation_engine(market_type: str = "sina") -> Any | None:
     """获取行情引擎实例"""
     try:
         engine: Any = easyquotation.use(market_type)

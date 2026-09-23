@@ -2,7 +2,8 @@
 错误处理和异常管理模块
 """
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from .logger import app_logger
 from .retry import retry_on_failure  # noqa: F401 - 向后兼容导出

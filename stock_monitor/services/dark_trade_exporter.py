@@ -12,9 +12,11 @@ import csv
 from datetime import datetime
 from pathlib import Path
 
-import requests
-
-from stock_monitor.services.dark_trade.service import fetch_all_dark_trade
+from stock_monitor.services.dark_trade.service import (
+    DARKTRADE_TIMEOUT,
+    _http_client,
+    fetch_all_dark_trade,
+)
 from stock_monitor.services.dark_trade.utils import get_recent_trade_dates
 from stock_monitor.utils.helpers import safe_float
 from stock_monitor.utils.logger import app_logger
@@ -75,9 +77,17 @@ def fetch_market_quotes_all() -> dict[str, dict]:
                 # f12=代码 f14=名称 f2=收盘价 f3=涨跌幅 f5=成交量(手) f6=成交额
             }
             try:
-                resp = requests.get(
-                    _QUOTE_URL, params=params, headers=_HEADERS, timeout=12
+                resp = _http_client.get(
+                    _QUOTE_URL,
+                    params=params,
+                    headers=_HEADERS,
+                    timeout=DARKTRADE_TIMEOUT,
                 )
+                if resp is None:
+                    app_logger.warning(
+                        f"[DarkExport] 获取明盘行情第{pn}页失败: request failed"
+                    )
+                    break
                 data = resp.json().get("data", {}) or {}
                 diff = data.get("diff", [])
             except Exception as e:

@@ -299,6 +299,39 @@ class TestReportScheduling(unittest.TestCase):
         self.assertEqual(self.reports, ["morning"])
         self.assertEqual(self.worker._last_report_date, "2026-09-21_morning")
 
+    def test_report_times_read_from_config(self):
+        """config['daily_report_times'] 优先于实例兜底值（配置键暴露）。"""
+        self.worker._daily_report_times = ["11:35", "15:05"]
+        self.worker.config = {"daily_report_times": ["09:45"]}
+        clock = self._freeze_clock("09:45")
+        with (
+            clock,
+            patch.object(self.worker, "generate_daily_summary_report") as mock_gen,
+        ):
+            self.worker.check_and_trigger_reports()
+            mock_gen.assert_called_once_with("morning")
+        self.assertEqual(self.reports, ["morning"])
+
+    def test_report_times_empty_config_falls_back(self):
+        """配置缺失/非列表时回落到实例兜底时刻。"""
+        self.worker._daily_report_times = ["11:35"]
+        self.worker.config = {"daily_report_times": []}
+        clock = self._freeze_clock("11:35")
+        with (
+            clock,
+            patch.object(self.worker, "generate_daily_summary_report") as mock_gen,
+        ):
+            self.worker.check_and_trigger_reports()
+            mock_gen.assert_called_once_with("morning")
+
+    def test_default_scan_interval_constant(self) -> None:
+        """构造默认扫描间隔保持 5*60，未配置时不改变行为。"""
+        from stock_monitor.core.workers.quant_worker import DEFAULT_SCAN_INTERVAL
+
+        self.assertEqual(DEFAULT_SCAN_INTERVAL, 5 * 60)
+        self.assertEqual(self.worker.scan_interval, 5 * 60)
+        self.assertEqual(self.worker._daily_report_times, ["11:35", "15:05"])
+
     def test_scheduled_afternoon_report(self):
         """15:05 触发午盘报告"""
         self.worker._daily_report_times = ["11:35", "15:05"]

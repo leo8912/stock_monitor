@@ -8,7 +8,6 @@ import matplotlib
 
 matplotlib.use("Agg")  # 强制无GUI模式，防止后台线程绘图崩溃
 
-from typing import Optional
 
 import matplotlib.pyplot as plt
 import mplfinance as mpf
@@ -31,8 +30,8 @@ class WaveChart:
         symbol: str,
         stock_name: str,
         timeframe: str = "daily",
-        output_dir: Optional[str] = None,
-    ) -> Optional[str]:
+        output_dir: str | None = None,
+    ) -> str | None:
         """
         绘制K线图，标注波浪走势与斐波那契线，并保存到本地临时目录。
         返回图片保存路径。

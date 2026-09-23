@@ -8,7 +8,7 @@ import sqlite3
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any, Optional
+from typing import Any
 
 from stock_monitor.config.manager import get_config_dir
 from stock_monitor.utils.helpers import resource_path
@@ -549,7 +549,7 @@ class StockDatabase(StockDataSource):
             app_logger.error(f"慢速插入失败: {e}")
             return 0
 
-    def get_stock_by_code(self, code: str) -> Optional[dict[str, Any]]:
+    def get_stock_by_code(self, code: str) -> dict[str, Any] | None:
         """
         根据股票代码获取股票信息
 

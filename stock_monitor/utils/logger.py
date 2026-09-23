@@ -3,7 +3,6 @@ import os
 import re
 import sys
 from logging.handlers import RotatingFileHandler
-from typing import Optional
 
 # 敏感字段脱敏正则集合（大小写不敏感）。
 #
@@ -80,7 +79,7 @@ class Logger:
     def __init__(
         self,
         name: str = "stock_monitor",
-        log_file: Optional[str] = None,
+        log_file: str | None = None,
         log_level: int = logging.INFO,
         max_file_size: int = 10 * 1024 * 1024,  # 10MB
         backup_count: int = 5,

@@ -173,15 +173,39 @@ class StockTable(QtWidgets.QTableView):
             # 委托给模型更新
             layout_changed = self._model.update_data(stocks)
 
-            # 布局变化或行数变化时重新计算列宽并调整窗口尺寸
-            # 即使布局未变，数据内容可能变宽（如封单从 "123" → "123456k"），
-            # 也需要重新计算列宽以防止文本截断
-            self._resize_columns()
+            # 仅在布局变化或内容可能变宽时全量 resize，避免每 tick O(cells) 测量
+            if layout_changed or self._content_may_widen():
+                self._resize_columns()
             if layout_changed:
                 self._notify_parent_window_height_adjustment()
 
         except Exception as e:
             app_logger.error(f"更新表格数据时发生错误: {e}")
+
+    def _content_may_widen(self) -> bool:
+        """粗判当前行文本是否可能需要更宽列（相对现有 section 宽度）。"""
+        h_header = self.horizontalHeader()
+        if h_header is None:
+            return True
+        model = self._model
+        rows = model.rowCount()
+        cols = model.columnCount()
+        # 采样首尾与中间行，避免全表测量
+        sample_rows = sorted({0, rows // 2, max(0, rows - 1)})
+        metrics = QtGui.QFontMetrics(self.font())
+        for row in sample_rows:
+            if row < 0 or row >= rows:
+                continue
+            for col in range(cols):
+                idx = model.index(row, col)
+                text = model.data(idx, QtCore.Qt.ItemDataRole.DisplayRole) or ""
+                if not text:
+                    continue
+                needed = metrics.horizontalAdvance(str(text)) + 12
+                current = h_header.sectionSize(col)
+                if needed > current:
+                    return True
+        return False
 
     def wheelEvent(self, event):
         """禁用滚轮"""

@@ -4,14 +4,13 @@
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional
 
 
 class StockDataSource(ABC):
     """股票数据源抽象接口"""
 
     @abstractmethod
-    def get_stock_by_code(self, code: str) -> Optional[dict[str, str]]:
+    def get_stock_by_code(self, code: str) -> dict[str, str] | None:
         """
         根据股票代码获取股票信息
 

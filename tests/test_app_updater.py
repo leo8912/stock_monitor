@@ -177,7 +177,8 @@ class TestAppUpdaterIntegration(unittest.TestCase):
 class TestVerifyHashFailClosed(unittest.TestCase):
     """UpdateDownloader._verify_hash 的 fail-closed 行为测试（T04）。"""
 
-    _GET = "stock_monitor.core.app_update.downloader.requests.get"
+    # 统一 mock 层：所有 HTTP 出口都走 NetworkManager
+    _GET = "stock_monitor.network.manager.NetworkManager.get"
 
     def setUp(self):
         self.downloader = UpdateDownloader()

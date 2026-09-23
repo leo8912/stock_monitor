@@ -50,6 +50,8 @@ class QuantSettingsPage(SettingsPage):
 
     SETTINGS_KEYS = (
         "quant_enabled",
+        "quant_scan_interval",
+        "daily_report_times",
         "auto_export_excel",
         "auto_close_export",
         "wecom_webhook",
@@ -63,6 +65,9 @@ class QuantSettingsPage(SettingsPage):
         "quant_alert_merge_enabled",
         "report_trigger_window_minutes",
     )
+
+    DEFAULT_SCAN_INTERVAL = 300  # 与 ConfigManager 默认 5*60 一致
+    DEFAULT_REPORT_TIMES: tuple = ("11:35", "15:05")
 
     def __init__(self, ctx: SettingsContext, parent=None) -> None:
         """初始化量化预警页。"""
@@ -114,6 +119,40 @@ class QuantSettingsPage(SettingsPage):
             "3. 保存全A股行情快照"
         )
         quant_layout.addWidget(self.auto_close_export_checkbox)
+
+        # --- 扫描调度设置区域 ---
+        schedule_group = QGroupBox("⏱ 扫描调度")
+        schedule_layout = QVBoxLayout()
+        schedule_layout.setContentsMargins(10, 10, 10, 10)
+        schedule_layout.setSpacing(8)
+        schedule_group.setLayout(schedule_layout)
+
+        # 量化扫描间隔（秒）
+        scan_interval_layout = QHBoxLayout()
+        scan_interval_layout.addWidget(QLabel("扫描间隔(秒):"))
+        self.scan_interval_spin = QSpinBox()
+        self.scan_interval_spin.setRange(1, 3600)
+        self.scan_interval_spin.setValue(self.DEFAULT_SCAN_INTERVAL)
+        self.scan_interval_spin.setToolTip(
+            "开市期间两次量化扫描之间的最小间隔（秒），默认 300"
+        )
+        scan_interval_layout.addWidget(self.scan_interval_spin)
+        scan_interval_layout.addStretch()
+        schedule_layout.addLayout(scan_interval_layout)
+
+        # 每日复盘触发时刻（逗号分隔 HH:MM）
+        report_times_layout = QHBoxLayout()
+        report_times_layout.addWidget(QLabel("复盘时刻:"))
+        self.report_times_input = QLineEdit()
+        self.report_times_input.setPlaceholderText("11:35,15:05")
+        self.report_times_input.setToolTip(
+            "交易日定时复盘触发时刻，多个时刻用英文逗号分隔（HH:MM），"
+            "默认 11:35 与 15:05"
+        )
+        report_times_layout.addWidget(self.report_times_input)
+        schedule_layout.addLayout(report_times_layout)
+
+        quant_layout.addWidget(schedule_group)
 
         # --- 推送防抖设置区域 ---
         debounce_group = QGroupBox("🔔 推送防抖")
@@ -389,6 +428,22 @@ class QuantSettingsPage(SettingsPage):
         self.auto_close_export_checkbox.setChecked(
             settings.get("auto_close_export", False)
         )
+
+        # 扫描调度：间隔秒数 + 每日复盘时刻
+        scan_interval = settings.get("quant_scan_interval", self.DEFAULT_SCAN_INTERVAL)
+        if (
+            isinstance(scan_interval, bool)
+            or not isinstance(scan_interval, int)
+            or not (1 <= scan_interval <= 3600)
+        ):
+            scan_interval = self.DEFAULT_SCAN_INTERVAL
+        self.scan_interval_spin.setValue(scan_interval)
+        self.report_times_input.setText(
+            self._format_report_times(
+                settings.get("daily_report_times", list(self.DEFAULT_REPORT_TIMES))
+            )
+        )
+
         self.wecom_webhook_input.setText(settings.get("wecom_webhook", ""))
 
         push_mode = settings.get("push_mode", "webhook")
@@ -424,6 +479,10 @@ class QuantSettingsPage(SettingsPage):
     def collect(self, settings: dict) -> None:
         """把量化 / 推送 / 斐波那契控件值写回配置字典。"""
         settings["quant_enabled"] = self.quant_enabled_checkbox.isChecked()
+        settings["quant_scan_interval"] = self.scan_interval_spin.value()
+        settings["daily_report_times"] = self._parse_report_times(
+            self.report_times_input.text()
+        )
         settings["auto_export_excel"] = self.auto_export_excel_checkbox.isChecked()
         settings["auto_close_export"] = self.auto_close_export_checkbox.isChecked()
         settings["wecom_webhook"] = self.wecom_webhook_input.text().strip()
@@ -440,6 +499,29 @@ class QuantSettingsPage(SettingsPage):
             "wave_4_retrace": self.fib_wave4_spin.value(),
             "wave_b_retrace": self.fib_waveb_spin.value(),
         }
+
+    @classmethod
+    def _format_report_times(cls, times) -> str:
+        """把复盘时刻列表格式化为输入框文本（逗号拼接，过滤非法项）。"""
+        if not isinstance(times, (list, tuple)):
+            times = list(cls.DEFAULT_REPORT_TIMES)
+        valid = [str(t).strip() for t in times if cls._is_valid_report_time(t)]
+        return ",".join(valid) if valid else ",".join(cls.DEFAULT_REPORT_TIMES)
+
+    @classmethod
+    def _parse_report_times(cls, text: str) -> list:
+        """解析输入框文本为合法的 HH:MM 列表；全非法时回落默认时刻。"""
+        parts = [p.strip() for p in str(text).replace("，", ",").split(",")]
+        valid = [p for p in parts if cls._is_valid_report_time(p)]
+        return valid if valid else list(cls.DEFAULT_REPORT_TIMES)
+
+    @staticmethod
+    def _is_valid_report_time(value) -> bool:
+        """校验单个时刻是否为合法 HH:MM。"""
+        if not isinstance(value, str):
+            return False
+        m = re.fullmatch(r"([01]?\d|2[0-3]):([0-5]\d)", value.strip())
+        return m is not None
 
     def _on_test_push_clicked(self) -> None:
         """测试 Webhook 推送"""

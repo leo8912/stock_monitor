@@ -72,6 +72,7 @@ class ConfigCenter:
             value: 配置值
             publish_event: 是否发布变更事件
         """
+        # 立即写入（保持既有语义）；高频路径可改 manager.set(..., flush=False)
         success = self._manager.set(key, value)
         if success and publish_event:
             event_bus.publish(
@@ -80,6 +81,21 @@ class ConfigCenter:
                 source="ConfigCenter",
             )
         return success
+
+    def set_deferred(self, key: str, value: Any, publish_event: bool = True) -> bool:
+        """内存立即更新、磁盘防抖写入（窗口位置等高频 UI 路径）。"""
+        success = self._manager.set(key, value, flush=False)
+        if success and publish_event:
+            event_bus.publish(
+                Topics.CONFIG_CHANGED,
+                data={"key": key, "value": value},
+                source="ConfigCenter",
+            )
+        return success
+
+    def flush(self) -> bool:
+        """冲刷防抖中的配置写盘。"""
+        return self._manager.flush()
 
     # ── 便捷属性 ──────────────────────────────────────────────────
 

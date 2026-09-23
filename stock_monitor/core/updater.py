@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any
 
 from stock_monitor.core.app_update.checker import UpdateChecker
 from stock_monitor.core.app_update.downloader import UpdateDownloader
@@ -17,10 +17,10 @@ class AppUpdater:
         self.installer = UpdateInstaller()
 
     @property
-    def latest_release_info(self) -> Optional[dict[Any, Any]]:
+    def latest_release_info(self) -> dict[Any, Any] | None:
         return self.checker.latest_release_info
 
-    def check_for_updates(self) -> Optional[bool]:
+    def check_for_updates(self) -> bool | None:
         """检查是否有新版本可用"""
         return self.checker.check_for_updates()
 
@@ -30,7 +30,7 @@ class AppUpdater:
         is_cancelled_callback=None,
         security_warning_callback=None,
         error_callback=None,
-    ) -> Optional[str]:
+    ) -> str | None:
         """下载更新包"""
         if not self.latest_release_info:
             app_logger.error("没有可用的更新信息，调用 download_update 失败")

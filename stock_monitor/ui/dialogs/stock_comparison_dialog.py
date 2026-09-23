@@ -114,6 +114,7 @@ class StockComparisonDialog(QtWidgets.QDialog):
         self.stock_names = stock_names
         self.comparison_data = []
         self._data_worker = None
+        self._load_generation = 0
         self.setup_ui()
         self.load_data()
 
@@ -214,21 +215,57 @@ class StockComparisonDialog(QtWidgets.QDialog):
         # 禁用刷新按钮，防止重复触发
         self._set_refresh_enabled(False)
 
-        self._data_worker = _DataLoadWorker(
-            self.engine, self.symbols, self.stock_names, self
-        )
-        self._data_worker.finished.connect(self._on_data_loaded)
-        self._data_worker.error.connect(self._on_data_error)
-        self._data_worker.start()
+        # 重载前停掉旧线程，避免结果交叉与销毁运行中的 QThread
+        self._stop_data_worker()
+        self._load_generation = getattr(self, "_load_generation", 0) + 1
+        generation = self._load_generation
 
-    def _on_data_loaded(self, data: list) -> None:
+        worker = _DataLoadWorker(self.engine, self.symbols, self.stock_names, self)
+        worker.finished.connect(
+            lambda data, gen=generation: self._on_data_loaded(data, gen)
+        )
+        worker.error.connect(lambda msg, gen=generation: self._on_data_error(msg, gen))
+        self._data_worker = worker
+        worker.start()
+
+    def _stop_data_worker(self, timeout_ms: int = 3000) -> None:
+        worker = getattr(self, "_data_worker", None)
+        if worker is None:
+            return
+        try:
+            worker.finished.disconnect()
+        except (TypeError, RuntimeError):
+            pass
+        try:
+            worker.error.disconnect()
+        except (TypeError, RuntimeError):
+            pass
+        if worker.isRunning():
+            worker.requestInterruption()
+            if not worker.wait(timeout_ms):
+                app_logger.warning("[股票对比] 等待旧 worker 超时")
+        self._data_worker = None
+
+    def closeEvent(self, event) -> None:
+        self._stop_data_worker()
+        super().closeEvent(event)
+
+    def _on_data_loaded(self, data: list, generation: int | None = None) -> None:
         """后台线程完成后的回调：在主线程填充表格。"""
+        if generation is not None and generation != getattr(
+            self, "_load_generation", None
+        ):
+            return
         self.comparison_data = data
         self._populate_table()
         self._set_refresh_enabled(True)
 
-    def _on_data_error(self, error_msg: str) -> None:
+    def _on_data_error(self, error_msg: str, generation: int | None = None) -> None:
         """后台线程出错时的回调。"""
+        if generation is not None and generation != getattr(
+            self, "_load_generation", None
+        ):
+            return
         self._set_refresh_enabled(True)
         app_logger.error(f"[股票对比] 加载数据失败: {error_msg}")
         QtWidgets.QMessageBox.critical(self, "错误", f"加载数据失败: {error_msg}")

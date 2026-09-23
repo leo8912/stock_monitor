@@ -10,7 +10,7 @@
 import atexit
 import concurrent.futures
 import time
-from typing import Any, Optional
+from typing import Any
 
 import easyquotation
 
@@ -109,7 +109,7 @@ class StockDataFetcher:
 
     def fetch_single_stock(
         self, quotation_engine, code: str, query_code: str
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         从行情引擎获取单只股票数据
 
@@ -138,7 +138,7 @@ class StockDataFetcher:
             app_logger.debug(f"获取股票 {code} 数据时发生异常: {e}")
             return None
 
-    def fetch_with_retry(self, quotation_engine, code: str) -> Optional[dict[str, Any]]:
+    def fetch_with_retry(self, quotation_engine, code: str) -> dict[str, Any] | None:
         """
         带重试机制获取股票数据
 
@@ -170,7 +170,7 @@ class StockDataFetcher:
 
         return None
 
-    def fetch_single(self, code: str) -> Optional[dict[str, Any]]:
+    def fetch_single(self, code: str) -> dict[str, Any] | None:
         """
         获取单只股票数据,带重试机制
 
@@ -191,7 +191,7 @@ class StockDataFetcher:
             app_logger.error(f"获取股票 {code} 数据失败: {e}")
             return None
 
-    def fetch_multiple(self, codes: list[str]) -> dict[str, Optional[dict[str, Any]]]:
+    def fetch_multiple(self, codes: list[str]) -> dict[str, dict[str, Any] | None]:
         """
         批量获取多只股票数据,按市场类型分组处理
 
@@ -318,7 +318,7 @@ class StockDataFetcher:
 
             updated_count = 0
             with result_lock:
-                for code, clean_code in zip(codes, clean_codes):
+                for code, clean_code in zip(codes, clean_codes, strict=False):
                     if clean_code in raw_data:
                         info = raw_data[clean_code]
                         # 统一字段名：easyquotation 已有 now/close/name，与下游兼容

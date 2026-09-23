@@ -2,7 +2,6 @@ import datetime
 import json
 import os
 import threading
-from typing import Optional
 
 from stock_monitor.config.manager import get_config_dir
 from stock_monitor.core.engine.quant_engine import QuantEngine
@@ -116,7 +115,7 @@ class BacktestEngine:
 
     def get_strategy_stats(
         self, symbol: str, market: int, category: int, days: int = 250
-    ) -> Optional[dict]:
+    ) -> dict | None:
         """
         分周期历史回测。
         - 15m (cat=1): 拉 800 根 ≈ 50 个交易日，约 2.5 个月
@@ -181,7 +180,7 @@ class BacktestEngine:
 
     def get_rsrs_strategy_stats(
         self, symbol: str, market: int, category: int = 9, z_threshold: float = 0.7
-    ) -> Optional[dict]:
+    ) -> dict | None:
         """
         专门针对 RSRS 指标的择时回测
         - 买入: RSRS Z-Score > z_threshold (通常 0.7)
@@ -228,7 +227,7 @@ class BacktestEngine:
 
     def get_confluence_strategy_stats(
         self, symbol: str, market: int, category: int = 9, z_threshold: float = 0.7
-    ) -> Optional[dict]:
+    ) -> dict | None:
         """
         [最强策略] MACD 底背离 + RSRS 走强 共振回测
         """
@@ -283,7 +282,7 @@ class BacktestEngine:
 
     def get_score_stats(
         self, symbol: str, market: int, category: int = 9, min_score: int = 3
-    ) -> Optional[dict]:
+    ) -> dict | None:
         """
         基于评分的高频表现回测。
         默认回测日线周期下，评分 >= 3 时的表现。

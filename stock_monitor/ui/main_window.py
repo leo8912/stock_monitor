@@ -112,7 +112,9 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
             # 1. 保存会话缓存 (包含位置和数据)
             try:
                 self.viewModel.save_session(
-                    [self.x(), self.y()], self.viewModel.get_latest_stock_data()
+                    [self.x(), self.y()],
+                    self.viewModel.get_latest_stock_data(),
+                    force=True,
                 )
             except Exception as e:
                 app_logger.warning(f"保存会话缓存失败: {e}")
@@ -151,6 +153,18 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
 
         app_logger.info("开始释放退出资源...")
         try:
+            # 0. 冲刷会话缓存与配置（节流/防抖写入）
+            try:
+                from stock_monitor.utils.session_cache import flush_session_cache
+
+                flush_session_cache()
+            except Exception:
+                app_logger.debug("冲刷会话缓存失败", exc_info=True)
+            try:
+                config_center.flush()
+            except Exception:
+                app_logger.debug("冲刷配置失败", exc_info=True)
+
             # 1. 停止加载超时计时器
             if getattr(self, "_loading_timer", None) is not None:
                 self._loading_timer.stop()
@@ -538,9 +552,9 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         return False
 
     def save_position(self) -> None:
-        """保存窗口位置到配置文件"""
+        """保存窗口位置到配置文件（防抖落盘，避免拖拽/隐藏高频写盘）"""
         pos = self.pos()
-        config_center.set(
+        config_center.set_deferred(
             ConfigKeys.WINDOW_POS, [pos.x(), pos.y()], publish_event=False
         )
 

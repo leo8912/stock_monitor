@@ -103,24 +103,27 @@ class ConfigManager:
         Note:
             单例模式下，首次调用确定配置路径，后续调用忽略参数
         """
-        if self._initialized:
-            # 单例已初始化，检查是否传入了不同的路径
-            if (
-                config_path != self._config_path
-                and config_path != self.__class__._default_config_path
-            ):
-                app_logger.warning(
-                    f"ConfigManager 单例已初始化，忽略传入的 config_path: {config_path} "
-                    f"(已使用: {self._config_path})"
-                )
-            return
+        # 类锁保护首次初始化，避免双线程同时 _load_config
+        with self._class_lock:
+            if self._initialized:
+                if (
+                    config_path != self._config_path
+                    and config_path != self.__class__._default_config_path
+                ):
+                    app_logger.warning(
+                        f"ConfigManager 单例已初始化，忽略传入的 config_path: {config_path} "
+                        f"(已使用: {self._config_path})"
+                    )
+                return
 
-        self._config_path = config_path
-        self.config_path = config_path  # 保持向后兼容
-        self._config: dict[str, Any] = {}
-        self._instance_lock = threading.Lock()
-        self._load_config()
-        self._initialized = True
+            self._config_path = config_path
+            self.config_path = config_path  # 保持向后兼容
+            self._config: dict[str, Any] = {}
+            self._instance_lock = threading.Lock()
+            self._dirty = False
+            self._flush_timer: threading.Timer | None = None
+            self._load_config()
+            self._initialized = True
 
     def _load_config(self) -> None:
         """加载配置文件，包含完整的错误处理和默认值"""
@@ -186,26 +189,63 @@ class ConfigManager:
         with self._instance_lock:
             return self._config.get(key, default)
 
-    def set(self, key: str, value: Any) -> bool:
+    def set(self, key: str, value: Any, *, flush: bool = True) -> bool:
         """
         设置配置项的值
 
         Args:
             key: 配置项键名
             value: 配置项的值
+            flush: True 立即落盘；False 仅更新内存并防抖落盘
 
         Returns:
-            bool: 是否保存成功
+            bool: 内存更新成功；flush=True 时同时表示落盘结果
         """
         with self._instance_lock:
             self._config[key] = value
+            if not flush:
+                self._dirty = True
+                self._schedule_flush_locked()
+                return True
+            return self._save_config()
+
+    def _schedule_flush_locked(self, delay: float = 0.5) -> None:
+        """在已持有 _instance_lock 时调度防抖落盘。"""
+        if self._flush_timer is not None:
+            self._flush_timer.cancel()
+
+        def _fire() -> None:
+            with self._instance_lock:
+                if not getattr(self, "_dirty", False):
+                    return
+                self._dirty = False
+                self._save_config()
+
+        t = threading.Timer(delay, _fire)
+        t.daemon = True
+        self._flush_timer = t
+        t.start()
+
+    def flush(self) -> bool:
+        """立即写出防抖中的配置。"""
+        with self._instance_lock:
+            if self._flush_timer is not None:
+                self._flush_timer.cancel()
+                self._flush_timer = None
+            if not getattr(self, "_dirty", False):
+                return True
+            self._dirty = False
             return self._save_config()
 
     def _create_default_config(self) -> dict[str, Any]:
-        """创建默认配置文件"""
+        """创建默认配置文件（原子写入）"""
         default_config = self._get_default_config()
-        with open(self.config_path, "w", encoding="utf-8") as f:
+        tmp_path = self.config_path + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(default_config, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, self.config_path)
         self._config = default_config
         return default_config
 
@@ -242,6 +282,8 @@ class ConfigManager:
             "quant_min_push_score": 2,  # 最低推送评分，低于该分值不推送
             "report_trigger_window_minutes": 30,  # 定时复盘触发时间窗（分钟）
             "quant_max_workers": None,  # 量化扫描线程数（None=自动）
+            "quant_scan_interval": 5 * 60,  # 量化扫描间隔（秒），默认 300
+            "daily_report_times": ["11:35", "15:05"],  # 每日复盘触发时刻
             # 斐波那契配置
             "fib_levels": ["0.382", "0.500", "0.618"],  # 显示的斐波那契级别
             "fib_target_coefficients": {

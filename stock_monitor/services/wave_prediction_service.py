@@ -8,7 +8,6 @@
 """
 
 import datetime
-from typing import Optional
 
 from stock_monitor.data.stock.stock_db import StockDatabase
 from stock_monitor.utils.logger import app_logger
@@ -17,7 +16,7 @@ from stock_monitor.utils.logger import app_logger
 class WavePredictionService:
     """波浪预测历史管理服务"""
 
-    def __init__(self, db: Optional[StockDatabase] = None):
+    def __init__(self, db: StockDatabase | None = None):
         self.db = db or StockDatabase()
 
     def record_prediction(
@@ -27,7 +26,7 @@ class WavePredictionService:
         trend: str,
         confidence: float,
         price_at_prediction: float,
-        target_price: Optional[float] = None,
+        target_price: float | None = None,
         timeframe: str = "daily",
         notes: str = "",
     ) -> int:
@@ -144,7 +143,7 @@ class WavePredictionService:
             app_logger.error(f"[波浪预测] 验证预测失败: {e}")
             return False
 
-    def get_prediction_stats(self, symbol: Optional[str] = None) -> dict:
+    def get_prediction_stats(self, symbol: str | None = None) -> dict:
         """
         获取预测统计信息
 
@@ -232,7 +231,7 @@ class WavePredictionService:
             }
 
     def get_recent_predictions(
-        self, symbol: Optional[str] = None, limit: int = 10
+        self, symbol: str | None = None, limit: int = 10
     ) -> list[dict]:
         """
         获取最近的预测记录

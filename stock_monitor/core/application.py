@@ -178,6 +178,7 @@ class StockMonitorApp:
 
         修复 G-8：``DarkTradeService.stop_service()`` 此前全项目无调用点，
         退出时服务线程会随进程被强制终止。这里在 ``aboutToQuit`` 阶段显式停止。
+        同时关闭 StockManager / stock_fetcher 线程池（幂等；atexit 亦有兜底）。
         """
         try:
             from stock_monitor.services.dark_trade.service import (
@@ -188,6 +189,21 @@ class StockMonitorApp:
             app_logger.info("暗盘资金服务已停止")
         except Exception as e:
             app_logger.error(f"停止暗盘资金服务失败: {e}", exc_info=True)
+
+        # 释放行情相关线程池（与 StockDataFetcher 的 atexit 关闭路径互补）
+        try:
+            from stock_monitor.core.market.stock_manager import stock_manager
+
+            stock_manager.close()
+        except Exception as e:
+            app_logger.error(f"关闭 StockManager 失败: {e}", exc_info=True)
+
+        try:
+            from stock_monitor.data.fetcher import stock_fetcher
+
+            stock_fetcher.close()
+        except Exception as e:
+            app_logger.error(f"关闭 stock_fetcher 失败: {e}", exc_info=True)
 
     def run(self) -> int:
         """

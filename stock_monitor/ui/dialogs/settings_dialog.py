@@ -276,6 +276,8 @@ class NewSettingsDialog(QDialog):
                 "font_family": page_settings["font_family"],
                 "transparency": page_settings["transparency"],
                 "quant_enabled": page_settings["quant_enabled"],
+                "quant_scan_interval": page_settings["quant_scan_interval"],
+                "daily_report_times": page_settings["daily_report_times"],
                 "auto_export_excel": page_settings["auto_export_excel"],
                 "auto_close_export": page_settings["auto_close_export"],
                 "wecom_webhook": page_settings["wecom_webhook"],
@@ -296,6 +298,16 @@ class NewSettingsDialog(QDialog):
             # 斐波那契配置保存
             settings["fib_target_coefficients"] = page_settings[
                 "fib_target_coefficients"
+            ]
+
+            # 推送防抖 / 复盘窗口（页内收集，原实现遗漏写回）
+            settings["quant_min_push_score"] = page_settings["quant_min_push_score"]
+            settings["quant_alert_cooldown"] = page_settings["quant_alert_cooldown"]
+            settings["quant_alert_merge_enabled"] = page_settings[
+                "quant_alert_merge_enabled"
+            ]
+            settings["report_trigger_window_minutes"] = page_settings[
+                "report_trigger_window_minutes"
             ]
 
             from stock_monitor.utils.logger import app_logger

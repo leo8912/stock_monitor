@@ -1,7 +1,7 @@
 """
 NotifierService 消息推送服务单元测试
 
-注意：NotifierService 自 v4.3.4 起统一使用共享的 ``requests.Session``
+注意：NotifierService 使用 thread-local ``requests.Session``
 （``NotifierService._get_session()``），因此对底层 HTTP 调用的打桩需针对
 ``requests.Session.get`` / ``requests.Session.post``，而非模块级的
 ``requests.get`` / ``requests.post``。同理，网络异常重试自迁移到
