@@ -153,7 +153,7 @@ pre-commit run --all-files
 | 工作流 | 触发 | 内容 |
 |--------|------|------|
 | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | **push + pull_request** | Python 3.13 → 装依赖 → `QT_QPA_PLATFORM=offscreen` → ruff check / format --check → `pytest -q` |
-| [`.github/workflows/pack-release.yml`](.github/workflows/pack-release.yml) | 推送变更 `pyproject.toml` 或手动 | 质量门禁 → PyInstaller 打包 → SHA256 → GitHub Release |
+| [`.github/workflows/pack-release.yml`](.github/workflows/pack-release.yml) | 推送变更 `pyproject.toml` 或手动 | 仅 PyInstaller 打包 → SHA256 → GitHub Release（门禁只在 CI 跑，避免重复） |
 
 版本号以 **`pyproject.toml`** 的 `version` 为准；发布时同步更新 `CHANGELOG.md`。打包缓存 key 含 `pyproject.toml` 与 requirements 文件。
 

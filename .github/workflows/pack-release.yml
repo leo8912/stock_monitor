@@ -47,19 +47,8 @@ jobs:
         pip install akshare --force-reinstall
         pip install pandas-ta-classic --force-reinstall
 
-    - name: 质量门禁：静态检查与单元测试 # Quality gate: lint + format + unit tests
-      shell: bash
-      # CI runner 无显示会话，Qt 必须跑 offscreen 平台；否则前序测试创建的
-      # QApplication 会让 pytest-qt 在事件处理时段错误（Segmentation fault，exit 139）。
-      env:
-        QT_QPA_PLATFORM: offscreen
-      run: |
-        echo "=== ruff 静态检查 ==="
-        python -m ruff check stock_monitor tests
-        echo "=== ruff 格式检查 ==="
-        python -m ruff format --check stock_monitor tests
-        echo "=== 单元测试（默认排除 gui 标记用例）==="
-        python -m pytest -q -p no:cacheprovider
+    # 质量门禁（ruff/pytest）只在 ci.yml 跑一遍；此处再跑会与 CI 并行重复
+    # 装依赖+全量测试，拉长发布耗时。打包流水线只负责 PyInstaller 与 Release。
 
     - name: 验证所需文件是否存在 # Verify required files exist
       run: |
