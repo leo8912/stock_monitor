@@ -1,5 +1,18 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.10.4] - 2026-09-24
+
+> 精简发布流水线：打包不再重复跑 CI 已做过的 ruff/pytest，升级链路保持多镜像加速。
+
+### 🧹 工程化 (Engineering)
+- **pack-release 去重**：删除与 `ci.yml` 重复的质量门禁步骤；打包只负责依赖 → PyInstaller → SHA256 → Release
+- **README**：工作流职责表同步（CI 管门禁，打包管发布）
+- 日常 push 仍只跑 CI；仅 `pyproject.toml` 变更或手动 dispatch 触发打包
+
+### 🧪 测试 (Tests)
+- 升级链路：更新检查 / 多镜像 URL 构造 / 镜像可达与哈希文件内容 / 下载回退顺序
+- 全量门禁：`ruff check` / `ruff format --check` / `pytest tests/ -q`
+
 ## [v4.10.3] - 2026-09-24
 
 > 升级下载接入多 GitHub 加速镜像（替换已失效的 mirror.ghproxy.com），被墙/变慢时自动回退。
