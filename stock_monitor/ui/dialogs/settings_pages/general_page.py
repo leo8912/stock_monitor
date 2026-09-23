@@ -21,7 +21,11 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from stock_monitor.ui.workers.settings_workers import UpdateCheckThread
+from stock_monitor.ui.dialogs.update_confirm_dialog import show_update_confirm
+from stock_monitor.ui.workers.settings_workers import (
+    UpdateCheckThread,
+    UpdateDownloadThread,
+)
 from stock_monitor.version import __version__
 
 from .base import SettingsPage
@@ -37,6 +41,8 @@ class GeneralSettingsPage(SettingsPage):
         """初始化通用设置页。"""
         super().__init__(ctx, parent)
         self._update_thread = None
+        self._download_thread = None
+        self._download_progress = None
 
     def build_into(self, bottom_layout) -> None:
         """在底部布局中构建系统设置子布局（不含确定/取消）。
@@ -154,10 +160,10 @@ class GeneralSettingsPage(SettingsPage):
         self.check_update_button.setEnabled(True)
         self.check_update_button.setText("检查更新")
 
-        from PyQt6.QtCore import Qt
-        from PyQt6.QtWidgets import QMessageBox, QProgressDialog
+        from PyQt6.QtWidgets import QMessageBox
 
         from stock_monitor.core.updater import app_updater
+        from stock_monitor.utils.logger import app_logger
 
         if error_msg:
             QMessageBox.critical(
@@ -170,7 +176,6 @@ class GeneralSettingsPage(SettingsPage):
 
         try:
             if result is True:
-                # 有新版本，显示提示框
                 latest_version = (
                     app_updater.latest_release_info.get("tag_name", "")
                     .replace("stock_monitor_", "")
@@ -180,83 +185,16 @@ class GeneralSettingsPage(SettingsPage):
                     "body", "暂无更新说明"
                 )
 
-                message = f"发现新版本!\n\n当前版本: {app_updater.current_version}\n最新版本: {latest_version}\n\n更新说明:\n{release_body}\n\n是否现在更新?"
-
-                reply = QMessageBox.question(
+                # 可滚动说明框：长 CHANGELOG 也能滚到底并点到按钮
+                if not show_update_confirm(
                     self,
-                    "发现新版本",
-                    message,
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                    QMessageBox.StandardButton.Yes,
-                )
+                    app_updater.current_version,
+                    latest_version,
+                    release_body,
+                ):
+                    return
 
-                if reply == QMessageBox.StandardButton.Yes:
-                    progress_dialog = QProgressDialog(
-                        "正在下载更新...", "取消", 0, 100, self
-                    )
-                    progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
-                    progress_dialog.setWindowTitle("下载更新")
-                    progress_dialog.setAutoClose(True)
-                    progress_dialog.setAutoReset(True)
-                    progress_dialog.show()
-
-                    def progress_cb(percent) -> None:
-                        """下载进度回调：更新进度对话框数值。
-
-                        不再手动调用 QApplication.processEvents()，
-                        Qt 事件循环会在合适的时机处理重绘。
-                        """
-                        progress_dialog.setValue(percent)
-
-                    def is_cancelled_cb() -> bool:
-                        """取消检查回调：返回用户是否已取消下载。"""
-                        return progress_dialog.wasCanceled()
-
-                    def security_warn_cb(warn_msg) -> bool:
-                        """安全提示回调：弹出确认框，返回用户是否选择继续。"""
-                        reply_warn = QMessageBox.warning(
-                            self,
-                            "安全提示",
-                            warn_msg,
-                            QMessageBox.StandardButton.Yes
-                            | QMessageBox.StandardButton.No,
-                            QMessageBox.StandardButton.Yes,
-                        )
-                        return reply_warn == QMessageBox.StandardButton.Yes
-
-                    def error_cb(err_msg) -> None:
-                        """下载错误回调：弹出错误提示框。"""
-                        QMessageBox.critical(
-                            self, "更新错误", err_msg, QMessageBox.StandardButton.Ok
-                        )
-
-                    # 下载更新
-                    update_file = app_updater.download_update(
-                        progress_callback=progress_cb,
-                        is_cancelled_callback=is_cancelled_cb,
-                        security_warning_callback=security_warn_cb,
-                        error_callback=error_cb,
-                    )
-
-                    progress_dialog.close()
-
-                    if update_file:
-                        # 应用更新
-                        if not app_updater.apply_update(update_file):
-                            QMessageBox.critical(
-                                self,
-                                "更新失败",
-                                "应用更新包时发生错误",
-                                QMessageBox.StandardButton.Ok,
-                            )
-                    else:
-                        if not progress_dialog.wasCanceled():
-                            QMessageBox.warning(
-                                self,
-                                "下载失败",
-                                "更新包下载失败,请检查网络连接后重试。",
-                                QMessageBox.StandardButton.Ok,
-                            )
+                self._start_background_download()
             elif result is False:
                 QMessageBox.information(
                     self,
@@ -272,9 +210,109 @@ class GeneralSettingsPage(SettingsPage):
                     QMessageBox.StandardButton.Ok,
                 )
         except Exception as e:
-            from stock_monitor.utils.logger import app_logger
-
             app_logger.error(f"处理更新结果失败: {e}")
+
+    def _start_background_download(self) -> None:
+        """在后台线程下载更新包，避免 UI 卡死。"""
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtWidgets import QProgressDialog
+
+        if self._download_thread is not None and self._download_thread.isRunning():
+            return
+
+        progress_dialog = QProgressDialog("正在下载更新...", "取消", 0, 100, self)
+        progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+        progress_dialog.setWindowTitle("下载更新")
+        progress_dialog.setAutoClose(False)
+        progress_dialog.setAutoReset(False)
+        progress_dialog.setMinimumDuration(0)
+        progress_dialog.show()
+        self._download_progress = progress_dialog
+
+        thread = UpdateDownloadThread(parent=self)
+        self._download_thread = thread
+
+        thread.progress.connect(progress_dialog.setValue)
+        # 安全提示：worker 阻塞等待主线程弹窗应答
+        thread.security_ask.connect(
+            self._on_download_security_ask,
+            Qt.ConnectionType.BlockingQueuedConnection,
+        )
+        progress_dialog.canceled.connect(thread.request_cancel)
+        thread.finished_path.connect(
+            lambda path: self._on_download_finished(path, progress_dialog)
+        )
+        thread.failed_msg.connect(
+            lambda msg: self._on_download_failed(msg, progress_dialog)
+        )
+        thread.finished.connect(thread.deleteLater)
+        thread.start()
+
+    def _on_download_security_ask(self, message: str) -> None:
+        """主线程应答下载线程的安全提示（阻塞式连接）。"""
+        from PyQt6.QtWidgets import QMessageBox
+
+        from stock_monitor.ui.workers.settings_workers import UpdateDownloadThread
+
+        thread = self._download_thread
+        allow = True
+        if isinstance(thread, UpdateDownloadThread):
+            reply = QMessageBox.warning(
+                self,
+                "安全提示",
+                message,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
+            )
+            allow = reply == QMessageBox.StandardButton.Yes
+            thread.respond_security(allow)
+
+    def _on_download_finished(self, path: str, progress_dialog) -> None:
+        """下载线程成功结束。"""
+        from PyQt6.QtWidgets import QMessageBox
+
+        from stock_monitor.core.updater import app_updater
+
+        try:
+            progress_dialog.close()
+        except Exception:
+            pass
+        self._download_progress = None
+
+        if not path:
+            # 取消或空结果：静默（取消时 progress_dialog.wasCanceled）
+            return
+
+        if not app_updater.apply_update(path):
+            QMessageBox.critical(
+                self,
+                "更新失败",
+                "应用更新包时发生错误",
+                QMessageBox.StandardButton.Ok,
+            )
+
+    def _on_download_failed(self, message: str, progress_dialog) -> None:
+        """下载失败。"""
+        from PyQt6.QtWidgets import QMessageBox
+
+        try:
+            canceled = progress_dialog.wasCanceled()
+        except Exception:
+            canceled = False
+        try:
+            progress_dialog.close()
+        except Exception:
+            pass
+        self._download_progress = None
+
+        if canceled:
+            return
+        QMessageBox.warning(
+            self,
+            "下载失败",
+            message or "更新包下载失败，请检查网络连接后重试。",
+            QMessageBox.StandardButton.Ok,
+        )
 
     def _set_auto_start(self, enabled) -> None:
         """

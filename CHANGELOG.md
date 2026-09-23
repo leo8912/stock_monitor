@@ -1,5 +1,18 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.10.1] - 2026-09-24
+
+> 设置界面自适应与滚动、升级说明可滚动确认、升级下载改为后台线程，修复 UI 卡死与显示不全。
+
+### 🐛 修复 (Fixes)
+- **设置窗口自适应**：按可用屏幕缩放，支持最大化，标签页包入 `QScrollArea`，底部确定/取消固定宽度，解决大屏/小屏显示不全
+- **升级说明可滚动**：新增 `UpdateConfirmDialog`，长文案滚动查看，确认按钮始终可见，不再被截断
+- **升级下载不卡 UI**：`UpdateDownloadThread` 后台下载 + 进度回调；安全提示走 `BlockingQueuedConnection`，避免主线程同步 `download_update` 导致无响应
+
+### 🧪 测试 (Tests)
+- 滚动区/屏幕适配/更新确认框/下载线程 re-export 并入 `test_settings_pages_split.py`
+- 全量门禁：`ruff check` / `ruff format --check` / `pytest tests/ -q` → **780 passed, 9 skipped, 13 deselected**；`settings_dialog.py` 保持 ≤ 500 行
+
 ## [v4.10.0] - 2026-09-23
 
 > 全项目审查驱动的大范围优化：线程/资源安全、UI 热路径减负、HTTP 与配置收敛、工程化与 README 对齐（激进重构，部分行为可变更）。

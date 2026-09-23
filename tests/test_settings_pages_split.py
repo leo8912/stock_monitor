@@ -439,6 +439,54 @@ class TestDialogShellWiring(unittest.TestCase):
             ["📋 自选股管理", "🎨 显示设置", "📊 量化预警"],
         )
 
+    def test_tab_content_scrollable_and_screen_fit(self) -> None:
+        """长设置页包滚动区；窗口尺寸不超过可用屏幕，底栏按钮有宽度。"""
+        from PyQt6.QtWidgets import QScrollArea
+
+        screen = QtWidgets.QApplication.primaryScreen()
+        assert screen is not None
+        geo = screen.availableGeometry()
+        self.assertLessEqual(self.dialog.width(), geo.width())
+        self.assertLessEqual(self.dialog.height(), geo.height())
+        self.assertEqual(self.dialog.tabs.count(), 3)
+        for i in range(self.dialog.tabs.count()):
+            self.assertIsInstance(self.dialog.tabs.widget(i), QScrollArea)
+        self.assertGreaterEqual(self.dialog.ok_button.minimumWidth(), 80)
+        self.assertGreaterEqual(self.dialog.cancel_button.minimumWidth(), 80)
+
+    def test_update_confirm_and_download_thread(self) -> None:
+        """更新说明可滚动；下载线程已接入 shell re-export。"""
+        from PyQt6.QtCore import Qt
+
+        from stock_monitor.ui.dialogs.settings_dialog import UpdateDownloadThread
+        from stock_monitor.ui.dialogs.update_confirm_dialog import UpdateConfirmDialog
+
+        body = "\n".join(f"- 修复条目 {i}" for i in range(120))
+        dlg = UpdateConfirmDialog("4.9.0", "4.10.0", body)
+        try:
+            text = dlg.notes_edit.toPlainText()
+            self.assertIn("修复条目 0", text)
+            self.assertIn("修复条目 119", text)
+            self.assertGreaterEqual(dlg.update_btn.minimumWidth(), 80)
+            self.assertEqual(
+                dlg.notes_edit.verticalScrollBarPolicy(),
+                Qt.ScrollBarPolicy.ScrollBarAsNeeded,
+            )
+        finally:
+            dlg.close()
+            dlg.deleteLater()
+
+        thread = UpdateDownloadThread()
+        self.assertTrue(hasattr(thread, "progress"))
+        self.assertTrue(hasattr(thread, "security_ask"))
+        self.assertTrue(hasattr(thread, "finished_path"))
+        self.assertTrue(hasattr(thread, "failed_msg"))
+        thread.request_cancel()
+        self.assertTrue(thread._cancel_requested.is_set())
+        from stock_monitor.ui.dialogs import settings_dialog as sd
+
+        self.assertIs(sd.UpdateDownloadThread, UpdateDownloadThread)
+
     def test_compat_bridge_removed(self) -> None:
         # C4-2：兼容桥与 thin delegate 已删除，shell 不再暴露页控件同名属性
         for name in (

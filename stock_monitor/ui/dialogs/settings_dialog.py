@@ -10,8 +10,10 @@ from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QApplication,
     QDialog,
+    QFrame,
     QHBoxLayout,
     QPushButton,
+    QScrollArea,
     QTabWidget,
     QVBoxLayout,
 )
@@ -31,6 +33,7 @@ from stock_monitor.ui.workers.settings_workers import (
     ExcelExportThread,
     TestAppThread,
     UpdateCheckThread,
+    UpdateDownloadThread,
 )
 from stock_monitor.utils.helpers import (
     resource_path,
@@ -44,6 +47,7 @@ __all__ = [
     "DraggableListWidget",
     "WatchListManager",
     "UpdateCheckThread",
+    "UpdateDownloadThread",
     "ExcelExportThread",
     "TestAppThread",
     "DarkTradeExportThread",
@@ -101,14 +105,15 @@ class NewSettingsDialog(QDialog):
             # 同时设置任务栏图标
             self._setup_windows_taskbar_icon()
 
-        # 设置窗口标志：移除帮助按钮，确保不置顶
-        flags = Qt.WindowType.Window  # 使用普通窗口标志
-        flags |= Qt.WindowType.WindowCloseButtonHint  # 添加关闭按钮
-        flags |= Qt.WindowType.WindowMinimizeButtonHint  # 添加最小化按钮
+        # 窗口标志：可最大化 + 关闭/最小化，不置顶
+        flags = Qt.WindowType.Window
+        flags |= Qt.WindowType.WindowCloseButtonHint
+        flags |= Qt.WindowType.WindowMinimizeButtonHint
+        flags |= Qt.WindowType.WindowMaximizeButtonHint
         self.setWindowFlags(flags)
 
-        # 设置窗口大小
-        self.resize(900, 700)  # 进一步调大窗口尺寸
+        # 按可用屏幕适配尺寸，避免小屏/高 DPI 下显示不全
+        self._fit_to_available_screen()
 
         # 设置窗口样式以匹配暗色主题
         self.setObjectName("NewSettingsDialog")
@@ -117,10 +122,9 @@ class NewSettingsDialog(QDialog):
         self._setup_windows_caption_color()
 
         # 创建主布局
-        main_layout = QVBoxLayout()
-        main_layout.setContentsMargins(20, 20, 20, 20)
-        main_layout.setSpacing(15)
-        self.setLayout(main_layout)
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(12, 12, 12, 12)
+        main_layout.setSpacing(10)
 
         # 创建各设置页实例（P0 底部栏 / P1 自选股 / P2 显示 / P3 量化）
         self._general_page = GeneralSettingsPage(self.ctx)
@@ -146,23 +150,28 @@ class NewSettingsDialog(QDialog):
         # 保持原一行内的控件顺序 / stretch / 间距：系统设置子布局(stretch=1) 在前，
         # 确定取消按钮布局在后。OK/Cancel 由 shell 创建，accept/reject 语义留在 shell。
         bottom_layout = QHBoxLayout()
-        bottom_layout.setContentsMargins(0, 0, 0, 0)
+        bottom_layout.setContentsMargins(4, 4, 0, 0)
         self._general_page.build_into(bottom_layout)
 
         button_layout = QHBoxLayout()
-        button_layout.setContentsMargins(0, 0, 0, 0)  # 移除边距
+        button_layout.setContentsMargins(0, 0, 0, 0)
         button_layout.setSpacing(10)
         button_layout.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-        )  # 右对齐并垂直居中
+        )
 
         self.ok_button = QPushButton("确定")
+        self.ok_button.setFixedHeight(34)
+        self.ok_button.setMinimumWidth(88)
         self.cancel_button = QPushButton("取消")
         self.cancel_button.setObjectName("cancelButton")
+        self.cancel_button.setFixedHeight(34)
+        self.cancel_button.setMinimumWidth(88)
         button_layout.addWidget(self.ok_button)
         button_layout.addWidget(self.cancel_button)
 
         bottom_layout.addLayout(button_layout)
+        # 底部栏固定高度感：始终贴底，不随标签页内容被挤出屏幕
         main_layout.addLayout(bottom_layout)
 
         # 连接跨切面信号
@@ -218,6 +227,32 @@ class NewSettingsDialog(QDialog):
         self.ok_button.clicked.connect(self._on_ok_clicked)
         self.cancel_button.clicked.connect(self.reject)
 
+    def _fit_to_available_screen(self) -> None:
+        """按主屏幕可用区域设定初始尺寸，保证底部按钮在屏内。"""
+        screen = QApplication.primaryScreen()
+        if screen is None:
+            self.resize(900, 700)
+            return
+        geo = screen.availableGeometry()
+        width = min(920, max(720, int(geo.width() * 0.9)))
+        height = min(720, max(480, int(geo.height() * 0.88)))
+        # 预留标题栏与任务栏：再收一点边
+        height = min(height, geo.height() - 24)
+        width = min(width, geo.width() - 24)
+        self.resize(width, height)
+        self.setMinimumSize(min(680, width), min(420, height))
+
+    @staticmethod
+    def _wrap_tab_scroll(page) -> QScrollArea:
+        """把设置页包进可滚动区域，长页内容可滚动而底部栏固定。"""
+        scroll = QScrollArea()
+        scroll.setWidget(page)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        return scroll
+
     def _setup_tabs(self, main_layout) -> None:
         """构建各页 UI 并创建标签页结构 [UI OPTIMIZATION]"""
         self.tabs = QTabWidget()
@@ -228,12 +263,12 @@ class NewSettingsDialog(QDialog):
         self._display_page.build(self._display_page)
         self._quant_page.build(self._quant_page)
 
-        # 添加到标签页（顺序 / emoji / 文案保持原样）
-        self.tabs.addTab(self._watchlist_page, "📋 自选股管理")
-        self.tabs.addTab(self._display_page, "🎨 显示设置")
-        self.tabs.addTab(self._quant_page, "📊 量化预警")
+        # 添加到标签页（顺序 / emoji / 文案保持原样）；内容可滚动
+        self.tabs.addTab(self._wrap_tab_scroll(self._watchlist_page), "📋 自选股管理")
+        self.tabs.addTab(self._wrap_tab_scroll(self._display_page), "🎨 显示设置")
+        self.tabs.addTab(self._wrap_tab_scroll(self._quant_page), "📊 量化预警")
 
-        main_layout.addWidget(self.tabs)
+        main_layout.addWidget(self.tabs, stretch=1)
 
     def _on_vm_error(self, message: str) -> None:
         """处理来自 ViewModel 的错误信号"""

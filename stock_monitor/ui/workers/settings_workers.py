@@ -9,6 +9,7 @@ Phase A 结构治理（T13）：把原先散落在 ``settings_dialog.py`` 中的
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable
 from typing import Any
 
@@ -51,6 +52,86 @@ class UpdateCheckThread(TaskThread):
             return app_updater.check_for_updates()
 
         self._run_task(task, self.finished_check.emit, self.error_occurred.emit)
+
+
+class UpdateDownloadThread(QThread):
+    """后台下载更新包，避免阻塞 UI 线程导致「程序无响应」。
+
+    - ``progress``：0–100 进度（主线程 Queued 连接）
+    - ``security_ask``：需要用户确认安全提示；主窗口必须用
+      ``BlockingQueuedConnection`` 连接并在槽内写回 ``security_result``
+    - ``finished_path``：成功时为本地文件路径；取消/失败为 ``""``
+    - ``failed_msg``：失败原因（非取消）
+    """
+
+    progress = pyqtSignal(int)
+    security_ask = pyqtSignal(str)
+    finished_path = pyqtSignal(str)
+    failed_msg = pyqtSignal(str)
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self._cancel_requested = threading.Event()
+        self._security_result = True
+        self._security_lock = threading.Lock()
+
+    def request_cancel(self) -> None:
+        """请求取消下载（可在主线程调用）。"""
+        self._cancel_requested.set()
+
+    def respond_security(self, allow: bool) -> None:
+        """主线程应答 ``security_ask`` 后调用。"""
+        with self._security_lock:
+            self._security_result = bool(allow)
+        # 事件由 run 内 wait/轮询读取结果；无需 Event
+
+    def _on_security_from_worker(self, message: str) -> bool:
+        """Worker 线程：同步请求主线程确认（阻塞式信号）。"""
+        with self._security_lock:
+            self._security_result = True  # 默认同意前先复位由槽写入
+        self.security_ask.emit(message)
+        # BlockingQueuedConnection 槽返回后结果已写入
+        with self._security_lock:
+            return self._security_result
+
+    def run(self) -> None:
+        from stock_monitor.core.updater import app_updater
+
+        def progress_cb(percent: int) -> None:
+            if not self._cancel_requested.is_set():
+                self.progress.emit(int(percent))
+
+        def is_cancelled_cb() -> bool:
+            return self._cancel_requested.is_set()
+
+        def security_cb(message: str) -> bool:
+            return self._on_security_from_worker(message)
+
+        def error_cb(message: str) -> None:
+            # 错误通过 failed_msg 统一上抛，避免 UI 线程二次弹窗竞争
+            self._last_error = message
+
+        self._last_error = ""
+        try:
+            path = app_updater.download_update(
+                progress_callback=progress_cb,
+                is_cancelled_callback=is_cancelled_cb,
+                security_warning_callback=security_cb,
+                error_callback=error_cb,
+            )
+        except Exception as exc:  # noqa: BLE001 — 上抛为信号字符串
+            self.failed_msg.emit(str(exc))
+            return
+
+        if self._cancel_requested.is_set() and not path:
+            self.finished_path.emit("")
+            return
+        if path:
+            self.finished_path.emit(path)
+        else:
+            self.failed_msg.emit(
+                self._last_error or "更新包下载失败，请检查网络连接后重试。"
+            )
 
 
 class ExcelExportThread(TaskThread):
