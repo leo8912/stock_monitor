@@ -1,6 +1,6 @@
 # 更新日志 (CHANGELOG)
 
-## [v4.10.6] - 2026-09-24
+## [v4.10.6] - 2026-10-08
 
 > ponytail 精简：删除未使用的缓存层/健康检查/死工具，配置与重试入口收敛。
 
@@ -18,7 +18,7 @@
 ### 🧪 测试 (Tests)
 - 全量门禁：`ruff check` / `ruff format --check` / `pytest tests/ -q`
 
-## [v4.10.5] - 2026-09-24
+## [v4.10.5] - 2026-09-23
 
 > 整理全部文档与过时介绍：对齐版本/发布说明，归档历史报告，修正打包清单与死代码。
 
@@ -37,7 +37,7 @@
 ### 🧪 测试 (Tests)
 - 全量门禁：`ruff check` / `ruff format --check` / `pytest tests/ -q`
 
-## [v4.10.4] - 2026-09-24
+## [v4.10.4] - 2026-09-23
 
 > 精简发布流水线：打包不再重复跑 CI 已做过的 ruff/pytest，升级链路保持多镜像加速。
 
@@ -50,7 +50,7 @@
 - 升级链路：更新检查 / 多镜像 URL 构造 / 镜像可达与哈希文件内容 / 下载回退顺序
 - 全量门禁：`ruff check` / `ruff format --check` / `pytest tests/ -q`
 
-## [v4.10.3] - 2026-09-24
+## [v4.10.3] - 2026-09-23
 
 > 升级下载接入多 GitHub 加速镜像（替换已失效的 mirror.ghproxy.com），被墙/变慢时自动回退。
 
@@ -65,7 +65,7 @@
 - `test_app_updater.py`：多镜像优先于官方、失效旧镜像不再作首源
 - 全量门禁：`ruff check` / `ruff format --check` / `pytest tests/ -q`
 
-## [v4.10.2] - 2026-09-24
+## [v4.10.2] - 2026-09-23
 
 > 修复本地/打包环境版本号被过期 egg-info 盖住，导致界面版本与更新检查停在旧号。
 
@@ -77,7 +77,7 @@
 - 新增 `tests/test_version_resolution.py`：pyproject 真源、过期 metadata 覆盖、metadata/dev 兜底
 - 全量门禁：`ruff check` / `ruff format --check` / `pytest tests/ -q` → **784 passed, 9 skipped, 13 deselected**
 
-## [v4.10.1] - 2026-09-24
+## [v4.10.1] - 2026-09-23
 
 > 设置界面自适应与滚动、升级说明可滚动确认、升级下载改为后台线程，修复 UI 卡死与显示不全。
 
