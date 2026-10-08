@@ -21,7 +21,7 @@ class TestQuantEngine(unittest.TestCase):
 
     def test_initialization(self):
         """测试初始化"""
-        from stock_monitor.core.engine.quant_engine import LRUCacheWithTTL
+        from stock_monitor.core.cache_manager import LRUCache
 
         # 验证 LRU 缓存已初始化
         self.assertIsNotNone(self.engine._bars_lru_cache)
@@ -29,9 +29,9 @@ class TestQuantEngine(unittest.TestCase):
         self.assertEqual(self.engine._bars_lru_cache.default_ttl, 60)
 
         # 验证其他缓存已初始化为LRU缓存
-        self.assertIsInstance(self.engine._avg_vol_cache, LRUCacheWithTTL)
-        self.assertIsInstance(self.engine._auction_cache, LRUCacheWithTTL)
-        self.assertIsInstance(self.engine._large_order_cache, LRUCacheWithTTL)
+        self.assertIsInstance(self.engine._avg_vol_cache, LRUCache)
+        self.assertIsInstance(self.engine._auction_cache, LRUCache)
+        self.assertIsInstance(self.engine._large_order_cache, LRUCache)
 
         # 验证这些缓存有容量限制
         self.assertEqual(self.engine._avg_vol_cache.max_size, 256)

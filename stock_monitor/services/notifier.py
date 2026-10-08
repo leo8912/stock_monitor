@@ -11,11 +11,9 @@ import requests
 
 from ..utils.logger import app_logger
 from ..utils.network_helper import (
-    APIResponseError,
     HTTPStatusError,
     NetworkRequestError,
     SafeRequest,
-    TimeoutConfig,
     create_session,
 )
 
@@ -231,11 +229,14 @@ class NotifierService:
 
         try:
             resp = SafeRequest.post(
-                webhook_url, json=payload, headers=headers, timeout=TimeoutConfig.SHORT
+                webhook_url,
+                json=payload,
+                headers=headers,
+                timeout=WEBHOOK_TIMEOUT_SECONDS,
             )
             return resp.json().get("errcode") == 0
 
-        except (HTTPStatusError, APIResponseError, NetworkRequestError) as e:
+        except (HTTPStatusError, NetworkRequestError) as e:
             app_logger.error(f"Webhook 消息推送失败：{e}")
             raise  # 让retry装饰器捕获异常
         except Exception as e:

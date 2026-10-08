@@ -18,7 +18,7 @@ from stock_monitor.utils.logger import app_logger
 # 缓存文件路径 (使用配置目录)
 from ...config.manager import get_config_dir
 from ...services.notifier import NotifierService
-from ..cache.cache_warmer import CacheWarmer, PerformanceMonitor
+from ..cache.cache_warmer import CacheWarmer
 from ..engine import (
     WaveAnalyzer,
     WaveChart,
@@ -88,9 +88,8 @@ class QuantWorker(QtCore.QThread):
         # 待处理的后台复盘报告请求（UI 线程非阻塞登记，由后台线程消费）
         self._pending_report_type: str | None = None
 
-        # 性能优化：缓存预热器和性能监测
+        # 性能优化：缓存预热器
         self.cache_warmer = CacheWarmer(self.engine, self.fetcher, max_workers=4)
-        self.perf_monitor = PerformanceMonitor()
         self._cache_warmed = False
 
         # 启动时加载持久化的信号缓存
@@ -646,7 +645,6 @@ class QuantWorker(QtCore.QThread):
                 scan_start = time.time()
                 self.perform_scan_parallel()
                 scan_duration = time.time() - scan_start
-                self.perf_monitor.record_scan_time(scan_duration)
                 self.last_scan_time = time.time()
                 app_logger.info_ctx(
                     "量化扫描完成",

@@ -7,10 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from stock_monitor.core.cache.cache_warmer import (
-    CacheWarmer,
-    PerformanceMonitor,
-)
+from stock_monitor.core.cache.cache_warmer import CacheWarmer
 
 
 class TestCacheWarmer:
@@ -91,128 +88,6 @@ class TestCacheWarmer:
         assert stats["total_symbols"] == 0
         assert stats["warmed_symbols"] == 0
 
-    def test_clear_caches(self, mock_engine_and_fetcher):
-        """测试缓存清除"""
-        engine, fetcher = mock_engine_and_fetcher
-
-        # 设置模拟缓存
-        engine._avg_vol_cache = MagicMock()
-        engine._avg_vol_cache.cache = {"key": "value"}
-        engine._rsrs_cache = {"key": "value"}
-
-        warmer = CacheWarmer(engine, fetcher)
-        result = warmer.clear_caches()
-
-        assert result is True
-
-    def test_get_cache_status(self, mock_engine_and_fetcher):
-        """测试获取缓存状态"""
-        engine, fetcher = mock_engine_and_fetcher
-
-        # 设置模拟缓存统计
-        mock_cache = MagicMock()
-        mock_cache.get_stats.return_value = {
-            "size": 10,
-            "hits": 100,
-            "misses": 20,
-            "hit_rate": "83.3%",
-        }
-        engine._avg_vol_cache = mock_cache
-
-        warmer = CacheWarmer(engine, fetcher)
-        status = warmer.get_cache_status()
-
-        assert "warming_stats" in status
-        assert "engine_caches" in status
-
-
-class TestPerformanceMonitor:
-    """性能监测器测试"""
-
-    def test_monitor_initialization(self):
-        """测试监测器初始化"""
-        monitor = PerformanceMonitor()
-
-        assert monitor.scan_times == []
-        assert monitor.cache_hits_trend == []
-
-    def test_record_scan_time(self):
-        """测试记录扫描耗时"""
-        monitor = PerformanceMonitor()
-
-        monitor.record_scan_time(5.5)
-        monitor.record_scan_time(6.2)
-        monitor.record_scan_time(5.8)
-
-        assert len(monitor.scan_times) == 3
-        assert 5.5 in monitor.scan_times
-
-    def test_record_cache_hits(self):
-        """测试记录缓存命中率"""
-        monitor = PerformanceMonitor()
-
-        monitor.record_cache_hits(85.0)
-        monitor.record_cache_hits(87.5)
-        monitor.record_cache_hits(82.0)
-
-        assert len(monitor.cache_hits_trend) == 3
-        assert 85.0 in monitor.cache_hits_trend
-
-    def test_get_statistics(self):
-        """测试获取性能统计"""
-        monitor = PerformanceMonitor()
-
-        monitor.record_scan_time(5.0)
-        monitor.record_scan_time(6.0)
-        monitor.record_scan_time(5.5)
-        monitor.record_cache_hits(80.0)
-        monitor.record_cache_hits(85.0)
-
-        stats = monitor.get_statistics()
-
-        assert stats["scans"] == 3
-        assert stats["avg_time"] == pytest.approx(5.5, rel=0.1)
-        assert stats["min_time"] == 5.0
-        assert stats["max_time"] == 6.0
-        assert 80 < stats["avg_cache_hit_rate"] < 90
-
-    def test_get_statistics_no_data(self):
-        """测试无数据时的统计"""
-        monitor = PerformanceMonitor()
-
-        stats = monitor.get_statistics()
-
-        assert stats["scans"] == 0
-        assert stats["avg_time"] == 0
-
-    def test_format_statistics(self):
-        """测试格式化统计信息"""
-        monitor = PerformanceMonitor()
-
-        # 无数据
-        assert "暂无扫描数据" in monitor.format_statistics()
-
-        # 有数据
-        monitor.record_scan_time(5.5)
-        monitor.record_scan_time(6.2)
-        monitor.record_cache_hits(85.0)
-
-        formatted = monitor.format_statistics()
-        assert "扫描次数: 2" in formatted
-        assert "最快:" in formatted or "最快" in formatted
-
-    def test_max_records_limit(self):
-        """测试记录数量限制"""
-        monitor = PerformanceMonitor()
-        monitor.max_records = 10
-
-        # 添加15条记录，应该只保留最后10条
-        for i in range(15):
-            monitor.record_scan_time(float(i))
-
-        assert len(monitor.scan_times) == 10
-        assert monitor.scan_times[0] == 5.0  # 前5条被删除
-
 
 class TestCacheWarmingIntegration:
     """缓存预热集成测试"""
@@ -236,17 +111,3 @@ class TestCacheWarmingIntegration:
         assert stats["warmed_symbols"] == 1
         # fetch_bars应该被调用4次（每个周期一次）
         assert mock_engine.fetch_bars.call_count >= 1
-
-    def test_performance_monitoring_during_warming(self):
-        """测试缓存预热期间的性能监测"""
-        monitor = PerformanceMonitor()
-
-        # 模拟三次扫描
-        for _ in range(3):
-            monitor.record_scan_time(5.0)
-            monitor.record_cache_hits(85.0)
-
-        stats = monitor.get_statistics()
-
-        assert stats["scans"] == 3
-        assert stats["avg_time"] == 5.0

@@ -316,8 +316,6 @@ class TestConfigCenterDeferred(unittest.TestCase):
 
             center = object.__new__(ConfigCenter)
             center._manager = mgr
-            center._cache = {}
-            center._cache_lock = __import__("threading").Lock()
             center._initialized = True
 
             with patch("stock_monitor.core.config_center.event_bus") as bus:

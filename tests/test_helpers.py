@@ -4,7 +4,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from stock_monitor.utils.helpers import get_stock_emoji, is_equal, safe_float
+from stock_monitor.utils.helpers import get_stock_emoji, safe_float
 from stock_monitor.utils.stock_utils import StockCodeProcessor
 
 
@@ -27,14 +27,6 @@ class TestSafeFloat(unittest.TestCase):
 
 
 class TestHelpers(unittest.TestCase):
-    def test_is_equal(self):
-        """测试数值近似相等判断函数"""
-        self.assertTrue(is_equal("1.00", "1.00"))
-        self.assertTrue(is_equal("1.00", "1.01", 0.02))
-        self.assertFalse(is_equal("1.00", "1.05", 0.02))
-        self.assertTrue(is_equal("0.00", "0.00"))
-        self.assertFalse(is_equal("abc", "1.00"))
-
     def test_format_stock_code(self):
         """测试股票代码格式化函数"""
         processor = StockCodeProcessor()

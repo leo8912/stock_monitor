@@ -1,144 +1,10 @@
 """
-配置读取辅助工具模块
-提取重复的配置读取逻辑，提供统一的访问接口
+配置键常量，避免硬编码字符串
 """
 
-from typing import Any
 
-
-class ConfigHelper:
-    """配置读取辅助类"""
-
-    def __init__(self, config_manager):
-        """
-        初始化配置助手
-
-        Args:
-            config_manager: ConfigManager 实例
-        """
-        self.config_manager = config_manager
-
-    def get(self, key: str, default: Any = None) -> Any:
-        """
-        获取配置值
-
-        Args:
-            key: 配置键
-            default: 默认值
-
-        Returns:
-            配置值或默认值
-        """
-        return self.config_manager.get(key, default)
-
-    def set(self, key: str, value: Any) -> None:
-        """
-        设置配置值
-
-        Args:
-            key: 配置键
-            value: 配置值
-        """
-        self.config_manager.set(key, value)
-
-    def get_bool(self, key: str, default: bool = False) -> bool:
-        """
-        安全地获取布尔值配置
-
-        Args:
-            key: 配置键
-            default: 默认布尔值
-
-        Returns:
-            布尔值
-        """
-        value = self.config_manager.get(key, default)
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, str):
-            return value.lower() == "true"
-        return bool(default)
-
-    def get_int(self, key: str, default: int = 0) -> int:
-        """
-        安全地获取整数配置
-
-        Args:
-            key: 配置键
-            default: 默认整数值
-
-        Returns:
-            整数值
-        """
-        value = self.config_manager.get(key, default)
-        if isinstance(value, int):
-            return value
-        if isinstance(value, str):
-            try:
-                return int(value)
-            except ValueError:
-                pass
-        return default
-
-    def get_float(self, key: str, default: float = 0.0) -> float:
-        """
-        安全地获取浮点数配置
-
-        Args:
-            key: 配置键
-            default: 默认浮数值
-
-        Returns:
-            浮数值
-        """
-        value = self.config_manager.get(key, default)
-        if isinstance(value, (int, float)):
-            return float(value)
-        if isinstance(value, str):
-            try:
-                return float(value)
-            except ValueError:
-                pass
-        return default
-
-    def get_list(self, key: str, default: list | None = None) -> list:
-        """
-        安全地获取列表配置
-
-        Args:
-            key: 配置键
-            default: 默认列表
-
-        Returns:
-            列表值
-        """
-        if default is None:
-            default = []
-        value = self.config_manager.get(key, default)
-        if isinstance(value, list):
-            return value
-        return default
-
-    def get_str(self, key: str, default: str = "") -> str:
-        """
-        安全地获取字符串配置
-
-        Args:
-            key: 配置键
-            default: 默认字符串
-
-        Returns:
-            字符串值
-        """
-        value = self.config_manager.get(key, default)
-        if isinstance(value, str):
-            return value
-        return str(default)
-
-
-# 预定义常用配置键常量
 class ConfigKeys:
-    """配置键常量定义，避免硬编码字符串"""
+    """配置键常量定义"""
 
     # 用户自选股
     USER_STOCKS = "user_stocks"
@@ -149,7 +15,7 @@ class ConfigKeys:
     # 量化相关
     QUANT_ENABLED = "quant_enabled"
     QUANT_SCAN_INTERVAL = "quant_scan_interval"  # 量化扫描间隔（秒）
-    DAILY_REPORT_TIMES = "daily_report_times"  # 每日复盘报告触发时刻列表 ["HH:MM", ...]
+    DAILY_REPORT_TIMES = "daily_report_times"  # 每日复盘触发时刻列表 ["HH:MM", ...]
 
     # 显示相关
     FONT_FAMILY = "font_family"

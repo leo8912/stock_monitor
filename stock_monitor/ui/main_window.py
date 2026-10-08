@@ -325,7 +325,6 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
         # 初始化透明度缓存，避免 paintEvent 高频读取配置
         from stock_monitor.core.config_center import config_center
 
-        self._config_helper = config_center._helper
         self._transparency = config_center.get_int(ConfigKeys.TRANSPARENCY, 80)
 
         # 初始化任务栏行情条（可选功能）
@@ -358,9 +357,7 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
 
         # 初始化数据
         self.settings_dialog = None
-        self.refresh_interval = self._config_helper.get_int(
-            ConfigKeys.REFRESH_INTERVAL, 5
-        )
+        self.refresh_interval = config_center.get_int(ConfigKeys.REFRESH_INTERVAL, 5)
         self.current_user_stocks = self.viewModel.load_user_stocks()
 
         # Workers 初始化移动到了 ViewModel，这里不需要初始化 RefreshWorker
@@ -560,7 +557,7 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
 
     def load_position(self) -> None:
         """从配置文件加载窗口位置"""
-        pos = self._config_helper.get("window_pos")
+        pos = config_center.get("window_pos")
         if pos and isinstance(pos, list) and len(pos) == 2:
             self.move(pos[0], pos[1])
         else:
@@ -706,7 +703,7 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
             self.update_table_signal.emit(resorted_data)
 
         # 更新主题透明度缓存
-        new_transparency = self._config_helper.get_int(ConfigKeys.TRANSPARENCY, 80)
+        new_transparency = config_center.get_int(ConfigKeys.TRANSPARENCY, 80)
         if new_transparency != getattr(self, "_transparency", None):
             self._transparency = new_transparency
             self.request_update()  # 节流重绘请求
@@ -773,9 +770,7 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
                 self.update_font_size()
             elif key == ConfigKeys.TRANSPARENCY:
                 # 刷新透明度缓存，否则 paintEvent 仍用旧值渲染
-                new_transparency = self._config_helper.get_int(
-                    ConfigKeys.TRANSPARENCY, 80
-                )
+                new_transparency = config_center.get_int(ConfigKeys.TRANSPARENCY, 80)
                 if new_transparency != getattr(self, "_transparency", None):
                     self._transparency = new_transparency
                 self.request_update()
@@ -790,11 +785,9 @@ class MainWindow(QtWidgets.QWidget, DraggableWindowMixin):
             font_size = getattr(self, "_preview_font_size", None)
 
             if font_family is None:
-                font_family = self._config_helper.get_str(
-                    ConfigKeys.FONT_FAMILY, "微软雅黑"
-                )
+                font_family = config_center.get_str(ConfigKeys.FONT_FAMILY, "微软雅黑")
             if font_size is None:
-                font_size = self._config_helper.get_int(ConfigKeys.FONT_SIZE, 13)
+                font_size = config_center.get_int(ConfigKeys.FONT_SIZE, 13)
 
             font_size = sanitize_font_size(font_size)
 

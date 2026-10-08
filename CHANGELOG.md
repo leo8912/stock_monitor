@@ -1,5 +1,23 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.10.6] - 2026-09-24
+
+> ponytail 精简：删除未使用的缓存层/健康检查/死工具，配置与重试入口收敛。
+
+### 🧹 清理 (Cleanup)
+- **删除** `SQLiteCache` / `TwoLevelCache`（生产零引用，量化仅用 `LRUCache`）及对应测试
+- **删除** 启动健康检查 `health_check`（桌面应用自检无收益，`statvfs` 在 Windows 无效）
+- **删除** 单实现 ABC `StockDataSource`、死函数 `is_equal` / `extract_code_from_text` / `safe_request_*`、`TimeoutConfig`、`APIResponseError`
+- **删除** 手写 `retry_on_failure` / `safe_retry`（统一 `network_retry`）、`PerformanceMonitor`、`get_cache_stats`、`LRUCacheWithTTL` 空子类、`CacheWarmer.clear_caches/get_cache_status`（仅测试驱动）
+- **删除** `error_handler.safe_call`：调用点改为直接 `try/except`
+
+### 🔧 重构 (Refactor)
+- **ConfigHelper 类移除**：类型安全读取内联进 `ConfigCenter`；UI 不再访问 `_config_helper` 私有属性
+- **`ConfigCenter`**：去掉未用 `_cache`/`_cache_lock`/`get_float` 与未引用属性；`market_data_adapter._safe_float` 直调 `helpers.safe_float`
+
+### 🧪 测试 (Tests)
+- 全量门禁：`ruff check` / `ruff format --check` / `pytest tests/ -q`
+
 ## [v4.10.5] - 2026-09-24
 
 > 整理全部文档与过时介绍：对齐版本/发布说明，归档历史报告，修正打包清单与死代码。

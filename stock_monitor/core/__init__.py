@@ -95,7 +95,6 @@ except (ImportError, ModuleNotFoundError):
 try:
     from .cache import (
         CacheWarmer,
-        PerformanceMonitor,
     )
 
     _cache_available = True
@@ -139,7 +138,7 @@ if _resolvers_available:
 
 # 缓存层
 if _cache_available:
-    __all__.extend(["CacheWarmer", "PerformanceMonitor"])
+    __all__.extend(["CacheWarmer"])
 
 # 向后兼容
 if _stock_service_available:

@@ -1,13 +1,11 @@
 """
-集成测试：事件总线 + 缓存 + 配置中心的端到端协作
+集成测试：事件总线 + 缓存的端到端协作
 使用 mock 避免外部依赖
 """
 
-import os
-import tempfile
 import threading
 
-from stock_monitor.core.cache_manager import LRUCache, TwoLevelCache
+from stock_monitor.core.cache_manager import LRUCache
 from stock_monitor.core.event_bus import EventBus, Topics
 
 
@@ -87,69 +85,6 @@ class TestEventBusIntegration:
             t.join()
 
         assert len(received) == 50
-
-
-class TestCacheIntegration:
-    """缓存集成测试"""
-
-    def test_l1_to_l2_flow(self):
-        """L1 缓存写入 → L2 持久化 → 新实例恢复"""
-        tmp = tempfile.mkdtemp()
-        db_path = os.path.join(tmp, "integration.db")
-
-        # 写入
-        cache1 = TwoLevelCache(
-            l1_max_size=10,
-            l1_ttl=60,
-            l2_db_path=db_path,
-            l2_ttl=3600,
-            cache_name="integration_test",
-        )
-        cache1.set("stock:sh600000", {"price": 10.5, "name": "浦发银行"})
-        cache1.set("stock:sz000001", {"price": 12.0, "name": "平安银行"})
-
-        # 新实例从 L2 恢复
-        cache2 = TwoLevelCache(
-            l1_max_size=10,
-            l1_ttl=60,
-            l2_db_path=db_path,
-            l2_ttl=3600,
-            cache_name="integration_test",
-        )
-        assert cache2.get("stock:sh600000") == {"price": 10.5, "name": "浦发银行"}
-        assert cache2.get("stock:sz000001") == {"price": 12.0, "name": "平安银行"}
-
-    def test_l1_eviction_l2_fallback(self):
-        """L1 淘汰后从 L2 回填"""
-        tmp = tempfile.mkdtemp()
-        db_path = os.path.join(tmp, "evict.db")
-
-        cache = TwoLevelCache(
-            l1_max_size=2,
-            l1_ttl=60,
-            l2_db_path=db_path,
-            l2_ttl=3600,
-            cache_name="evict_test",
-        )
-        cache.set("a", 1)
-        cache.set("b", 2)
-        cache.set("c", 3)  # L1 淘汰 "a"
-
-        # "a" 仍在 L2 中
-        assert cache.get("a") == 1  # L2 回填 L1
-
-    def test_cache_stats_tracking(self):
-        """缓存命中率统计"""
-        cache = TwoLevelCache(l1_max_size=10, l1_ttl=60)
-        cache.set("a", 1)
-        cache.get("a")  # hit
-        cache.get("b")  # miss
-        cache.get("c")  # miss
-
-        stats = cache.stats
-        assert stats["l1"]["hits"] == 1
-        assert stats["l1"]["misses"] == 2
-        assert stats["l1"]["hit_rate"] == 1 / 3
 
 
 class TestEventBusAndCacheIntegration:

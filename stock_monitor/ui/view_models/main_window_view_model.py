@@ -30,7 +30,6 @@ class MainWindowViewModel(QObject):
         super().__init__()
         self._container = container
         self._stock_db = self._container.get(StockDatabase)
-        self._config_helper = config_center._helper
         self._stock_manager = self._container.get(StockManager)
         self._fetcher = self._container.get(StockDataFetcher)
 
@@ -141,7 +140,7 @@ class MainWindowViewModel(QObject):
     def load_user_stocks(self) -> list[str]:
         """Load user selected stocks"""
         try:
-            stocks = self._config_helper.get_list(ConfigKeys.USER_STOCKS, [])
+            stocks = config_center.get_list(ConfigKeys.USER_STOCKS, [])
 
             # Early return if empty
             if not stocks:
@@ -188,8 +187,8 @@ class MainWindowViewModel(QObject):
         self._market_stats_worker.start_worker()
 
         # Start quant worker if enabled
-        quant_enabled = self._config_helper.get_bool(ConfigKeys.QUANT_ENABLED, False)
-        webhook = self._config_helper.get_str(ConfigKeys.WECOM_WEBHOOK, "")
+        quant_enabled = config_center.get_bool(ConfigKeys.QUANT_ENABLED, False)
+        webhook = config_center.get_str(ConfigKeys.WECOM_WEBHOOK, "")
         self._quant_worker.wecom_webhook = webhook
         self._quant_worker.set_symbols(user_stocks)
 
@@ -199,9 +198,7 @@ class MainWindowViewModel(QObject):
             self._quant_worker.stop_worker()
 
         # Start close export scheduler if enabled
-        auto_close_export = self._config_helper.get_bool(
-            ConfigKeys.AUTO_CLOSE_EXPORT, False
-        )
+        auto_close_export = config_center.get_bool(ConfigKeys.AUTO_CLOSE_EXPORT, False)
         self._close_export_scheduler.set_enabled(auto_close_export)
         if not self._close_export_scheduler.isRunning():
             self._close_export_scheduler.start_scheduler()
@@ -218,10 +215,10 @@ class MainWindowViewModel(QObject):
 
         if not self._refresh_worker.isRunning():
             # 确保线程已启动
-            user_stocks_val = user_stocks or self._config_helper.get_list(
+            user_stocks_val = user_stocks or config_center.get_list(
                 ConfigKeys.USER_STOCKS, []
             )
-            interval = self._config_helper.get_int(ConfigKeys.REFRESH_INTERVAL, 5)
+            interval = config_center.get_int(ConfigKeys.REFRESH_INTERVAL, 5)
             self._refresh_worker.start_refresh(
                 user_stocks_val,
                 interval,
@@ -250,8 +247,8 @@ class MainWindowViewModel(QObject):
         if refresh_interval is not None:
             self._refresh_worker.update_interval(refresh_interval)
 
-        quant_enabled = self._config_helper.get_bool(ConfigKeys.QUANT_ENABLED, False)
-        webhook = self._config_helper.get_str(ConfigKeys.WECOM_WEBHOOK, "")
+        quant_enabled = config_center.get_bool(ConfigKeys.QUANT_ENABLED, False)
+        webhook = config_center.get_str(ConfigKeys.WECOM_WEBHOOK, "")
         self._quant_worker.wecom_webhook = webhook
 
         if quant_enabled:
@@ -262,9 +259,7 @@ class MainWindowViewModel(QObject):
                 self._quant_worker.stop_worker()
 
         # Update close export scheduler config
-        auto_close_export = self._config_helper.get_bool(
-            ConfigKeys.AUTO_CLOSE_EXPORT, False
-        )
+        auto_close_export = config_center.get_bool(ConfigKeys.AUTO_CLOSE_EXPORT, False)
         self._close_export_scheduler.set_enabled(auto_close_export)
 
     def load_session(self) -> dict:
@@ -328,7 +323,7 @@ class MainWindowViewModel(QObject):
             from stock_monitor.data.market.db_updater import update_stock_database
             from stock_monitor.utils.worker import WorkerRunnable
 
-            last_update = self._config_helper.get("last_db_update", 0)
+            last_update = config_center.get("last_db_update", 0)
             current_time = time.time()
 
             should_update = False

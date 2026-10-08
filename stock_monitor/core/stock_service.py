@@ -133,25 +133,18 @@ class StockDataService:
         Returns:
             Optional[Dict[str, Any]]: 全市场股票数据字典,失败返回None
         """
-        from stock_monitor.utils.error_handler import safe_call
-
-        quotation_engine = safe_call(
-            self._init_sina_if_needed,
-            default_return=None,
-            exception_handler=lambda e, error_type: (
-                app_logger.error(f"初始化行情引擎时失败: {e}") or None
-            ),
-        )
+        try:
+            quotation_engine = self._init_sina_if_needed()
+        except Exception as e:
+            app_logger.error(f"初始化行情引擎时失败: {e}")
+            return None
 
         if quotation_engine:
-            market_data = safe_call(
-                self._fetch_market_snapshot,
-                default_return=None,
-                exception_handler=lambda e, error_type: (
-                    app_logger.error(f"获取全市场数据失败: {e}") or None
-                ),
-            )
-            return market_data
+            try:
+                return self._fetch_market_snapshot()
+            except Exception as e:
+                app_logger.error(f"获取全市场数据失败: {e}")
+                return None
         return None
 
 

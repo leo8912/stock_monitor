@@ -22,13 +22,14 @@ except ImportError:
 
         app_logger.warning("pandas_ta 模块缺失，量化扫单指标可能受限。")
 
+from stock_monitor.core.cache_manager import LRUCache
 from stock_monitor.core.market.market_manager import market_manager
 from stock_monitor.core.resolvers.symbol_resolver import SymbolResolver, SymbolType
 from stock_monitor.utils.logger import app_logger
 
 from . import quant_indicators
 from .financial_filter import FinancialFilter
-from .quant_cache import LRUCacheWithTTL, get_bars_cache
+from .quant_cache import get_bars_cache
 from .quant_engine_constants import (
     SIGNAL_BB_SQUEEZE,
     SIGNAL_EMA_DEAD,
@@ -69,26 +70,13 @@ class QuantEngine:
         self.client = market_adapter
         self._bars_lru_cache = get_bars_cache(max_size=128, ttl=60)
         # 使用带容量限制的LRU缓存，防止长期运行导致内存泄漏
-        self._avg_vol_cache = LRUCacheWithTTL(
-            max_size=256, default_ttl=86400
-        )  # 24小时TTL
-        self._auction_cache = LRUCacheWithTTL(max_size=256, default_ttl=300)  # 5分钟TTL
-        self._large_order_cache = LRUCacheWithTTL(
-            max_size=512, default_ttl=600
-        )  # 10分钟TTL
-        self._market_cap_cache = LRUCacheWithTTL(
+        self._avg_vol_cache = LRUCache(max_size=256, default_ttl=86400)  # 24小时TTL
+        self._auction_cache = LRUCache(max_size=256, default_ttl=300)  # 5分钟TTL
+        self._large_order_cache = LRUCache(max_size=512, default_ttl=600)  # 10分钟TTL
+        self._market_cap_cache = LRUCache(
             max_size=256, default_ttl=86400
         )  # 24小时TTL，市值数据变化缓慢
         self.fin_filter = FinancialFilter()
-
-    def get_cache_stats(self) -> dict:
-        """获取缓存统计信息（增强版）"""
-        stats = {"bars_cache": self._bars_lru_cache.get_stats()}
-        # 添加其他缓存统计
-        stats["large_order_cache"] = self._large_order_cache.get_stats()
-        stats["auction_cache"] = self._auction_cache.get_stats()
-        stats["avg_vol_cache"] = self._avg_vol_cache.get_stats()
-        return stats
 
     def clear_all_caches(self) -> None:
         """清空所有内部缓存"""

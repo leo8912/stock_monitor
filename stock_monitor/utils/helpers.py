@@ -85,21 +85,3 @@ def safe_float(value, default: float = 0.0) -> float:
         return float(value)
     except (ValueError, TypeError):
         return default
-
-
-def is_equal(a, b, tol=0.01):
-    """
-    比较两个字符串数值是否近似相等
-
-    Args:
-        a: 第一个数值字符串
-        b: 第二个数值字符串
-        tol (float): 容差值，默认为0.01
-
-    Returns:
-        bool: 如果两个数值差的绝对值小于容差值则返回True，否则返回False
-    """
-    try:
-        return abs(float(a) - float(b)) < tol
-    except Exception:
-        return False

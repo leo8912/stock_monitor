@@ -14,8 +14,6 @@ from stock_monitor.config.manager import get_config_dir
 from stock_monitor.utils.helpers import resource_path
 from stock_monitor.utils.logger import app_logger
 
-from .stock_data_source import StockDataSource
-
 # 数据库文件路径
 DB_FILE = "stocks.db"
 
@@ -186,7 +184,7 @@ def get_db_pool() -> ConnectionPool:
     return _db_pool
 
 
-class StockDatabase(StockDataSource):
+class StockDatabase:
     """股票数据库访问类"""
 
     _instance = None

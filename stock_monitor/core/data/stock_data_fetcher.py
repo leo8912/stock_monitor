@@ -16,7 +16,6 @@ import easyquotation
 
 from stock_monitor.core.data.market_data_adapter import MarketDataAdapter
 from stock_monitor.core.resolvers.mootdx_registry import MootdxNameRegistry
-from stock_monitor.utils.error_handler import safe_call
 from stock_monitor.utils.logger import app_logger
 
 # 常量定义
@@ -95,13 +94,11 @@ class StockDataFetcher:
         根据股票代码获取相应的行情引擎
         """
         if code.startswith("hk"):
-            quotation_engine = safe_call(
-                self._init_hk_quotation,
-                default_return=None,
-                exception_handler=lambda e, error_type: (
-                    app_logger.error(f"初始化港股行情引擎失败: {e}") or None
-                ),
-            )
+            try:
+                quotation_engine = self._init_hk_quotation()
+            except Exception as e:
+                app_logger.error(f"初始化港股行情引擎失败: {e}")
+                return None
             if quotation_engine:
                 app_logger.debug(f"使用 hkquote 引擎获取港股 {code} 数据")
             return quotation_engine
@@ -341,13 +338,11 @@ class StockDataFetcher:
         """
         try:
             # 初始化港股引擎
-            quotation_engine = safe_call(
-                self._init_hk_quotation,
-                default_return=None,
-                exception_handler=lambda e, error_type: (
-                    app_logger.error(f"初始化港股行情引擎失败: {e}") or None
-                ),
-            )
+            try:
+                quotation_engine = self._init_hk_quotation()
+            except Exception as e:
+                app_logger.error(f"初始化港股行情引擎失败: {e}")
+                return
 
             if quotation_engine:
                 # 港股需要移除前缀
@@ -360,13 +355,11 @@ class StockDataFetcher:
                         return {f"hk{k}": v for k, v in hk_data_raw.items()}
                     return {}
 
-                hk_data = safe_call(
-                    fetch_hk_stocks,
-                    default_return={},
-                    exception_handler=lambda e, error_type: (
-                        app_logger.error(f"批量获取港股数据失败: {e}") or {}
-                    ),
-                )
+                try:
+                    hk_data = fetch_hk_stocks()
+                except Exception as e:
+                    app_logger.error(f"批量获取港股数据失败: {e}")
+                    hk_data = {}
 
                 if hk_data:
                     with result_lock:

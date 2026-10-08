@@ -41,9 +41,6 @@ KNOWN_VIOLATIONS: set[tuple[str, str]] = {
     ("data/market/__init__.py", "core"),
     ("data/stock/stocks.py", "core"),
     ("data/stock/stock_updater.py", "core"),
-    # 诊断工具跨层聚合检查（健康检查需要遍历各层状态）
-    ("utils/health_check.py", "core"),
-    ("utils/health_check.py", "data"),
 }
 
 

@@ -68,11 +68,6 @@ def _tencent_kline_url(symbol: str, market: int, period: str, count: int = 250) 
     )
 
 
-def _safe_float(val, default: float = 0.0) -> float:
-    """容错转换 float（共享实现见 utils.helpers.safe_float）。"""
-    return safe_float(val, default)
-
-
 class _ThreadLocalSession:
     """每线程独立的 ``requests.Session`` 代理（用于替换第三方共享 Session）。
 
@@ -230,12 +225,12 @@ class MarketDataAdapter:
                 rows.append(
                     {
                         "datetime": dt_str,
-                        "open": _safe_float(kline[1]),
-                        "close": _safe_float(kline[2]),
-                        "high": _safe_float(kline[3]),
-                        "low": _safe_float(kline[4]),
-                        "vol": _safe_float(kline[5]),
-                        "amount": _safe_float(kline[5]) * _safe_float(kline[2]) * 100,
+                        "open": safe_float(kline[1]),
+                        "close": safe_float(kline[2]),
+                        "high": safe_float(kline[3]),
+                        "low": safe_float(kline[4]),
+                        "vol": safe_float(kline[5]),
+                        "amount": safe_float(kline[5]) * safe_float(kline[2]) * 100,
                     }
                 )
 
@@ -285,13 +280,13 @@ class MarketDataAdapter:
                 rows.append(
                     {
                         "datetime": dt_str,
-                        "open": _safe_float(item.get("open")),
-                        "close": _safe_float(item.get("close")),
-                        "high": _safe_float(item.get("high")),
-                        "low": _safe_float(item.get("low")),
-                        "vol": _safe_float(item.get("volume")),
-                        "amount": _safe_float(item.get("volume"))
-                        * _safe_float(item.get("close"))
+                        "open": safe_float(item.get("open")),
+                        "close": safe_float(item.get("close")),
+                        "high": safe_float(item.get("high")),
+                        "low": safe_float(item.get("low")),
+                        "vol": safe_float(item.get("volume")),
+                        "amount": safe_float(item.get("volume"))
+                        * safe_float(item.get("close"))
                         * 100,
                     }
                 )
@@ -361,17 +356,17 @@ class MarketDataAdapter:
                 result[stock_key] = {
                     "name": parts[1],
                     "code": parts[2],
-                    "now": _safe_float(parts[3]),
-                    "close": _safe_float(parts[4]),
-                    "open": _safe_float(parts[5]),
-                    "volume": _safe_float(parts[6]),
-                    "high": _safe_float(parts[33])
+                    "now": safe_float(parts[3]),
+                    "close": safe_float(parts[4]),
+                    "open": safe_float(parts[5]),
+                    "volume": safe_float(parts[6]),
+                    "high": safe_float(parts[33])
                     if len(parts) > 33
-                    else _safe_float(parts[30]),
-                    "low": _safe_float(parts[34])
+                    else safe_float(parts[30]),
+                    "low": safe_float(parts[34])
                     if len(parts) > 34
-                    else _safe_float(parts[31]),
-                    "turnover": _safe_float(parts[37]) if len(parts) > 37 else 0.0,
+                    else safe_float(parts[31]),
+                    "turnover": safe_float(parts[37]) if len(parts) > 37 else 0.0,
                 }
             return result
         except Exception as e:
@@ -460,18 +455,18 @@ class MarketDataAdapter:
     @staticmethod
     def _build_quote_row(code: str, info: dict, is_index: bool = False) -> dict | None:
         """统一构造行情行数据，兼容 mootdx 列名"""
-        now = _safe_float(info.get("now"))
+        now = safe_float(info.get("now"))
         if now <= 0:
             return None
 
         name = info.get("name", "")
         # 腾讯返回格式与 Sina 不同，需要统一
-        close = _safe_float(info.get("close"))
-        open_ = _safe_float(info.get("open"))
-        high = _safe_float(info.get("high"))
-        low = _safe_float(info.get("low"))
-        volume = _safe_float(info.get("volume"))
-        turnover = _safe_float(info.get("turnover", 0))
+        close = safe_float(info.get("close"))
+        open_ = safe_float(info.get("open"))
+        high = safe_float(info.get("high"))
+        low = safe_float(info.get("low"))
+        volume = safe_float(info.get("volume"))
+        turnover = safe_float(info.get("turnover", 0))
 
         return {
             "code": code,
@@ -484,10 +479,10 @@ class MarketDataAdapter:
             "vol": volume,
             "cur_vol": turnover / max(now, 0.01) if turnover else 0.0,
             "amount": turnover,
-            "bid1": _safe_float(info.get("bid1")),
-            "bid_vol1": _safe_float(info.get("bid1_volume")),
-            "ask1": _safe_float(info.get("ask1")),
-            "ask_vol1": _safe_float(info.get("ask1_volume")),
+            "bid1": safe_float(info.get("bid1")),
+            "bid_vol1": safe_float(info.get("bid1_volume")),
+            "ask1": safe_float(info.get("ask1")),
+            "ask_vol1": safe_float(info.get("ask1_volume")),
         }
 
     # ------------------------------------------------------------------

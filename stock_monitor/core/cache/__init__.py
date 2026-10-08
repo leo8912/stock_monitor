@@ -3,20 +3,13 @@
 
 职责:
 - K线数据缓存预热
-- 性能监测和追踪
-- 缓存失效和更新
 
 模块包含:
 - cache_warmer.py: 缓存预热引擎
-- 性能监测工具
 """
 
-from .cache_warmer import (
-    CacheWarmer,
-    PerformanceMonitor,
-)
+from .cache_warmer import CacheWarmer
 
 __all__ = [
     "CacheWarmer",
-    "PerformanceMonitor",
 ]

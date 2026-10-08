@@ -115,18 +115,6 @@ class StockMonitorApp:
         tray_icon.show()
         return tray_icon
 
-    def _run_health_check(self) -> None:
-        """启动时执行健康检查"""
-        try:
-            from stock_monitor.utils.health_check import HealthStatus, run_health_check
-
-            report = run_health_check()
-            app_logger.info(report.summary())
-            if report.status == HealthStatus.UNHEALTHY:
-                app_logger.warning("健康检查发现严重问题，部分功能可能不可用")
-        except Exception as e:
-            app_logger.warning(f"健康检查执行失败: {e}")
-
     def _show_update_status_notification(self) -> None:
         """检查更新状态并显示相应提示"""
         try:
@@ -221,9 +209,6 @@ class StockMonitorApp:
 
             # 初始化数据库
             self._init_database()
-
-            # 健康检查
-            self._run_health_check()
 
             # 创建 Qt 应用
             self._app = self._create_qt_app()

@@ -4,19 +4,16 @@
 覆盖 P0 修复的"预期失败/边界"路径，确认程序不崩且行为可预期：
 - insert_stocks 空列表 / 缺字段 / 多余字段
 - compute_market_stats 负数 / None
-- SQLiteCache 表名白名单 + 连接显式关闭
 - MarketDataAdapter 每线程 Session（G-10）
 - QuantWorker symbols 快照隔离（G-11）
 """
 
-import os
 import shutil
 import tempfile
 import threading
 import unittest
 from unittest.mock import patch
 
-from stock_monitor.core.cache_manager import SQLiteCache, _validate_table_name
 from stock_monitor.core.data.market_data_adapter import MarketDataAdapter
 from stock_monitor.core.workers.quant_worker import QuantWorker
 from stock_monitor.data.stock import stock_db as sdb_module
@@ -87,38 +84,6 @@ class TestComputeMarketStatsBoundary(unittest.TestCase):
         """特征化：None 不是合法计数，int(None) 抛 TypeError（上游信号为 int 类型）。"""
         with self.assertRaises(TypeError):
             TaskbarQuoteBar.compute_market_stats(None, 0, 0, 0)
-
-
-class TestSQLiteCacheRobustness(unittest.TestCase):
-    def setUp(self) -> None:
-        self.tmpdir = tempfile.mkdtemp(prefix="qa_cache_")
-
-    def tearDown(self) -> None:
-        shutil.rmtree(self.tmpdir, ignore_errors=True)
-
-    def test_table_name_whitelist(self) -> None:
-        self.assertEqual(_validate_table_name("cache_1"), "cache_1")
-        for bad in ("cache; DROP TABLE x", "1cache", "a-b", "", "a b"):
-            with self.assertRaises(ValueError):
-                _validate_table_name(bad)
-
-    def test_invalid_table_name_rejected_at_init(self) -> None:
-        with self.assertRaises(ValueError):
-            SQLiteCache(
-                db_path=os.path.join(self.tmpdir, "c.db"),
-                table_name="x; DROP TABLE y",
-            )
-
-    def test_get_set_delete_and_no_connection_leak(self) -> None:
-        path = os.path.join(self.tmpdir, "c.db")
-        cache = SQLiteCache(db_path=path, table_name="cache")
-        cache.set("k", "v", ttl=60)
-        self.assertEqual(cache.get("k"), "v")
-        self.assertTrue(cache.delete("k"))
-        self.assertIsNone(cache.get("k"))
-
-        # 连接应被显式关闭：删除文件不应因锁而失败
-        os.remove(path)  # 若句柄泄漏，Windows 下这里会抛 PermissionError
 
 
 class TestAdapterSessionThreadLocal(unittest.TestCase):
