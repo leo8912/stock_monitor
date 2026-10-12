@@ -111,9 +111,15 @@ class WavePredictionService:
                     return False
 
                 price_at_prediction = row[0]
-                profit_loss_pct = (
-                    (current_price - price_at_prediction) / price_at_prediction * 100
-                )
+                # 防御脏数据（price=0）触发 ZeroDivisionError
+                if price_at_prediction:
+                    profit_loss_pct = (
+                        (current_price - price_at_prediction)
+                        / price_at_prediction
+                        * 100
+                    )
+                else:
+                    profit_loss_pct = 0.0
 
                 cursor.execute(
                     """

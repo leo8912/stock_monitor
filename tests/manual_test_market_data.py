@@ -1,8 +1,22 @@
 import easyquotation
 
+
+def _to_float(value, default=0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 # 测试获取市场数据的方法
-q = easyquotation.use("sina")
-data = q.market_snapshot(prefix=True)
+try:
+    q = easyquotation.use("sina")
+    data = q.market_snapshot(prefix=True)
+except Exception as e:
+    raise SystemExit(f"获取行情失败（网络/引擎错误）: {e}") from e
+
+if not data:
+    raise SystemExit("行情数据为空")
 
 up = 0
 down = 0
@@ -15,8 +29,8 @@ for _code, stock in data.items():
     if "指数" in name or "Ａ股" in name:
         continue
 
-    close = float(stock.get("close", 0))
-    now = float(stock.get("now", 0))
+    close = _to_float(stock.get("close", 0))
+    now = _to_float(stock.get("now", 0))
 
     if close == 0:
         flat += 1

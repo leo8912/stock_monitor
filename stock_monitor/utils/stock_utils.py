@@ -21,10 +21,21 @@ class StockCodeProcessor:
         if not isinstance(code, str) or not code:
             return None
 
-        # 如果代码包含空格，只取第一部分
         if " " in code:
-            code = code.split()[0]
+            parts = code.split()
+            if not parts:
+                return None
+            # "code name" 取第一段；"sh 600519" 这类前缀+空格会被截断成
+            # 仅前缀导致校验失败，此时回退为去掉空白的整体
+            result = StockCodeProcessor._validate_code(parts[0])
+            if result is None and len(parts) > 1:
+                result = StockCodeProcessor._validate_code("".join(parts))
+            return result
+        return StockCodeProcessor._validate_code(code)
 
+    @staticmethod
+    def _validate_code(code: str) -> str | None:
+        """对单个候选代码做规范化与校验（format_stock_code 的内部实现）。"""
         code = code.strip().lower()
 
         # 移除可能存在的额外字符

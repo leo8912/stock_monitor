@@ -110,12 +110,13 @@ class WaveChart:
             ax = axlist[0]
 
             # 绘制波浪折线（按升降趋势区分颜色：上涨用红色，下跌用绿色）
+            # x 轴为 date2num 日期坐标：整数下标会被当作公元纪日数而错位，须取实际 datetime
             for i in range(len(valid_swings) - 1):
                 x1, swing1 = valid_swings[i]
                 x2, swing2 = valid_swings[i + 1]
                 color = "#ff4a4a" if swing2.price >= swing1.price else "#2ca02c"
                 ax.plot(
-                    [x1, x2],
+                    [plot_df.index[x1], plot_df.index[x2]],
                     [swing1.price, swing2.price],
                     color=color,
                     linewidth=2.5,
@@ -139,7 +140,7 @@ class WaveChart:
                 y_offset = plot_df["high"].max() * 0.015
                 if swing.type == "peak":
                     ax.text(
-                        sub_idx,
+                        plot_df.index[sub_idx],
                         swing.price + y_offset,
                         f"({label})\n{swing.price:.2f}",
                         color="#ff4a4a",
@@ -150,7 +151,7 @@ class WaveChart:
                     )
                 else:
                     ax.text(
-                        sub_idx,
+                        plot_df.index[sub_idx],
                         swing.price - y_offset * 1.5,
                         f"({label})\n{swing.price:.2f}",
                         color="#2ca02c",
@@ -173,8 +174,9 @@ class WaveChart:
                 }
 
                 # 提取有意义的价格区间绘制斐波那契
-                min_x = 0
-                max_x = plot_len - 1
+                # 日期轴上需用首尾 datetime 作横向区间（整数会被当作日期序号）
+                min_x = plot_df.index[0]
+                max_x = plot_df.index[-1]
 
                 for level_name, price in fib_levels.items():
                     if level_name in ("start", "end"):
@@ -193,7 +195,7 @@ class WaveChart:
                     )
                     # 标注文本
                     ax.text(
-                        max_x - 1,
+                        plot_df.index[-2],
                         price,
                         f" {level_name} ({price:.2f})",
                         color=color,
@@ -203,6 +205,8 @@ class WaveChart:
                     )
 
             # 在左上角添加当前浪形位置与置信度文字框
+            if current_wave is None:
+                current_wave = {}
             info_text = (
                 f"当前位置: {current_wave.get('desc', '判断中')}\n"
                 f"当前浪号: {current_wave.get('wave', '未知')}\n"

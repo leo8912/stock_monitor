@@ -126,7 +126,7 @@ class SettingsViewModel(QObject):
         """验证 Webhook URL 格式"""
         # 企业微信 Webhook URL 正则表达式
         # 支持两种格式：/cgi-bin/webhook/send 和 /cgi/webhook/send
-        pattern = r"^https://qyapi\.weixin\.qq\.com/cgi(?:-bin)?/webhook/send\?key=[A-Za-z0-9-]+$"
+        pattern = r"^https://qyapi\.weixin\.qq\.com/cgi(?:-bin)?/webhook/send\?key=[A-Za-z0-9_-]+$"
         return bool(re.match(pattern, url))
 
     def load_settings(self):
@@ -321,24 +321,31 @@ class SettingsViewModel(QObject):
 
             worker = self._container.get(QuantWorker)
             if worker:
-                # 记录原始配置用于恢复
-                self._old_webhook = worker.wecom_webhook
-                worker.wecom_webhook = webhook
-                worker._alert_cache.clear()
-
-                # 防止旧线程还在跑被回收
+                # 先做在途测试检查，确认可发起后再改 worker 状态，
+                # 避免并发调用把测试 webhook 记成"原始配置"导致恢复错误
                 if self._test_thread is not None and self._test_thread.isRunning():
                     self.error_occurred.emit("测试正在进行中，请稍后")
                     return
 
-                self._test_thread = TestScanThread(worker, parent=self)
-                self._test_thread.finished_sig.connect(
-                    lambda: setattr(worker, "wecom_webhook", self._old_webhook)
-                )
-                self._test_thread.error_sig.connect(
+                # 局部捕获原始配置用于恢复（实例变量会被并发调用覆盖）
+                old_webhook = worker.wecom_webhook
+                worker.wecom_webhook = webhook
+                worker._alert_cache.clear()
+
+                test_thread = TestScanThread(worker, parent=self)
+                self._test_thread = test_thread
+
+                def _restore_webhook() -> None:
+                    # 仅当仍是当前测试线程时恢复并清引用，避免旧回调覆盖新测试
+                    if self._test_thread is test_thread:
+                        worker.wecom_webhook = old_webhook
+                        self._test_thread = None
+
+                test_thread.finished_sig.connect(_restore_webhook)
+                test_thread.error_sig.connect(
                     lambda e: self.error_occurred.emit(f"测试推送扫描失败: {e}")
                 )
-                self._test_thread.start()
+                test_thread.start()
             else:
                 self.error_occurred.emit("量化引擎未就绪")
         except Exception as e:

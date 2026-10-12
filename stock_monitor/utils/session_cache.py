@@ -78,8 +78,11 @@ def _flush_pending_locked() -> bool:
     data = _pending_data
     if data is None:
         return True
-    _pending_data = None
-    return _write_cache_file_unlocked(data)
+    # 写盘成功后才清空 pending，失败时保留数据以便重试
+    if _write_cache_file_unlocked(data):
+        _pending_data = None
+        return True
+    return False
 
 
 def _schedule_debounce() -> None:
@@ -98,8 +101,9 @@ def _schedule_debounce() -> None:
                 _debounce_timer = t
                 t.start()
                 return
-            _pending_data = None
-            _write_cache_file_unlocked(data)
+            # 写盘成功后才清空 pending，失败时保留数据等待下次 save/flush 重试
+            if _write_cache_file_unlocked(data):
+                _pending_data = None
 
     with _write_lock:
         if _debounce_timer is not None:
@@ -137,7 +141,8 @@ def save_session_cache(data: dict[str, Any], *, force: bool = False) -> bool:
             return _flush_pending_locked()
 
     with _write_lock:
-        _pending_data = data
+        # 存储浅拷贝，避免调用方在节流窗口内继续修改 dict 影响落盘内容
+        _pending_data = dict(data)
     _schedule_debounce()
     return True
 

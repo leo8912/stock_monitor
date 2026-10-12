@@ -24,7 +24,7 @@ except subprocess.TimeoutExpired as err:
     print("STDERR:")
     print(err.stderr)
     print("TIMEOUT after 120s")
-    sys.exit(124)
+    raise SystemExit(124) from err
 print("STDOUT:")
 print(result.stdout)
 print("STDERR:")

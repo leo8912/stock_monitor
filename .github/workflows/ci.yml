@@ -4,9 +4,14 @@ on:
   push:
   pull_request:
 
+# 最小权限：CI 只需读取仓库内容
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: windows-latest
+    timeout-minutes: 180
     steps:
       - name: Checkout
         uses: actions/checkout@v4

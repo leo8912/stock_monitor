@@ -7,12 +7,12 @@ on:
   workflow_dispatch: # 允许手动触发工作流
 
 permissions:
-  contents: write  # 写入仓库内容权限
-  packages: write  # 写入包权限
+  contents: write  # 创建 Release 只需 Contents API 写权限（移除未使用的 packages: write）
 
 jobs:
   build:
     runs-on: windows-latest  # 在最新的Windows环境下运行
+    timeout-minutes: 60  # 防止 PyInstaller/pip 挂起无限占用 runner
 
     steps:
     - name: 检出代码 # Checkout code
@@ -219,7 +219,9 @@ jobs:
         print("日志提取完成")
 
     - name: 创建发布 # Create Release
-      uses: softprops/action-gh-release@v2
+      # 固定到完整 commit SHA（v2 标签可被移动，防供应链劫持）
+      uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+      if: steps.get_version.outputs.version != 'unknown' && steps.get_version.outputs.version != ''
       with:
         files: |
           stock_monitor.zip

@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from datetime import time as dtime
 from pathlib import Path
 from typing import Protocol
@@ -212,6 +212,7 @@ class CloseExportScheduler(QtCore.QThread):
 
     def register_task(self, task: ExportTask) -> None:
         """注册导出任务"""
+        # list.append 在 GIL 下原子；迭代方通过快照规避 "changed size during iteration"
         self._tasks.append(task)
         app_logger.info(f"[CloseExportScheduler] 注册任务: {task.name}")
 
@@ -221,7 +222,8 @@ class CloseExportScheduler(QtCore.QThread):
 
     def _should_export_today(self) -> bool:
         """判断今天是否应该执行导出"""
-        now = datetime.now()
+        # 收盘窗口按北京时间（A股 15:00 收盘）判断，不依赖系统本地时区
+        now = datetime.now(timezone(timedelta(hours=8)))
 
         # 周末不执行
         if now.weekday() >= 5:
@@ -241,7 +243,9 @@ class CloseExportScheduler(QtCore.QThread):
 
     def _mark_exported(self):
         """标记今天已执行"""
-        self._last_export_date = datetime.now().strftime("%Y%m%d")
+        self._last_export_date = datetime.now(timezone(timedelta(hours=8))).strftime(
+            "%Y%m%d"
+        )
 
     def _execute_export(
         self, task_name: str | None = None, *, mark_exported: bool = True
@@ -259,7 +263,8 @@ class CloseExportScheduler(QtCore.QThread):
             app_logger.info("[CloseExportScheduler] 开始执行收盘数据导出...")
 
             exported_files = []
-            for task in self._tasks:
+            # 快照迭代：避免与 register_task 的并发 append 冲突
+            for task in list(self._tasks):
                 if not task.enabled:
                     continue
                 if task_name and task.name != task_name:

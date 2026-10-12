@@ -3,10 +3,12 @@
 将魔法数字集中管理，便于维护和调整
 """
 
+from types import MappingProxyType
+
 # ====== 缓存相关 ======
 CACHE_TTL_SECONDS = 60  # K 线缓存生存时间 (秒)
 MAX_CACHE_SIZE = 500  # K 线缓存最大条目数
-MAX_AVG_VOL_CACHE_AGE = 86400  # 5 日均量缓存最大年龄 (秒)
+MAX_AVG_VOL_CACHE_AGE = 86400  # 5日均量缓存兜底上限(秒,1天); 按 date 键自然日失效
 
 # ====== 数据量阈值 ======
 MIN_DATA_POINTS_FOR_BB = 100  # 布林带收敛判断最少需要 100 个数据点
@@ -27,8 +29,8 @@ BIG_ORDER_THRESHOLD_MID_CAP = 500000  # 中盘股大单阈值 (100-1000 亿市�
 BIG_ORDER_THRESHOLD_LARGE_CAP = 1000000  # 大盘股大单阈值 (>1000 亿市值)
 
 # 市值分档界限 (元)
-MARKET_CAP_SMALL_LIMIT = 10e9  # 小盘股上限 (100 亿)
-MARKET_CAP_MID_LIMIT = 100e9  # 中盘股上限 (1000 亿)
+MARKET_CAP_SMALL_LIMIT = 10_000_000_000  # 小盘股上限 (100 亿)
+MARKET_CAP_MID_LIMIT = 100_000_000_000  # 中盘股上限 (1000 亿)
 
 MAX_TRANSACTION_FETCH = 1000000  # 交易记录获取上限 (安全熔断)
 TRANSACTION_BATCH_SIZE = 2000  # 批量获取交易记录的批次大小
@@ -53,15 +55,17 @@ RSI_PERIOD = 14  # RSI 计算周期
 RSRS_THRESHOLD = 0.7  # RSRS Z-Score 强势阈值
 RSRS_WEAK_THRESHOLD = -0.7  # RSRS Z-Score 弱势阈值
 
-# ====== 周期映射 ======
-FreqMap = {"15m": 1, "30m": 2, "60m": 3, "daily": 9}
+# ====== 周期映射（只读，防止跨线程意外改写全局状态） ======
+FreqMap = MappingProxyType({"15m": 1, "30m": 2, "60m": 3, "daily": 9})
 
-TF_CHINESE_MAP = {
-    "15m": "15 分钟",
-    "30m": "30 分钟",
-    "60m": "60 分钟",
-    "daily": "日线",
-}
+TF_CHINESE_MAP = MappingProxyType(
+    {
+        "15m": "15 分钟",
+        "30m": "30 分钟",
+        "60m": "60 分钟",
+        "daily": "日线",
+    }
+)
 
 # ====== 信号强度阈值 ======
 SIGNAL_INTENSITY_HIGH = 0.8  # 高强度信号阈值
@@ -85,7 +89,7 @@ SIGNAL_EMA_GOLDEN = "均线金叉"
 SIGNAL_EMA_DEAD = "均线死叉"
 
 # ====== 基本面筛选阈值 ======
-MIN_MARKET_CAP = 1e9  # 最小市值 (元)
+MIN_MARKET_CAP = 1_000_000_000  # 最小市值 (元)
 MAX_PE_RATIO = 100  # 最大市盈率
 MAX_PB_RATIO = 10  # 最大市净率
 MIN_ROE = 0.05  # 最小 ROE
@@ -101,23 +105,27 @@ BACKTEST_TARGET_PROFIT = 0.05  # 回测目标收益率 (5%)
 BACKTEST_STOP_LOSS = 0.05  # 回测止损率 (5%)
 
 # ====== 斐波那契比例常量 ======
-FIBONACCI_RATIOS = {
-    "0.236": 0.236,
-    "0.382": 0.382,
-    "0.500": 0.500,
-    "0.618": 0.618,
-    "0.786": 0.786,
-    "1.000": 1.000,
-    "1.618": 1.618,
-    "2.618": 2.618,
-}
+FIBONACCI_RATIOS = MappingProxyType(
+    {
+        "0.236": 0.236,
+        "0.382": 0.382,
+        "0.500": 0.500,
+        "0.618": 0.618,
+        "0.786": 0.786,
+        "1.000": 1.000,
+        "1.618": 1.618,
+        "2.618": 2.618,
+    }
+)
 
 # 默认显示的斐波那契级别（用户可自定义）
-DEFAULT_FIB_LEVELS = ["0.382", "0.500", "0.618"]
+DEFAULT_FIB_LEVELS = ("0.382", "0.500", "0.618")
 
 # 斐波那契目标计算系数（用户可自定义）
-FIB_TARGET_COEFFICIENTS = {
-    "wave_5_target": 0.618,  # 浪5目标 = 浪1幅度 × 系数
-    "wave_4_retrace": 0.382,  # 浪4回调 = 浪3幅度 × 系数
-    "wave_b_retrace": 0.5,  # B浪反弹 = 浪A幅度 × 系数
-}
+FIB_TARGET_COEFFICIENTS = MappingProxyType(
+    {
+        "wave_5_target": 0.618,  # 浪5目标 = 浪1幅度 × 系数
+        "wave_4_retrace": 0.382,  # 浪4回调 = 浪3幅度 × 系数
+        "wave_b_retrace": 0.5,  # B浪反弹 = 浪A幅度 × 系数
+    }
+)

@@ -37,10 +37,10 @@ def resolve_sub_wave(sub_res) -> tuple[str, str]:
     """从子浪分析结果解析浪型标识与说明，无结果或 unknown 时返回空串。"""
     if sub_res and sub_res.current_wave:
         wave = sub_res.current_wave.get("wave", "")
-        if wave == "unknown":
+        if wave == "unknown" or not wave:
             return "", ""
         return (
-            wave or "未知",
+            wave,
             sub_res.current_wave.get("desc", ""),
         )
     return "", ""
@@ -58,6 +58,9 @@ def build_fib_support_resistance(levels: dict, curr_price: float) -> tuple[str, 
             supports.append(f"{v:.2f}")
         elif v > curr_price:
             resistances.append(f"{v:.2f}")
+        else:
+            # 恰好等于当前价的关键位同时计入支撑，避免被静默丢弃
+            supports.append(f"{v:.2f}")
 
     support_str = " / ".join(supports[-3:]) if supports else "无"
     resistance_str = " / ".join(resistances[:3]) if resistances else "无"
@@ -149,8 +152,13 @@ def format_wave_text_analysis(symbol: str, name: str, timeframe_name: str, df) -
         major_res.fib_levels or {}, curr_price
     )
 
-    # 趋势判断
-    trend_tag = "看涨" if trend == "bullish" else "看跌"
+    # 趋势判断（trend 缺失时标"未知"，避免误标为看跌）
+    if trend == "bullish":
+        trend_tag = "看涨"
+    elif trend == "bearish":
+        trend_tag = "看跌"
+    else:
+        trend_tag = "未知"
 
     # ── 构建简洁文案 ──────────────────────────────────────
     lines = [

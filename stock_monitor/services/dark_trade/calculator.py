@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-
 from stock_monitor.services.dark_trade.service import (
     build_net_flow_index,
     fetch_all_dark_trade,
@@ -24,7 +22,9 @@ def calculate_dark_trade_stats(
         history_days: 历史天数（默认5天）
 
     Returns:
-        dict with market_summary and watchlist_details
+        dict with market_summary / watchlist_details / date
+        （date 为最近交易日 'YYYYMMDD'；无法获取交易日期时返回
+        market_summary={} 的空壳且不含 date）
     """
     app_logger.info("[DarkTradeStats] 开始计算暗盘统计数据...")
 
@@ -109,5 +109,6 @@ def calculate_dark_trade_stats(
     return {
         "market_summary": market_summary,
         "watchlist_details": watchlist_details,
-        "date": recent_dates[0] if recent_dates else datetime.now().strftime("%Y%m%d"),
+        # recent_dates 非空已由上方早返回保证，不再回退到「今天」造成误导
+        "date": recent_dates[0],
     }

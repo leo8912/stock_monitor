@@ -144,7 +144,7 @@ class DarkTradeService(QtCore.QThread):
         self._manual_fetch_requested = False  # 手动抓取请求标志
         self._close_exported = False  # 当日收盘是否已导出
         self._close_export_date: str = ""  # 已导出日期，用于次日重置
-        self._last_refresh_ts: float = 0.0
+        self._last_refresh_ts: float = 0.0  # time.monotonic() 时间戳
         self.refresh_interval: int = 60  # 秒
 
     # ──────────────────────────────────────────────
@@ -232,7 +232,7 @@ class DarkTradeService(QtCore.QThread):
                 self._cache = merged
                 self._cache_date = date_key
                 self._cache_time = update_time
-                self._last_refresh_ts = time.time()
+                self._last_refresh_ts = time.monotonic()
 
             self.cache_updated.emit(update_time)
             app_logger.info(
@@ -252,9 +252,12 @@ class DarkTradeService(QtCore.QThread):
 
             app_logger.info(f"[DarkTrade] 开始抓取历史数据: {dates[1:]}")
 
-            # 抓取前2天数据
+            # 抓取前2天数据（单次分页抓取最长可达分钟级，期间响应停止请求；
+            # 中途放弃时直接返回，避免用半截历史覆盖缓存里的连续天数）
             history: dict[str, dict[str, float]] = {}
             for d in dates[1:]:
+                if not self._running:
+                    return
                 records = fetch_all_dark_trade(d)
                 history[d] = build_net_flow_index(records)
                 app_logger.info(f"[DarkTrade] {d} 历史: {len(history[d])} 只")
@@ -357,7 +360,7 @@ class DarkTradeService(QtCore.QThread):
         self._fetch_history_and_update()
 
         history_refresh_interval = 30 * 60  # 每30分钟刷新一次连续天数
-        last_history_refresh = time.time()
+        last_history_refresh = time.monotonic()
 
         while self._running:
             try:
@@ -367,7 +370,7 @@ class DarkTradeService(QtCore.QThread):
                     app_logger.info("[DarkTrade] 执行手动全量抓取...")
                     self._do_fetch_and_update()
                     self._fetch_history_and_update()
-                    last_history_refresh = time.time()
+                    last_history_refresh = time.monotonic()
 
                 if not self._running:
                     break
@@ -376,14 +379,17 @@ class DarkTradeService(QtCore.QThread):
 
                 # 交易时段内按间隔刷新
                 if _is_trading_hours():
-                    elapsed = time.time() - self._last_refresh_ts
+                    elapsed = time.monotonic() - self._last_refresh_ts
                     if elapsed >= self.refresh_interval:
                         self._do_fetch_and_update()
 
                     # 定期刷新连续天数
-                    if time.time() - last_history_refresh >= history_refresh_interval:
+                    if (
+                        time.monotonic() - last_history_refresh
+                        >= history_refresh_interval
+                    ):
                         self._fetch_history_and_update()
-                        last_history_refresh = time.time()
+                        last_history_refresh = time.monotonic()
 
             except Exception as e:
                 app_logger.error(f"[DarkTrade] 主循环异常: {e}")

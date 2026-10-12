@@ -104,6 +104,7 @@ def create_base_database():
         project_root, "stock_monitor", "resources", "stocks_base.db"
     )
 
+    db = None
     try:
         # 创建数据库实例
         db = StockDatabase()
@@ -126,6 +127,8 @@ def create_base_database():
             f"   文件大小: {file_size / 1024:.2f} KB ({file_size / 1024 / 1024:.2f} MB)"
         )
     finally:
+        if db is not None:
+            db.close()
         # 恢复原始函数并清理临时目录
         config_module.get_config_dir = original_get_config_dir
         db_module.get_config_dir = original_get_config_dir

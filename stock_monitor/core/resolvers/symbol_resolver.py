@@ -47,12 +47,17 @@ class SymbolResolver:
 
     @staticmethod
     def _classify_type(code: str, market: int) -> SymbolType:
-        """统一的代码类型识别：399 段（深市指数）与沪市 000 段为指数。
+        """统一的代码类型识别：399 段（深市指数）与沪市 000 段为指数；
+        沪市 5 段与深市 159 段为 ETF/基金。
 
         注意：深市 0009xx 是个股段（如 sz000938），不能按前缀误判为指数。
         """
         if code.startswith("399") or (market == 1 and code.startswith("000")):
             return SymbolType.INDEX
+        if (market == 1 and code.startswith("5")) or (
+            market == 0 and code.startswith("159")
+        ):
+            return SymbolType.ETF
         return SymbolType.STOCK
 
     @classmethod
@@ -70,7 +75,10 @@ class SymbolResolver:
 
         if s_lower.startswith(("sh", "sz")):
             mk = 1 if s_lower.startswith("sh") else 0
-            code = symbol[2:]
+            code = s_lower[2:]
+            # 拒绝 "sh"/"sz"/"sh1" 等截断后过短的代码，避免生成空/无意义配置
+            if len(code) < 4:
+                raise ValueError(f"带前缀的 symbol 代码部分过短: {symbol!r}")
             return SymbolConfig(code, mk, cls._classify_type(code, mk))
 
         if market is not None:
@@ -86,7 +94,7 @@ class SymbolResolver:
 
         # 6 开头沪市主板/科创，5 开头沪市 ETF/基金，其余默认深市
         mk = 1 if symbol.startswith(("6", "5")) else 0
-        return SymbolConfig(symbol, mk, SymbolType.STOCK)
+        return SymbolConfig(symbol, mk, cls._classify_type(symbol, mk))
 
     @classmethod
     def get_market_prefix(cls, market: int) -> str:

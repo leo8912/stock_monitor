@@ -73,8 +73,6 @@ class QuantWorker(QtCore.QThread):
         # 线程安全：使用锁保护共享资源
         self._lock = threading.Lock()
         self._alert_cache: set[str] = set()  # settings_view_model 测试推送流程在用
-        self._signal_manager: dict[str, float] = {}
-        self._active_signals: dict[str, dict[str, dict]] = {}
         self._last_signal_time = {}  # 从磁盘加载持久化数据
         self._signals_history = {}
         # 复盘时刻兜底值：运行时优先读 config["daily_report_times"]（见 check_and_trigger_reports）

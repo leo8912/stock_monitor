@@ -17,11 +17,9 @@ class AppContextMenu(QtWidgets.QMenu):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setup_style()
-        # 保存默认样式，防止被外部修改
-        self._default_style = self.styleSheet()
 
     def setup_style(self):
-        """设置菜单样式"""
+        """设置菜单标识（供 QSS 选择器 QMenu#AppContextMenu 命中）。"""
         self.setObjectName("AppContextMenu")
 
 

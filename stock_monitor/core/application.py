@@ -240,7 +240,7 @@ class StockMonitorApp:
             # 运行事件循环
             return self._app.exec()
 
-        except Exception:
+        except BaseException:  # noqa: BLE001 — 含 KeyboardInterrupt/SystemExit，确保清理必达
             app_logger.critical("应用程序启动失败", exc_info=True)
             # exec() 未运行时 aboutToQuit 不会触发，这里补偿执行同一套幂等清理
             try:

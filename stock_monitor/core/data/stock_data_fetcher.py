@@ -133,9 +133,16 @@ class StockDataFetcher:
                 single = quotation_engine.stocks(code, prefix=True)
                 return single if isinstance(single, dict) and code in single else None
             elif code.startswith("hk"):
-                # 港股:移除前缀查询
+                # 港股:移除前缀查询；hkquote 返回键为裸代码（如 '00700'），
+                # 统一补回 hk 前缀，与 A 股分支（code in single）键格式一致，
+                # 供 get_stock_info 按 'hk00700' 精确匹配
                 single = quotation_engine.stocks(query_code)
-                return single if isinstance(single, dict) else None
+                if not isinstance(single, dict):
+                    return None
+                return {
+                    (k if k.startswith("hk") else f"hk{k}"): v
+                    for k, v in single.items()
+                }
             else:
                 # 其他:使用纯代码查询
                 single = quotation_engine.stocks(query_code)

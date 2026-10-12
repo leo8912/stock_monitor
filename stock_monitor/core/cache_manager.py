@@ -50,6 +50,9 @@ class LRUCache:
     ) -> None:
         """写入/更新键值，可选自定义 ttl；超容量时淘汰最久未使用项。"""
         with self._lock:
+            if self._max_size <= 0:
+                # 容量为 0 视为禁用缓存；否则 popitem 会在空 OrderedDict 上抛 KeyError
+                return
             if ttl is None:
                 ttl = ttl_override if ttl_override is not None else self._default_ttl
             if key in self._cache:

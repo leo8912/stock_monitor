@@ -504,8 +504,15 @@ class UpdateDownloader:
                     timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
                     enable_retry=True,
                 )
-                if hash_resp is not None and hash_resp.status_code == 200:
-                    expected_hash = hash_resp.text.strip()
+                try:
+                    if hash_resp is not None and hash_resp.status_code == 200:
+                        expected_hash = hash_resp.text.strip()
+                finally:
+                    # 读取失败/非 200 时也关闭响应；mock/轻量对象可能无 close
+                    if hash_resp is not None:
+                        close = getattr(hash_resp, "close", None)
+                        if callable(close):
+                            close()
 
             # 2. 回退：从 release body 中解析哈希
             #    兼容 markdown 加粗写法（**SHA256**: `hash`）与纯文本（SHA256: hash）

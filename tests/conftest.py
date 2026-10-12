@@ -25,13 +25,20 @@ def pytest_configure(config):
             if s is not None and hasattr(s, "reconfigure"):
                 try:
                     s.reconfigure(encoding="utf-8", errors="replace")
-                except Exception:
-                    pass
+                except (OSError, ValueError) as err:
+                    import warnings
+
+                    warnings.warn(
+                        f"无法重新配置 {stream} 编码: {err}",
+                        RuntimeWarning,
+                        stacklevel=2,
+                    )
 
 
 def pytest_collection_modifyitems(config, items):
     """统一标记 integration 目录中的外部服务测试。"""
     integration_dir = Path(__file__).parent / "integration"
     for item in items:
-        if integration_dir in Path(item.fspath).parents:
+        # item.path（pytest>=7）替代已弃用的 item.fspath
+        if integration_dir in item.path.parents:
             item.add_marker(pytest.mark.integration)

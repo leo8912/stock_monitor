@@ -13,10 +13,19 @@ def _read_version_from_toml(toml_path: str):
         with open(toml_path, encoding="utf-8") as f:
             for line in f:
                 stripped = line.strip()
-                if stripped.startswith("version"):
-                    parts = stripped.split("=", 1)
-                    if len(parts) == 2:
-                        return parts[1].strip().strip('"').strip("'")
+                # 精确匹配 version 键（拒绝 versioning 等同前缀键）
+                if not stripped.startswith("version"):
+                    continue
+                remainder = stripped[len("version") :].lstrip()
+                if not remainder.startswith("="):
+                    continue
+                value_part = remainder.split("=", 1)[1].strip()
+                # 去掉行内注释（version = "1.0.0"  # comment）
+                if "#" in value_part:
+                    value_part = value_part.split("#", 1)[0].strip()
+                value_part = value_part.strip('"').strip("'")
+                if value_part:
+                    return value_part
     except Exception:
         pass
     return None

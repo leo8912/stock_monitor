@@ -18,7 +18,7 @@ if records:
         code = r.get("4", "?")
         name = r.get("0", "?")
         net = r.get("6", 0)
-        print(f"  Record {i+1}: code={code}, name={name}, net_flow={net}")
+        print(f"  Record {i + 1}: code={code}, name={name}, net_flow={net}")
 
     index = build_net_flow_index(records)
     print(f"\nIndexed {len(index)} stocks")

@@ -112,7 +112,8 @@ class CacheWarmer:
             是否预热成功
         """
         try:
-            # 预加载各个周期的K线数据
+            # 预加载各个周期的K线数据；仅当至少一个周期真正写入数据才算预热成功
+            warmed = False
             for category in categories:
                 try:
                     bars_df = self.engine.fetch_bars(
@@ -121,7 +122,7 @@ class CacheWarmer:
                     if bars_df is None or bars_df.empty:
                         app_logger.debug(f"符号 {symbol} 周期 {category} 数据为空")
                         continue
-
+                    warmed = True
                     # 预计算常用指标缓存
                     # 1. RSRS指标（快速计算，缓存结果）
                     try:
@@ -145,7 +146,7 @@ class CacheWarmer:
                     app_logger.debug(f"预热 {symbol} 周期 {category} 时出错：{e}")
                     continue
 
-            return True
+            return warmed
 
         except Exception as e:
             app_logger.error(f"符号 {symbol} 缓存预热失败：{e}")

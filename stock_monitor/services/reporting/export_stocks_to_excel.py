@@ -168,226 +168,235 @@ def export_to_excel(
     if dir_name and not os.path.exists(dir_name):
         os.makedirs(dir_name)
 
-    writer = pd.ExcelWriter(output_path, engine="openpyxl")
-
-    # 模式 A: 导出全量 A 股实时行情
-    if mode in ["all", "both"]:
-        try:
-            df_realtime = fetch_realtime_stocks()
-            if "序号" in df_realtime.columns:
-                df_realtime = df_realtime.drop(columns=["序号"])
-            if "涨跌幅" in df_realtime.columns:
-                df_realtime["涨跌幅"] = pd.to_numeric(
-                    df_realtime["涨跌幅"], errors="coerce"
-                )
-                df_realtime = df_realtime.sort_values(by="涨跌幅", ascending=False)
-
-            df_realtime.to_excel(writer, sheet_name="全量A股实时行情", index=False)
-            print("全量 A 股实时行情已写入 Excel。")
-        except Exception as e:
-            print(f"获取全量实时数据失败: {e}")
-
-    # 模式 B: 导出自选股历史数据及指标
-    if include_history or mode in ["watchlist", "both"]:
-        fetcher = StockDataFetcher()
-        market_adapter = fetcher.market_adapter
-        if not market_adapter:
-            print("错误：MarketDataAdapter 初始化失败，跳过自选股历史获取！")
-        else:
-            quant_engine = QuantEngine(market_adapter)
-            # 如果没有传入指定的代码，自动从配置中读取自选股
-            watchlist = (
-                history_symbols if history_symbols is not None else get_watchlist()
-            )
-            print(f"已加载自选股：{watchlist}")
-
-            all_history_records = []
-            summary_data = []
-
-            for code in watchlist:
-                print(
-                    f"[抓取] 正在获取 {code} ({resolve_stock_name(fetcher, code)}) 历史K线..."
-                )
-                try:
-                    df_raw = quant_engine.fetch_bars(code, category=9, offset=offset)
-                    if df_raw.empty:
-                        print(f"警告：未拉取到 {code} 的历史K线。")
-                        continue
-
-                    df_indicators = compute_indicators(df_raw)
-                    if df_indicators.empty:
-                        continue
-
-                    stock_name = resolve_stock_name(fetcher, code)
-                    df_indicators.insert(0, "股票代码", code)
-                    df_indicators.insert(1, "股票名称", stock_name)
-
-                    if "datetime" in df_indicators.columns:
-                        df_indicators["日期"] = pd.to_datetime(
-                            df_indicators["datetime"]
-                        ).dt.strftime("%Y-%m-%d")
-                        df_indicators = df_indicators.drop(columns=["datetime"])
-                    else:
-                        df_indicators["日期"] = "未知"
-
-                    column_order = [
-                        "日期",
-                        "股票代码",
-                        "股票名称",
-                        "open",
-                        "close",
-                        "high",
-                        "low",
-                        "volume",
-                        "amount",
-                        "MA5",
-                        "MA10",
-                        "MA20",
-                        "MA60",
-                        "BOLL_上轨",
-                        "BOLL_中轨",
-                        "BOLL_下轨",
-                        "MACD_DIFF",
-                        "MACD_DEA",
-                        "MACD_BAR",
-                        "RSI_14",
-                        "成交量_MA5",
-                        "成交量_MA20",
-                    ]
-                    columns_to_keep = [
-                        col for col in column_order if col in df_indicators.columns
-                    ]
-                    df_final = df_indicators[columns_to_keep].copy()
-
-                    df_final = df_final.rename(
-                        columns={
-                            "open": "开盘价",
-                            "close": "收盘价",
-                            "high": "最高价",
-                            "low": "最低价",
-                            "volume": "成交量",
-                            "amount": "成交额",
-                        }
+    with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
+        # 模式 A: 导出全量 A 股实时行情
+        if mode in ["all", "both"]:
+            try:
+                df_realtime = fetch_realtime_stocks()
+                if "序号" in df_realtime.columns:
+                    df_realtime = df_realtime.drop(columns=["序号"])
+                if "涨跌幅" in df_realtime.columns:
+                    df_realtime["涨跌幅"] = pd.to_numeric(
+                        df_realtime["涨跌幅"], errors="coerce"
                     )
+                    df_realtime = df_realtime.sort_values(by="涨跌幅", ascending=False)
 
-                    df_final = df_final.sort_values(by="日期", ascending=False)
+                df_realtime.to_excel(writer, sheet_name="全量A股实时行情", index=False)
+                print("全量 A 股实时行情已写入 Excel。")
+            except Exception as e:
+                print(f"获取全量实时数据失败: {e}")
 
-                    # 写入个股 Sheet
-                    sheet_title = f"{code}_{stock_name}"
-                    if len(sheet_title) > 30:
-                        sheet_title = sheet_title[:30]
-                    df_final.to_excel(writer, sheet_name=sheet_title, index=False)
-                    all_history_records.append(df_final)
+        # 模式 B: 导出自选股历史数据及指标
+        if include_history or mode in ["watchlist", "both"]:
+            fetcher = StockDataFetcher()
+            market_adapter = fetcher.market_adapter
+            if not market_adapter:
+                print("错误：MarketDataAdapter 初始化失败，跳过自选股历史获取！")
+            else:
+                quant_engine = QuantEngine(market_adapter)
+                # 如果没有传入指定的代码，自动从配置中读取自选股
+                watchlist = (
+                    history_symbols if history_symbols is not None else get_watchlist()
+                )
+                print(f"已加载自选股：{watchlist}")
 
-                    # 60分钟线数据导出
+                all_history_records = []
+                summary_data = []
+
+                for code in watchlist:
+                    print(
+                        f"[抓取] 正在获取 {code} ({resolve_stock_name(fetcher, code)}) 历史K线..."
+                    )
                     try:
-                        df_60m_raw = quant_engine.fetch_bars(
-                            code, category=3, offset=offset
+                        df_raw = quant_engine.fetch_bars(
+                            code, category=9, offset=offset
                         )
-                        if not df_60m_raw.empty and len(df_60m_raw) >= 30:
-                            df_60m_ind = compute_indicators(df_60m_raw)
-                            if not df_60m_ind.empty:
-                                df_60m_ind.insert(0, "股票代码", code)
-                                df_60m_ind.insert(1, "股票名称", stock_name)
-                                if "datetime" in df_60m_ind.columns:
-                                    df_60m_ind["日期"] = pd.to_datetime(
-                                        df_60m_ind["datetime"]
-                                    ).dt.strftime("%Y-%m-%d %H:%M")
-                                    df_60m_ind = df_60m_ind.drop(columns=["datetime"])
-                                else:
-                                    df_60m_ind["日期"] = "未知"
-                                cols_60m = [
-                                    c for c in column_order if c in df_60m_ind.columns
-                                ]
-                                df_60m_final = df_60m_ind[cols_60m].copy()
-                                df_60m_final = df_60m_final.rename(
-                                    columns={
-                                        "open": "开盘价",
-                                        "close": "收盘价",
-                                        "high": "最高价",
-                                        "low": "最低价",
-                                        "volume": "成交量",
-                                        "amount": "成交额",
-                                    }
-                                )
-                                df_60m_final = df_60m_final.sort_values(
-                                    by="日期", ascending=False
-                                )
-                                sheet_60m = f"{code}_{stock_name}_60m"
-                                if len(sheet_60m) > 30:
-                                    sheet_60m = sheet_60m[:30]
-                                df_60m_final.to_excel(
-                                    writer, sheet_name=sheet_60m, index=False
-                                )
-                    except Exception as e_60m:
-                        print(f"警告：{code} 60分钟线导出失败: {e_60m}")
+                        if df_raw.empty:
+                            print(f"警告：未拉取到 {code} 的历史K线。")
+                            continue
 
-                    # 提取最新一天数据做汇总
-                    latest_row = df_final.iloc[0]
-                    prev_row = df_final.iloc[1] if len(df_final) > 1 else latest_row
-                    close_price = latest_row["收盘价"]
-                    prev_close = prev_row["收盘价"]
-                    pct_change = (
-                        (close_price - prev_close) / prev_close if prev_close else 0.0
+                        df_indicators = compute_indicators(df_raw)
+                        if df_indicators.empty:
+                            continue
+
+                        stock_name = resolve_stock_name(fetcher, code)
+                        df_indicators.insert(0, "股票代码", code)
+                        df_indicators.insert(1, "股票名称", stock_name)
+
+                        if "datetime" in df_indicators.columns:
+                            df_indicators["日期"] = pd.to_datetime(
+                                df_indicators["datetime"]
+                            ).dt.strftime("%Y-%m-%d")
+                            df_indicators = df_indicators.drop(columns=["datetime"])
+                        else:
+                            df_indicators["日期"] = "未知"
+
+                        column_order = [
+                            "日期",
+                            "股票代码",
+                            "股票名称",
+                            "open",
+                            "close",
+                            "high",
+                            "low",
+                            "volume",
+                            "amount",
+                            "MA5",
+                            "MA10",
+                            "MA20",
+                            "MA60",
+                            "BOLL_上轨",
+                            "BOLL_中轨",
+                            "BOLL_下轨",
+                            "MACD_DIFF",
+                            "MACD_DEA",
+                            "MACD_BAR",
+                            "RSI_14",
+                            "成交量_MA5",
+                            "成交量_MA20",
+                        ]
+                        columns_to_keep = [
+                            col for col in column_order if col in df_indicators.columns
+                        ]
+                        df_final = df_indicators[columns_to_keep].copy()
+
+                        df_final = df_final.rename(
+                            columns={
+                                "open": "开盘价",
+                                "close": "收盘价",
+                                "high": "最高价",
+                                "low": "最低价",
+                                "volume": "成交量",
+                                "amount": "成交额",
+                            }
+                        )
+
+                        df_final = df_final.sort_values(by="日期", ascending=False)
+
+                        # 写入个股 Sheet
+                        sheet_title = f"{code}_{stock_name}"
+                        if len(sheet_title) > 30:
+                            sheet_title = sheet_title[:30]
+                        df_final.to_excel(writer, sheet_name=sheet_title, index=False)
+                        all_history_records.append(df_final)
+
+                        # 60分钟线数据导出
+                        try:
+                            df_60m_raw = quant_engine.fetch_bars(
+                                code, category=3, offset=offset
+                            )
+                            if not df_60m_raw.empty and len(df_60m_raw) >= 30:
+                                df_60m_ind = compute_indicators(df_60m_raw)
+                                if not df_60m_ind.empty:
+                                    df_60m_ind.insert(0, "股票代码", code)
+                                    df_60m_ind.insert(1, "股票名称", stock_name)
+                                    if "datetime" in df_60m_ind.columns:
+                                        df_60m_ind["日期"] = pd.to_datetime(
+                                            df_60m_ind["datetime"]
+                                        ).dt.strftime("%Y-%m-%d %H:%M")
+                                        df_60m_ind = df_60m_ind.drop(
+                                            columns=["datetime"]
+                                        )
+                                    else:
+                                        df_60m_ind["日期"] = "未知"
+                                    cols_60m = [
+                                        c
+                                        for c in column_order
+                                        if c in df_60m_ind.columns
+                                    ]
+                                    df_60m_final = df_60m_ind[cols_60m].copy()
+                                    df_60m_final = df_60m_final.rename(
+                                        columns={
+                                            "open": "开盘价",
+                                            "close": "收盘价",
+                                            "high": "最高价",
+                                            "low": "最低价",
+                                            "volume": "成交量",
+                                            "amount": "成交额",
+                                        }
+                                    )
+                                    df_60m_final = df_60m_final.sort_values(
+                                        by="日期", ascending=False
+                                    )
+                                    sheet_60m = f"{code}_{stock_name}_60m"
+                                    if len(sheet_60m) > 30:
+                                        sheet_60m = sheet_60m[:30]
+                                    df_60m_final.to_excel(
+                                        writer, sheet_name=sheet_60m, index=False
+                                    )
+                        except Exception as e_60m:
+                            print(f"警告：{code} 60分钟线导出失败: {e_60m}")
+
+                        # 提取最新一天数据做汇总
+                        latest_row = df_final.iloc[0]
+                        prev_row = df_final.iloc[1] if len(df_final) > 1 else latest_row
+                        close_price = latest_row["收盘价"]
+                        prev_close = prev_row["收盘价"]
+                        pct_change = (
+                            (close_price - prev_close) / prev_close
+                            if prev_close
+                            else 0.0
+                        )
+
+                        boll_pos = "中位震荡"
+                        if pd.notna(latest_row.get("BOLL_上轨")) and pd.notna(
+                            latest_row.get("BOLL_下轨")
+                        ):
+                            if close_price >= latest_row["BOLL_上轨"] * 0.99:
+                                boll_pos = "🔥 上轨阻力"
+                            elif close_price <= latest_row["BOLL_下轨"] * 1.01:
+                                boll_pos = "🟢 下轨支撑"
+
+                        macd_status = "盘整"
+                        if pd.notna(latest_row.get("MACD_BAR")):
+                            bar = latest_row["MACD_BAR"]
+                            prev_bar = prev_row.get("MACD_BAR", 0.0)
+                            if bar > 0 and prev_bar <= 0:
+                                macd_status = "🔴 金叉"
+                            elif bar < 0 and prev_bar >= 0:
+                                macd_status = "🟢 死叉"
+                            elif bar > 0:
+                                macd_status = "多头运行"
+                            elif bar < 0:
+                                macd_status = "空头运行"
+
+                        summary_data.append(
+                            {
+                                "股票代码": code,
+                                "股票名称": stock_name,
+                                "最新日期": latest_row["日期"],
+                                "最新价": close_price,
+                                "今日涨跌幅": pct_change,
+                                "RSI(14)": latest_row.get("RSI_14", np.nan),
+                                "MACD信号": macd_status,
+                                "BOLL位置": boll_pos,
+                                "成交量(手)": latest_row["成交量"] / 100.0
+                                if pd.notna(latest_row["成交量"])
+                                else np.nan,
+                                "成交额(万)": latest_row["成交额"] / 10000.0
+                                if pd.notna(latest_row["成交额"])
+                                else np.nan,
+                            }
+                        )
+                    except Exception as e:
+                        print(f"处理自选股 {code} 失败: {e}")
+
+                if all_history_records:
+                    df_summary = pd.DataFrame(summary_data)
+                    df_summary = df_summary.sort_values(
+                        by="今日涨跌幅", ascending=False
+                    )
+                    df_summary.to_excel(
+                        writer, sheet_name="自选股技术面概览", index=False
                     )
 
-                    boll_pos = "中位震荡"
-                    if pd.notna(latest_row.get("BOLL_上轨")) and pd.notna(
-                        latest_row.get("BOLL_下轨")
-                    ):
-                        if close_price >= latest_row["BOLL_上轨"] * 0.99:
-                            boll_pos = "🔥 上轨阻力"
-                        elif close_price <= latest_row["BOLL_下轨"] * 1.01:
-                            boll_pos = "🟢 下轨支撑"
-
-                    macd_status = "盘整"
-                    if pd.notna(latest_row.get("MACD_BAR")):
-                        bar = latest_row["MACD_BAR"]
-                        prev_bar = prev_row.get("MACD_BAR", 0.0)
-                        if bar > 0 and prev_bar <= 0:
-                            macd_status = "🔴 金叉"
-                        elif bar < 0 and prev_bar >= 0:
-                            macd_status = "🟢 死叉"
-                        elif bar > 0:
-                            macd_status = "多头运行"
-                        elif bar < 0:
-                            macd_status = "空头运行"
-
-                    summary_data.append(
-                        {
-                            "股票代码": code,
-                            "股票名称": stock_name,
-                            "最新日期": latest_row["日期"],
-                            "最新价": close_price,
-                            "今日涨跌幅": pct_change,
-                            "RSI(14)": latest_row.get("RSI_14", np.nan),
-                            "MACD信号": macd_status,
-                            "BOLL位置": boll_pos,
-                            "成交量(手)": latest_row["成交量"] / 100.0
-                            if pd.notna(latest_row["成交量"])
-                            else np.nan,
-                            "成交额(万)": latest_row["成交额"] / 10000.0
-                            if pd.notna(latest_row["成交额"])
-                            else np.nan,
-                        }
+                    df_combined = pd.concat(all_history_records, ignore_index=True)
+                    df_combined = df_combined.sort_values(
+                        by=["日期", "股票代码"], ascending=[False, True]
                     )
-                except Exception as e:
-                    print(f"处理自选股 {code} 失败: {e}")
-
-            if all_history_records:
-                df_summary = pd.DataFrame(summary_data)
-                df_summary = df_summary.sort_values(by="今日涨跌幅", ascending=False)
-                df_summary.to_excel(writer, sheet_name="自选股技术面概览", index=False)
-
-                df_combined = pd.concat(all_history_records, ignore_index=True)
-                df_combined = df_combined.sort_values(
-                    by=["日期", "股票代码"], ascending=[False, True]
-                )
-                df_combined.to_excel(
-                    writer, sheet_name="自选股合并历史明细", index=False
-                )
-
-    writer.close()
+                    df_combined.to_excel(
+                        writer, sheet_name="自选股合并历史明细", index=False
+                    )
 
     # 美化样式渲染
     from openpyxl import load_workbook
@@ -471,7 +480,7 @@ def export_to_excel(
                                 elif cell.value < 0:
                                     cell.fill = green_fill
                                     cell.font = green_font
-                        except ValueError:
+                        except (ValueError, TypeError):
                             pass
                     elif "量" in header_value:
                         cell.number_format = "#,##0"
@@ -487,7 +496,7 @@ def export_to_excel(
                                         cell.font = red_font
                                     elif val < 0:
                                         cell.font = green_font
-                            except ValueError:
+                            except (ValueError, TypeError):
                                 pass
                 else:
                     if len(str(cell.value)) <= 10:

@@ -197,15 +197,26 @@ class TestAppThread(TaskThread):
         def task():
             from stock_monitor.services.notifier import NotifierService
 
-            return NotifierService.test_app_push(
+            result = NotifierService.test_app_push(
                 self._corp_id, self._secret, self._agent_id
             )
+            # 异常串可能包含带 secret 的请求 URL（gettoken 接口），上抛前脱敏
+            error = result.get("error") if isinstance(result, dict) else None
+            if error and self._secret and self._secret in str(error):
+                result = {**result, "error": str(error).replace(self._secret, "***")}
+            return result
 
         self._run_task(
             task,
             self.test_finished.emit,
             lambda error: self.test_finished.emit(
-                {"success": False, "error": error, "response": None}
+                {
+                    "success": False,
+                    "error": str(error).replace(self._secret, "***")
+                    if self._secret
+                    else str(error),
+                    "response": None,
+                }
             ),
         )
 

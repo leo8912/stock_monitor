@@ -83,7 +83,13 @@ class StockDataProcessor:
                 sell_vol = 0.0
                 recent_net = 0.0
         else:
-            buy_vol = float(large_order_vol) if large_order_vol else 0.0
+            buy_vol = 0.0
+            if large_order_vol:
+                try:
+                    buy_vol = float(large_order_vol)
+                except (TypeError, ValueError):
+                    # 非数值内容（字符串/字典等）不能中断整批行情处理
+                    buy_vol = 0.0
             sell_vol = 0.0
             recent_net = 0.0
 
@@ -106,7 +112,9 @@ class StockDataProcessor:
             large_order_info = f"{sign}{val_str}"
 
         # 6. 处理集合竞价 [NEW]
-        auc_data = raw_data.get("auction_data", {})
+        auc_data = raw_data.get("auction_data")
+        if not isinstance(auc_data, dict):
+            auc_data = {}
         auction_price = auc_data.get("price", 0.0)
         auction_vol = auc_data.get("volume", 0.0)
         auction_intensity = auc_data.get("intensity", 0.0)
@@ -217,16 +225,24 @@ class StockDataProcessor:
             low = float(info.get("low", 0))
             bid1 = float(info.get("bid1", 0))
             ask1 = float(info.get("ask1", 0))
-            bid1_vol = float(
-                info.get("bid1_volume", 0)
-                or info.get("bid_vol1", 0)
-                or info.get("volume_2", 0)
-            )
-            ask1_vol = float(
-                info.get("ask1_volume", 0)
-                or info.get("ask_vol1", 0)
-                or info.get("volume_3", 0)
-            )
+            # 取首个「存在」的字段：不能用 or 链，否则主字段有效 0 值
+            # （无挂单）会被跳过而误用回退字段的历史数据
+            bid1_vol = 0.0
+            for key in ("bid1_volume", "bid_vol1", "volume_2"):
+                if key in info and info[key] is not None:
+                    try:
+                        bid1_vol = float(info[key])
+                    except (TypeError, ValueError):
+                        bid1_vol = 0.0
+                    break
+            ask1_vol = 0.0
+            for key in ("ask1_volume", "ask_vol1", "volume_3"):
+                if key in info and info[key] is not None:
+                    try:
+                        ask1_vol = float(info[key])
+                    except (TypeError, ValueError):
+                        ask1_vol = 0.0
+                    break
 
             # 涨停判断
             # 简单判断：价格等于最高价，且等于买一价，且买一量>0，卖一为0

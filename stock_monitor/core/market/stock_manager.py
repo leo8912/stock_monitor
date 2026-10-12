@@ -61,27 +61,31 @@ class StockManager:
 
     def has_stock_data_changed(self, stocks: list[StockRowData]) -> bool:
         """检查股票数据是否发生变化"""
-        if not self._last_stock_data:
+        with self._cache_lock:
+            last_data = dict(self._last_stock_data)
+        if not last_data:
             return True
 
         for stock in stocks:
-            if stock.name not in self._last_stock_data:
+            if stock.name not in last_data:
                 return True
-            if self._last_stock_data[stock.name] != stock.hash_key:
+            if last_data[stock.name] != stock.hash_key:
                 return True
 
         current_names = {s.name for s in stocks}
-        for name in self._last_stock_data.keys():
+        for name in last_data:
             if name not in current_names:
                 return True
         return False
 
     def update_last_stock_data(self, stocks: list[StockRowData]) -> None:
         """更新最后股票数据缓存"""
-        self._last_stock_data.clear()
-        for stock in stocks:
-            self._last_stock_data[stock.name] = stock.hash_key
-        app_logger.debug(f"更新股票数据缓存，共{len(self._last_stock_data)}只股票")
+        with self._cache_lock:
+            self._last_stock_data.clear()
+            for stock in stocks:
+                self._last_stock_data[stock.name] = stock.hash_key
+            count = len(self._last_stock_data)
+        app_logger.debug(f"更新股票数据缓存，共{count}只股票")
 
     def _async_fetch_quant_data(self, codes: list[str]):
         """异步拉取量化数据（含大单流向与集合竞价），不阻塞主刷新线程"""
@@ -99,13 +103,13 @@ class StockManager:
                         return
                     self._quant_engine = QuantEngine(adapter)
 
+        now_hm = time.strftime("%H:%M")
         for code in codes:
             try:
                 # 1. 大单流向
                 res = self._quant_engine.fetch_large_orders_flow(code)
 
                 # 2. 集合竞价分析 [NEW]
-                now_hm = time.strftime("%H:%M")
                 auc_res = None
                 # 仅在盘前或开盘初期关注竞价
                 if "09:00" <= now_hm <= "10:00" or "15:00" <= now_hm <= "17:00":
@@ -139,8 +143,12 @@ class StockManager:
             # close() 后线程池已关停，不能再 submit（会抛 RuntimeError）
             app_logger.debug("StockManager 已关闭，跳过异步量化数据派发")
         else:
-            # 异步派发，不阻塞当前线程
-            self._executor.submit(self._async_fetch_quant_data, stock_codes)
+            # 异步派发，不阻塞当前线程；close() 与 submit 之间存在竞态窗口，
+            # 线程池已关停时 submit 会抛 RuntimeError，捕获后按已关闭处理
+            try:
+                self._executor.submit(self._async_fetch_quant_data, stock_codes)
+            except RuntimeError:
+                app_logger.debug("StockManager 已关闭，跳过异步量化数据派发")
 
         # 3. 处理并整合数据
         failed_count = sum(1 for data in data_dict.values() if data is None)

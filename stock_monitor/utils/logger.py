@@ -67,9 +67,10 @@ class RedactionFilter(logging.Filter):
             return True
 
         redacted = redact_sensitive(message)
-        if redacted != message:
-            record.msg = redacted
-            record.args = ()
+        # 无论是否发生脱敏，都固化已格式化消息并清空 args：
+        # 避免后续 handler 再次 getMessage() 对含 '%' 的结果二次格式化出错
+        record.msg = redacted
+        record.args = ()
         return True
 
 
@@ -190,6 +191,8 @@ class Logger:
             message: 日志消息
             **context: 结构化字段（symbol, action, duration_ms 等）
         """
+        if not self.logger.isEnabledFor(level):
+            return
         if context:
             ctx_str = " | ".join(f"{k}={v}" for k, v in context.items())
             full_message = f"{message} [{ctx_str}]"

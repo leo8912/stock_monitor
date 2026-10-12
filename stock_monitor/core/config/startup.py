@@ -40,11 +40,8 @@ def check_update_status():
                 app_logger.info(f"检测到更新成功标记，更新时间: {update_time}")
                 return ("success", update_time)
             except Exception as e:
-                app_logger.warning(f"读取更新成功标记失败: {e}")
-                try:
-                    os.remove(success_marker)
-                except OSError:
-                    pass
+                # 读取失败时保留标记（不删除），避免丢失合法的更新状态
+                app_logger.warning(f"读取更新成功标记失败，保留标记待下次重试: {e}")
 
         # 检查更新失败标记
         if os.path.exists(failed_marker):
@@ -55,11 +52,8 @@ def check_update_status():
                 app_logger.error(f"检测到更新失败标记: {error_info}")
                 return ("failed", error_info)
             except Exception as e:
-                app_logger.warning(f"读取更新失败标记失败: {e}")
-                try:
-                    os.remove(failed_marker)
-                except OSError:
-                    pass
+                # 读取失败时保留标记（不删除），避免丢失合法的更新状态
+                app_logger.warning(f"读取更新失败标记失败，保留标记待下次重试: {e}")
 
         return (None, None)
     except Exception as e:

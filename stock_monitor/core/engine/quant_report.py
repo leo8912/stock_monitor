@@ -60,7 +60,7 @@ def format_report_content(
             )
             md.append(
                 f"> **{sig['name']}** ({sig['symbol']}) "
-                f"[{sig['signals'][0]}] "
+                f"[{sig['signals'][0] if sig.get('signals') else '-'}] "
                 f"评分:{sig['score']:+} "
                 f"{fin_label}"
                 f"{wave_daily_desc}"
@@ -72,11 +72,9 @@ def format_report_content(
     if all_signals:
         md.append("**📋 全部信号：**\n")
         for sig in all_signals[:20]:  # 最多显示 20 个
-            price_info = (
-                f"￥{sig['price']:.2f} ({sig['pct']:+.1f}%)"
-                if sig["price"] > 0
-                else "--"
-            )
+            price = sig.get("price") or 0
+            pct = sig.get("pct") or 0
+            price_info = f"￥{price:.2f} ({pct:+.1f}%)" if price > 0 else "--"
             wave_daily_desc = (
                 f" (日线:{sig['wave_daily']['wave']}浪)"
                 if sig.get("wave_daily")
@@ -86,7 +84,7 @@ def format_report_content(
                 f" (60m:{sig['wave_60m']['wave']}浪)" if sig.get("wave_60m") else ""
             )
             md.append(
-                f"• {sig['name']} [{sig['signals'][0]}] "
+                f"• {sig['name']} [{sig['signals'][0] if sig.get('signals') else '-'}] "
                 f"{sig['score']:+} "
                 f"{price_info}"
                 f"{wave_daily_desc}"

@@ -13,13 +13,9 @@ from tenacity import (
 
 from stock_monitor.utils.logger import app_logger
 
-# 常见网络异常
-RETRYABLE_EXCEPTIONS = (
-    ConnectionError,
-    TimeoutError,
-    IOError,
-    OSError,
-)
+# 常见网络异常（ConnectionError/TimeoutError/IOError 均为 OSError 子类，
+# tenacity 按 isinstance 匹配，仅需保留 OSError）
+RETRYABLE_EXCEPTIONS = (OSError,)
 
 # 默认重试配置
 DEFAULT_MAX_ATTEMPTS = 3
@@ -44,7 +40,7 @@ def network_retry(
     min_wait: float = DEFAULT_MIN_WAIT,
     max_wait: float = DEFAULT_MAX_WAIT,
     multiplier: float = DEFAULT_MULTIPLIER,
-    backoff_factor: float = None,
+    backoff_factor: float | None = None,
 ):
     """网络请求重试装饰器（指数退避）。
 
@@ -53,9 +49,11 @@ def network_retry(
         min_wait: 最小等待时间（秒）
         max_wait: 最大等待时间（秒）
         multiplier: 退避倍数
-        backoff_factor: 兼容旧接口，等同于 multiplier
+        backoff_factor: 兼容旧接口，等同于 multiplier；与非默认 multiplier 同时传入会报错
     """
     if backoff_factor is not None:
+        if multiplier != DEFAULT_MULTIPLIER:
+            raise ValueError("backoff_factor 与 multiplier 功能相同，不能同时传入")
         multiplier = backoff_factor
     return retry(
         stop=stop_after_attempt(max_attempts),

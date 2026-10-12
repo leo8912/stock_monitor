@@ -29,4 +29,6 @@ class WorkerRunnable(QRunnable):
         try:
             self.func(*self.args, **self.kwargs)
         except Exception as e:
-            app_logger.error(f"后台任务 {self.func.__name__} 执行出错: {e}")
+            # functools.partial / 可调用实例可能没有 __name__，避免错误处理本身再抛异常
+            func_name = getattr(self.func, "__name__", repr(self.func))
+            app_logger.error(f"后台任务 {func_name} 执行出错: {e}")

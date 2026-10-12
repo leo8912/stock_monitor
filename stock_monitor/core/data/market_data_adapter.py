@@ -235,6 +235,7 @@ class MarketDataAdapter:
                         "high": safe_float(kline[3]),
                         "low": safe_float(kline[4]),
                         "vol": safe_float(kline[5]),
+                        # 腾讯 vol 单位为「手」(1手=100股)，amount = vol * 100 * close
                         "amount": safe_float(kline[5]) * safe_float(kline[2]) * 100,
                     }
                 )
@@ -244,6 +245,9 @@ class MarketDataAdapter:
 
             df = pd.DataFrame(rows)
             df["datetime"] = pd.to_datetime(df["datetime"])
+            # bars/index 切片假设升序（旧→新），显式排序保证与 API 返回顺序无关
+            df.sort_values("datetime", inplace=True)
+            df.reset_index(drop=True, inplace=True)
             return df
 
         except Exception as e:
@@ -290,9 +294,10 @@ class MarketDataAdapter:
                         "high": safe_float(item.get("high")),
                         "low": safe_float(item.get("low")),
                         "vol": safe_float(item.get("volume")),
+                        # 新浪 volume 单位为「股」（已实测与日线股数一致），
+                        # amount = volume(股) * close = 元，不能再乘 100
                         "amount": safe_float(item.get("volume"))
-                        * safe_float(item.get("close"))
-                        * 100,
+                        * safe_float(item.get("close")),
                     }
                 )
 
@@ -301,6 +306,9 @@ class MarketDataAdapter:
 
             df = pd.DataFrame(rows)
             df["datetime"] = pd.to_datetime(df["datetime"])
+            # bars/index 切片假设升序（旧→新），显式排序保证与 API 返回顺序无关
+            df.sort_values("datetime", inplace=True)
+            df.reset_index(drop=True, inplace=True)
             return df
 
         except Exception as e:

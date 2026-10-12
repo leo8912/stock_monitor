@@ -35,7 +35,7 @@ def get_name_by_code(code: str) -> str:
 
         stock_info = stock_db.get_stock_by_code(code)
         if stock_info:
-            name = stock_info["name"]
+            name = stock_info.get("name", "")
             # 对于港股，只保留中文部分
             if code.startswith("hk"):
                 # 去除"-"及之后的部分，只保留中文名称

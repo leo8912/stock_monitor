@@ -29,6 +29,10 @@ class _DataLoadWorker(QThread):
         comparison_data = []
         try:
             for symbol in self.symbols:
+                # 关闭/刷新时 _stop_data_worker 会 requestInterruption 并 wait，
+                # 此处提前退出以缩短主线程等待
+                if self.isInterruptionRequested():
+                    return
                 try:
                     df = self.engine.fetch_bars(symbol, category=9, offset=250)
                     if df is None or df.empty or len(df) < 60:

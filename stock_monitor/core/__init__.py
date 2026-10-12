@@ -20,13 +20,18 @@
 
 
 def _log_import_failure(layer: str) -> None:
-    """记录条件导入失败的原始异常；logger 不可用时静默，避免阻断 core 包导入。"""
+    """记录条件导入失败的原始异常；logger 不可用时兜底写 stderr，避免阻断 core 包导入。"""
     try:
         from stock_monitor.utils.logger import app_logger
 
         app_logger.warning(f"{layer} import failed", exc_info=True)
     except Exception:
-        pass
+        # 日志系统自身不可用：兜底写 stderr，确保导入失败信息不丢失
+        import sys
+        import traceback
+
+        print(f"[core] {layer} import failed", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
 
 
 # ============================================================================
@@ -36,7 +41,7 @@ try:
     from .config import DIContainer
 
     _config_available = True
-except (ImportError, ModuleNotFoundError):
+except Exception:
     _config_available = False
     _log_import_failure("Config layer")
 
@@ -51,7 +56,7 @@ try:
     )
 
     _engine_available = True
-except (ImportError, ModuleNotFoundError):
+except Exception:
     _engine_available = False
     _log_import_failure("Engine layer")
 
@@ -66,7 +71,7 @@ try:
     )
 
     _data_available = True
-except (ImportError, ModuleNotFoundError):
+except Exception:
     _data_available = False
     _log_import_failure("Data layer")
 
@@ -80,7 +85,7 @@ try:
     )
 
     _market_available = True
-except (ImportError, ModuleNotFoundError):
+except Exception:
     _market_available = False
     _log_import_failure("Market layer")
 
@@ -93,7 +98,7 @@ try:
     )
 
     _resolvers_available = True
-except (ImportError, ModuleNotFoundError):
+except Exception:
     _resolvers_available = False
     _log_import_failure("Resolvers layer")
 
@@ -106,7 +111,7 @@ try:
     )
 
     _cache_available = True
-except (ImportError, ModuleNotFoundError):
+except Exception:
     _cache_available = False
     _log_import_failure("Cache layer")
 
@@ -117,7 +122,7 @@ try:
     from .stock_service import stock_data_service
 
     _stock_service_available = True
-except (ImportError, ModuleNotFoundError):
+except Exception:
     _stock_service_available = False
     _log_import_failure("Stock service")
 

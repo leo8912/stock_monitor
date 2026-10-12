@@ -127,8 +127,8 @@ exit /b 0
 :: 写入更新失败标记
 echo UPDATE_FAILED %date% %time% > "{cfg_dir_b}\\update_failed.txt"
 echo Error: xcopy failed with errorlevel %errorlevel% >> "{cfg_dir_b}\\update_failed.txt"
-echo Source: {src_dir_b} >> "{cfg_dir_b}\\update_failed.txt"
-echo Target: {app_dir_b} >> "{cfg_dir_b}\\update_failed.txt"
+echo Source: "{src_dir_b}" >> "{cfg_dir_b}\\update_failed.txt"
+echo Target: "{app_dir_b}" >> "{cfg_dir_b}\\update_failed.txt"
 del "%~f0" >nul 2>&1
 exit /b 1
 """
@@ -203,8 +203,8 @@ exit /b 1
                 from stock_monitor.data.stock.stock_db import get_db_pool
 
                 get_db_pool().close_all()
-            except Exception:
-                pass
+            except Exception as e:
+                app_logger.warning(f"更新前关闭数据库连接池失败（不影响更新）: {e}")
 
             # sys.exit 触发 atexit 处理器与 finally 块，比 os._exit 更安全
             sys.exit(0)

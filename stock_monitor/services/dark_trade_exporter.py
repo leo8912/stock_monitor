@@ -165,6 +165,10 @@ def _build_row(r: dict, quote_map: dict, recent_dates: list, history_net: dict) 
 
     hist_nets = [history_net.get(d, {}).get(code, None) for d in recent_dates]
 
+    # 行情字段可能为 "-"（停牌）等非数值，先容错转换，避免整份导出中断
+    volume_raw = _to_float(q.get("volume"), 0.0)
+    amount_raw = _to_float(q.get("amount"), 0.0)
+
     return {
         "code": code,
         "market": market_pfx,
@@ -172,9 +176,9 @@ def _build_row(r: dict, quote_map: dict, recent_dates: list, history_net: dict) 
         "close": q.get("close", ""),
         "pct_chg": q.get("pct_chg", ""),
         # 手→万股
-        "volume_wan": q.get("volume", 0) / 100 if q.get("volume") else "",
+        "volume_wan": volume_raw / 100 if volume_raw else "",
         # 元→亿
-        "amount_yi": q.get("amount", 0) / 1e8 if q.get("amount") else "",
+        "amount_yi": amount_raw / 1e8 if amount_raw else "",
         "dark_net": dark_net_wan,
         "regular_net": regular_net_wan,
         "total_net": total_net_wan,
@@ -258,6 +262,7 @@ def export_dark_trade_csv(
     # ── 2. 抓取近N-1天历史数据（今天已有，再取前N-1天）───────────────────────
     recent_dates = get_recent_trade_dates(history_days)  # [今天, 昨天, ...]
     history_records: dict[str, list[dict]] = {today_str: today_records}
+    failed_dates: list[str] = []
     for d in recent_dates[1:]:
         try:
             recs = fetch_all_dark_trade(d)
@@ -265,7 +270,14 @@ def export_dark_trade_csv(
             app_logger.info(f"[DarkExport] {d} 历史暗盘: {len(recs)} 条")
         except Exception as e:
             app_logger.warning(f"[DarkExport] {d} 历史抓取失败: {e}")
+            failed_dates.append(d)
             history_records[d] = []
+    if failed_dates:
+        # 抓取失败被降级为空数据，连续天数统计可能偏小，显式提示区分
+        app_logger.error(
+            f"[DarkExport] 以下日期历史抓取失败（按无数据处理），"
+            f"连续流入天数统计可能不准: {failed_dates}"
+        )
 
     # ── 3. 获取今日明盘行情 ──────────────────────────────────────────────────
     app_logger.info("[DarkExport] 抓取明盘行情...")

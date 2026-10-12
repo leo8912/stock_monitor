@@ -71,7 +71,14 @@ class RefreshWorker(QtCore.QThread):
 
     def stop_refresh(self) -> None:
         """停止刷新线程（轮询等待线程真正结束，避免固定 wait 误判）。"""
-        self._is_running = False
+        # 与 run()/_smart_sleep 的读写统一在 _lock 下进行，并唤醒 QWaitCondition，
+        # 让休眠中的线程立即感知停止标志（而非等下一个 500ms 片超时）
+        self._lock.lock()
+        try:
+            self._is_running = False
+            self._wait_condition.wakeAll()
+        finally:
+            self._lock.unlock()
         if not wait_for_thread_stop(self):
             app_logger.warning(
                 f"后台刷新线程停止超时（>{DEFAULT_STOP_TIMEOUT_MS}ms），线程可能仍在收尾"
@@ -112,6 +119,9 @@ class RefreshWorker(QtCore.QThread):
         # 首次启动标记：无论是否开市，都先获取一次数据
         first_fetch_done = False
         startup_retry_count = 0  # 首次获取重试计数
+
+        # 循环热路径使用：只导入一次（模块级缓存，避免每轮字典查找）
+        from stock_monitor.core.market.stock_manager import stock_manager
 
         while self._is_running:
             try:
@@ -176,8 +186,6 @@ class RefreshWorker(QtCore.QThread):
                 # app_logger.debug(f"开始刷新 {len(local_user_stocks)} 只股票数据")
 
                 # 使用 stock_manager 获取和处理数据
-                from stock_monitor.core.market.stock_manager import stock_manager
-
                 stocks, failed_count = stock_manager.fetch_and_process_stocks(
                     local_user_stocks,
                     wait_for_quant_data=False,  # 始终异步获取量化数据，避免阻塞UI
@@ -321,8 +329,6 @@ class RefreshWorker(QtCore.QThread):
         Returns:
             int: 休眠时间（秒）
         """
-        import datetime
-
         now = datetime.datetime.now()
         t = now.time()
 
@@ -364,7 +370,9 @@ class RefreshWorker(QtCore.QThread):
         # [OPTIMIZED] 使用智能休眠替代 msleep，支持快速响应停止信号
         self._smart_sleep(initial_delay)
 
-        # 多次获取，逐步逼近最终收盘价
+        # 多次获取，逐步逼近最终收盘价；仅至少一次拿到有效数据才标记完成，
+        # 彻底失败时保持 False，让下一轮循环继续重试（而非当天放弃）
+        got_valid_data = False
         for attempt in range(total_attempts):
             if not self._is_running:
                 # 停止时不能置 _closing_data_fetched=True：数据并未真正取到，
@@ -384,6 +392,7 @@ class RefreshWorker(QtCore.QThread):
                     # 有有效数据，用最新数据覆盖本地
                     stock_manager.update_last_stock_data(stocks)
                     self.data_updated.emit(stocks, False)
+                    got_valid_data = True
                     app_logger.info(
                         f"收盘数据获取完成（第{attempt + 1}/{total_attempts}次），"
                         f"已更新 {len(stocks)} 只股票的收盘行情"
@@ -406,7 +415,10 @@ class RefreshWorker(QtCore.QThread):
                 backoff_time = retry_interval * (attempt + 1)
                 self._smart_sleep(backoff_time)
 
-        self._closing_data_fetched = True
+        if got_valid_data:
+            self._closing_data_fetched = True
+        else:
+            app_logger.warning("收盘数据获取全部失败，本轮不标记完成，稍后将重试")
         app_logger.info("收盘数据获取流程结束")
 
     def _handle_first_fetch_result(

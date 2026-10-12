@@ -35,11 +35,13 @@ class UpdateChecker:
                 return None  # 网络问题，无法确定是否有新版本
 
             self.latest_release_info = release_info
-            latest_version = (
-                release_info.get("tag_name", "")
-                .replace("stock_monitor_", "")
-                .replace("v", "")
-            )
+            # tag_name 可能显式为 None，用 or "" 兜底避免 .replace 报错
+            tag_name = release_info.get("tag_name") or ""
+            latest_version = tag_name.replace("stock_monitor_", "").replace("v", "")
+
+            if not latest_version:
+                app_logger.warning(f"无法从 tag_name 解析版本号: {tag_name!r}")
+                return None
 
             app_logger.info(
                 f"当前版本：{self.current_version}, 最新版本：{latest_version}"

@@ -218,8 +218,9 @@ class ConfigManager:
             with self._instance_lock:
                 if not getattr(self, "_dirty", False):
                     return
-                self._dirty = False
-                self._save_config()
+                # 保存成功才清除脏标记，失败时保留以便下次 set/flush 重试
+                if self._save_config():
+                    self._dirty = False
 
         t = threading.Timer(delay, _fire)
         t.daemon = True
@@ -234,8 +235,10 @@ class ConfigManager:
                 self._flush_timer = None
             if not getattr(self, "_dirty", False):
                 return True
+            if not self._save_config():
+                return False
             self._dirty = False
-            return self._save_config()
+            return True
 
     def _create_default_config(self) -> dict[str, Any]:
         """创建默认配置文件（原子写入）"""
@@ -313,10 +316,12 @@ class ConfigManager:
             backup_msg = f"原配置文件已备份为: {backup_path}"
             app_logger.info(backup_msg)
 
-        # 创建默认配置文件
+        # 创建默认配置文件（原子写入，防止中断导致文件损坏）
         default_config = self._get_default_config()
-        with open(self.config_path, "w", encoding="utf-8") as f:
+        tmp_path = self.config_path + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(default_config, f, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, self.config_path)
         app_logger.info(f"默认配置文件已创建: {self.config_path}")
         self._config = default_config
         return default_config

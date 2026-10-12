@@ -302,6 +302,7 @@ class DisplaySettingsPage(SettingsPage):
 
             if font_size <= 0:
                 app_logger.warning(f"检测到非法的字体大小: {font_size}，自动修正为 13")
+                font_size = 13
             app_logger.debug(f"预览字体设置: {font_family}, {font_size}px")
 
             # 预览只写入主窗口内存态，点击“确定”时再统一持久化

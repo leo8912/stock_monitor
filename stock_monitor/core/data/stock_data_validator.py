@@ -13,13 +13,16 @@ class StockDataValidator:
     @staticmethod
     def is_valid(stock_data: dict[str, Any]) -> bool:
         """
-        检查股票数据是否完整有效
+        检查股票数据基础有效性（仅核心价格字段 now/close 存在且为有限数值）。
+
+        如需完整性校验（含 name/open/high/low/volume），请使用
+        :meth:`validate_required_fields`。
 
         Args:
             stock_data: 股票数据字典
 
         Returns:
-            bool: 数据是否有效
+            bool: 数据基础有效性
         """
         if not isinstance(stock_data, dict):
             return False
@@ -40,11 +43,14 @@ class StockDataValidator:
 
     @staticmethod
     def handle_special_cases(
-        info: dict[str, Any], pure_code: str, code: str, should_copy: bool = False
+        info: dict[str, Any], pure_code: str, code: str, should_copy: bool = True
     ) -> dict[str, Any] | None:
         """
         处理特殊情况下的股票数据名称安全网。
         quotes() 现已通过腾讯接口正确获取指数数据，此处仅兜底修正名称。
+
+        默认（should_copy=True）在需要修正名称时复制输入字典，避免原地修改
+        调用方数据；确安全时可传 should_copy=False 省去拷贝开销。
         """
         if pure_code == "000001":
             if code == "sh000001":

@@ -65,7 +65,11 @@ def main() -> None:
 
     # 计算统计
     print(f"正在计算暗盘统计数据（{args.days}天历史）...")
-    stats = calculate_dark_trade_stats(args.codes, history_days=args.days)
+    try:
+        stats = calculate_dark_trade_stats(args.codes, history_days=args.days)
+    except Exception as e:
+        print(f"❌ 计算统计失败: {e}")
+        return
 
     if not stats.get("market_summary"):
         print("⚠️ 无统计数据（可能非交易时段或网络异常）")
@@ -76,20 +80,28 @@ def main() -> None:
 
     if args.export:
         # 导出Excel模式
-        output_path = export_dark_trade_stats_excel(args.codes, history_days=args.days)
-        if output_path:
-            print(f"✅ Excel导出成功: {output_path}")
-        else:
-            print("❌ Excel导出失败或无符合条件的数据")
+        try:
+            output_path = export_dark_trade_stats_excel(
+                args.codes, history_days=args.days
+            )
+            if output_path:
+                print(f"✅ Excel导出成功: {output_path}")
+            else:
+                print("❌ Excel导出失败或无符合条件的数据")
+        except Exception as e:
+            print(f"❌ Excel导出异常: {e}")
     elif args.push:
         # 推送模式
-        from stock_monitor.core.config_center import config_center
+        try:
+            from stock_monitor.core.config_center import config_center
 
-        success = push_dark_trade_stats(config_center.snapshot(), args.codes)
-        if success:
-            print("✅ 推送成功")
-        else:
-            print("❌ 推送失败")
+            success = push_dark_trade_stats(config_center.snapshot(), args.codes)
+            if success:
+                print("✅ 推送成功")
+            else:
+                print("❌ 推送失败")
+        except Exception as e:
+            print(f"❌ 推送异常: {e}")
     else:
         # 打印模式
         print("\n" + message)

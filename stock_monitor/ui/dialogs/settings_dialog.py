@@ -196,7 +196,9 @@ class NewSettingsDialog(QDialog):
             myappid = "stock.monitor.settings"
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
         except Exception:
-            pass
+            from stock_monitor.utils.logger import app_logger
+
+            app_logger.debug("设置 Windows 任务栏图标标识失败", exc_info=True)
 
     def _setup_windows_caption_color(self) -> None:
         """设置 Windows 10/11 标题栏颜色（仅 Windows 平台）"""

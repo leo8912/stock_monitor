@@ -348,8 +348,7 @@ class MainWindowViewModel(QObject):
 
     def trigger_manual_report(self) -> None:
         """立即触发手动汇总复盘报告（在 QuantWorker 后台线程内执行，不阻塞 UI）"""
-        if not self._quant_worker:
-            return
+        # _quant_worker 在 __init__ 中必已创建，直接检查运行状态即可
         app_logger.info("触发手动复盘报告生成（后台异步）...")
         # 若后台线程未运行（如量化开关关闭），先启动以便异步消费请求
         if not self._quant_worker.isRunning():

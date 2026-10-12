@@ -53,6 +53,10 @@ def get_stock_emoji(code, name):
     Returns:
         str: 对应的emoji字符
     """
+    if not isinstance(code, str):
+        return "⭐️"
+    if not isinstance(name, str):
+        name = ""
     if code.startswith(("sh000", "sz399", "sz159", "sh510")) or (
         name and ("指数" in name or "板块" in name)
     ):

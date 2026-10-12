@@ -369,6 +369,7 @@ class DraggableWindowMixin:
         """Move window to bottom right corner of the screen"""
         if isinstance(self, QtWidgets.QWidget):
             screen = QtWidgets.QApplication.primaryScreen().availableGeometry()
-            self.move(
-                screen.right() - self.width() - 20, screen.bottom() - self.height() - 40
-            )
+            # 窗口大于可用区域时避免算出负坐标把窗口移出屏幕
+            x = max(0, screen.right() - self.width() - 20)
+            y = max(0, screen.bottom() - self.height() - 40)
+            self.move(x, y)

@@ -1,5 +1,21 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.10.9] - 2026-10-12
+
+> 整仓 `ocr scan` 跟进：约 311 条 C/H/M 逐条核实后实修约 84 处；大量 OCR 项为过时/误报，按证据跳过。
+
+### 🐛 修复 (Fixes)
+- **引擎**：波浪图 Datetime 轴整数坐标错位；`quant_report` 空 signals/None 价量；逐笔增量切片双计；`cache_manager` `max_size<=0`；常量映射只读化
+- **数据**：K 线拉取后显式升序排序；港股行情键补前缀；大单/竞价字段容错；Sina 成交额单位（×100 误乘）移除并实盘核对；批量报价并发不再共用同一 easyquotation 实例
+- **服务**：暗盘 `clean_code`/交易日 UTC+8/分页中断响应停止；导出 Excel 用 `with`；收盘调度任务快照迭代
+- **Worker/UI**：`refresh_worker` 停止锁 + 唤醒；`signal_cache` NaN/Inf；测试推送凭据脱敏与竞态；设置对话框若干边界
+- **配置/工具**：配置损坏原子重写、`_dirty` 成功后清除；`get_list` 防御性拷贝；`session_cache` 写盘成功再清 pending；`network_helper` 仅改 scheme；更新链 checker 空 tag、哈希响应 close 兼容 mock
+- **脚本**：`multi_stock_analysis` 补 `pandas_ta` 导入与背离取点；`prepare_base_db` 连接 `finally` 关闭
+- **CI**：pack-release 超时与权限收紧、release 版本校验
+
+### 🧪 测试 (Tests)
+- 749 passed / 3 skipped；`ruff check` / `format` 全绿
+
 ## [v4.10.8] - 2026-10-12
 
 > ponytail-review 跟进：防抖占位失败回滚、扫描代际守卫、更新 BAT 去 delayed expansion、事件降级日志降噪。

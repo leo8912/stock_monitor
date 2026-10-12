@@ -394,12 +394,19 @@ class WaveChartDialog(QtWidgets.QDialog):
             self._card_labels["wave_main"].setText(f"失败: {error_msg}")
 
     def _update_cards(self, result):
-        cw = result.current_wave
+        cw = result.current_wave or {}
         wave = cw.get("wave", "?")
         trend = cw.get("trend", "")
         conf = cw.get("confidence", 0) * 100
-        trend_text = "看涨" if trend == "bullish" else "看跌"
-        trend_color = RED if trend == "bullish" else GREEN
+        if trend == "bullish":
+            trend_text = "看涨"
+            trend_color = RED
+        elif trend == "bearish":
+            trend_text = "看跌"
+            trend_color = GREEN
+        else:
+            trend_text = "未知"
+            trend_color = TEXT_COLOR
 
         # 卡片1: 当前浪位
         self._card_labels["wave_main"].setText(f"第{wave}浪")
@@ -531,14 +538,11 @@ class WaveChartDialog(QtWidgets.QDialog):
         plot_df = df.iloc[start_idx:].copy()
         plot_df.index = pd.to_datetime(plot_df["datetime"])
 
-        # ZigZag线数据
-        zigzag_data = pd.Series(index=plot_df.index, dtype=float)
+        # ZigZag线数据（仅保留可见窗口内的摆动点用于连线）
         valid_swings = []
         for s in swings:
             sub_idx = s.index - start_idx
             if 0 <= sub_idx < plot_len:
-                dt_label = plot_df.index[sub_idx]
-                zigzag_data.loc[dt_label] = s.price
                 valid_swings.append((sub_idx, s))
 
         # 暗色主题

@@ -191,6 +191,8 @@ class StockTable(QtWidgets.QTableView):
         rows = model.rowCount()
         cols = model.columnCount()
         # 采样首尾与中间行，避免全表测量
+        # 注：指标字体用 self.font() 而非 FontRole——+12 的阈值余量是按
+        # 控件字体调校的；换 FontRole 会让闸门恒为真、每次刷新都全量 resize
         sample_rows = sorted({0, rows // 2, max(0, rows - 1)})
         metrics = QtGui.QFontMetrics(self.font())
         for row in sample_rows:

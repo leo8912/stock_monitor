@@ -7,13 +7,14 @@ sys.path.append(
     os.path.join(os.path.dirname(__file__), "../../stock_monitor/_internal")
 )
 import akshare as ak
+import pandas_ta  # noqa: F401  注册 df.ta 访问器
 
 
 def analyze_stock(symbol, name):
     """综合分析单只股票"""
-    print(f'\n{"="*60}')
+    print(f"\n{'=' * 60}")
     print(f"分析：{symbol} {name}")
-    print(f'{"="*60}')
+    print(f"{'=' * 60}")
 
     try:
         # 获取日线数据
@@ -64,7 +65,7 @@ def analyze_stock(symbol, name):
             and macd_hist_at_low > prev_macd_hist_at_low
         )
 
-        print(f'  日线级别：{"✓ 出现底背离" if daily_divergence else "× 无底背离"}')
+        print(f"  日线级别：{'✓ 出现底背离' if daily_divergence else '× 无底背离'}")
         print(
             f"    - 近期低价：{price_low_val:.2f} vs 前期低价：{prev_price_low_val:.2f}"
         )
@@ -77,11 +78,12 @@ def analyze_stock(symbol, name):
 
             p_low_15 = recent_15["close"].min()
             p_low_prev_15 = prev_15["close"].min()
-            m_low_15 = recent_15["MACDh_12_26_9"].min()
-            m_low_prev_15 = prev_15["MACDh_12_26_9"].min()
+            # 与日线逻辑一致：取价格低点对应的 MACD 柱值，而非柱值自身的最小值
+            m_low_15 = recent_15.loc[recent_15["close"].idxmin(), "MACDh_12_26_9"]
+            m_low_prev_15 = prev_15.loc[prev_15["close"].idxmin(), "MACDh_12_26_9"]
 
             m60_divergence = p_low_15 < p_low_prev_15 and m_low_15 > m_low_prev_15
-            print(f'  短周期级别：{"✓ 出现底背离" if m60_divergence else "× 无底背离"}')
+            print(f"  短周期级别：{'✓ 出现底背离' if m60_divergence else '× 无底背离'}")
         else:
             m60_divergence = False
             print("  短周期级别：数据不足")
@@ -92,13 +94,13 @@ def analyze_stock(symbol, name):
         bbu_cols = [c for c in df.columns if c.startswith("BBU_")]
         bbb_cols = [c for c in df.columns if c.startswith("BBB_")]
 
+        position = ""
         if bbl_cols and bbu_cols:
             current_price = df["close"].iloc[-1]
             lower_band = df[bbl_cols[0]].iloc[-1]
             upper_band = df[bbu_cols[0]].iloc[-1]
             bb_width = df[bbb_cols[0]].iloc[-1] if bbb_cols else None
 
-            position = ""
             if current_price <= lower_band * 1.008:
                 position = "🟢 下轨支撑位"
             elif current_price >= upper_band * 0.992:
@@ -115,7 +117,7 @@ def analyze_stock(symbol, name):
             if bbb_cols and len(df) >= 100:
                 min_bb_width = df[bbb_cols[0]].iloc[-100:].min()
                 is_squeeze = bb_width <= min_bb_width * 1.05
-                print(f'  布林带收口：{"✓ 是 (变盘前兆)" if is_squeeze else "× 否"}')
+                print(f"  布林带收口：{'✓ 是 (变盘前兆)' if is_squeeze else '× 否'}")
 
         # ===== 3. OBV 吸筹检测 =====
         print("\n【3. OBV 资金流向】")
@@ -125,7 +127,7 @@ def analyze_stock(symbol, name):
             obv_avg = obv_recent.mean()
 
             accumulation = obv_ma5 > obv_avg * 1.05
-            print(f'  OBV 吸筹信号：{"✓ 是" if accumulation else "× 否"}')
+            print(f"  OBV 吸筹信号：{'✓ 是' if accumulation else '× 否'}")
             print(f"  OBV 5 日均：{obv_ma5:.0f}, 20 日均：{obv_avg:.0f}")
 
         # ===== 4. RSI 超卖检测 =====
@@ -211,9 +213,9 @@ results.append(analyze_stock("002600", "领益智造"))
 results.append(analyze_stock("000887", "万向钱潮"))
 
 # 对比总结
-print(f'\n\n{"="*60}')
+print(f"\n\n{'=' * 60}")
 print("【对比总结】")
-print(f'{"="*60}')
+print(f"{'=' * 60}")
 for r in results:
     if r:
         print(

@@ -82,6 +82,6 @@ Thumbs.db
 activate_env.bat
 VENV_GUIDE.md
 
-# ���������ɵı�������
+# 生成的分析报告与 pytest 临时目录
 analysis_reports/
 .pytest_tmp/

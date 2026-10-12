@@ -3,6 +3,7 @@
 提供统一的股票数据获取接口
 """
 
+import threading
 from typing import Any
 
 from stock_monitor.models.stock_data import StockRowData
@@ -34,6 +35,8 @@ class StockDataService:
         self.fetcher = fetcher or StockDataFetcher()
         self.validator = validator or StockDataValidator()
         self.processor = processor or StockDataProcessor()
+        self._sina_engine = None
+        self._engine_lock = threading.Lock()  # 保护 sina 引擎懒初始化
         app_logger.info("股票数据服务初始化完成")
 
     def get_stock_data(self, code: str) -> dict[str, Any] | None:
@@ -75,13 +78,13 @@ class StockDataService:
         return self.validator.is_valid(stock_data)
 
     def process_stock_data(
-        self, data: dict[str, Any], stocks_list: list[str]
+        self, data: dict[str, Any] | None, stocks_list: list[str]
     ) -> list[StockRowData]:
         """
         处理股票数据,返回格式化的股票列表
 
         Args:
-            data: 股票数据字典
+            data: 股票数据字典,None 视为无数据
             stocks_list: 股票代码列表
 
         Returns:
@@ -89,30 +92,50 @@ class StockDataService:
         """
         from stock_monitor.data.market.quotation import get_name_by_code
 
+        if data is None:
+            app_logger.error("process_stock_data 接收到 None 数据，按无数据处理")
+            data = {}
+
         stocks: list[StockRowData] = []
 
         for code in stocks_list:
-            info = self.validator.get_stock_info(data, code)
+            try:
+                info = self.validator.get_stock_info(data, code)
 
-            if info:
-                # 使用 StockDataProcessor 处理单只股票数据
-                result = self.processor.process_raw_data(code, info)
-                stocks.append(result)
-                app_logger.debug(f"股票 {code} 数据处理完成")
-            else:
-                # 如果没有获取到数据,显示默认值（与正常分支保持同构，避免 tuple 混排）
-                name = code
-                # 尝试从本地数据获取股票名称
-                local_name = get_name_by_code(code)
-                if local_name:
-                    name = local_name
-                    # 对于港股,只保留中文部分
-                    if code.startswith("hk") and "-" in name:
-                        name = name.split("-")[0].strip()
+                if info:
+                    # 使用 StockDataProcessor 处理单只股票数据
+                    result = self.processor.process_raw_data(code, info)
+                    stocks.append(result)
+                    app_logger.debug(f"股票 {code} 数据处理完成")
+                else:
+                    # 如果没有获取到数据,显示默认值（与正常分支保持同构，避免 tuple 混排）
+                    name = code
+                    # 尝试从本地数据获取股票名称
+                    local_name = get_name_by_code(code)
+                    if local_name:
+                        name = local_name
+                        # 对于港股,只保留中文部分
+                        if code.startswith("hk") and "-" in name:
+                            name = name.split("-")[0].strip()
+                    stocks.append(
+                        StockRowData(
+                            code=code,
+                            name=name,
+                            price="--",
+                            change_str="--",
+                            color_hex="#e6eaf3",
+                            seal_vol="",
+                            seal_type="",
+                        )
+                    )
+                    app_logger.warning(f"未获取到股票 {code} 的数据")
+            except Exception as e:
+                # 单只股票处理异常不影响整批，生成占位数据继续
+                app_logger.warning(f"处理股票 {code} 数据时异常，使用占位数据: {e}")
                 stocks.append(
                     StockRowData(
                         code=code,
-                        name=name,
+                        name=code,
                         price="--",
                         change_str="--",
                         color_hex="#e6eaf3",
@@ -120,7 +143,6 @@ class StockDataService:
                         seal_type="",
                     )
                 )
-                app_logger.warning(f"未获取到股票 {code} 的数据")
 
         app_logger.debug(f"共处理 {len(stocks)} 只股票数据")
         app_logger.info(f"股票数据处理完成: 总计 {len(stocks)} 只股票")
@@ -129,8 +151,10 @@ class StockDataService:
     def _init_sina_if_needed(self):
         import easyquotation
 
-        if not hasattr(self, "_sina_engine") or self._sina_engine is None:
-            self._sina_engine = easyquotation.use("sina")
+        if self._sina_engine is None:
+            with self._engine_lock:
+                if self._sina_engine is None:
+                    self._sina_engine = easyquotation.use("sina")
         return self._sina_engine
 
     def _fetch_market_snapshot(self):

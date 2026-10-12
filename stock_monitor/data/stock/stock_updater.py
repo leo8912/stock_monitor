@@ -42,8 +42,14 @@ def incremental_update_stock_database() -> bool:
         app_logger.info("开始为股票数据添加拼音信息...")
         for stock in stocks_data:
             name = stock["name"]
-            # 去除*ST、ST等前缀，避免影响拼音识别
-            base = name.replace("*", "").replace("ST", "").replace(" ", "")
+            # 仅移除开头的 *ST/ST 前缀（避免误删名称中间的 "ST" 字符）
+            if name.startswith("*ST"):
+                base = name[3:]
+            elif name.startswith("ST"):
+                base = name[2:]
+            else:
+                base = name
+            base = base.replace(" ", "")
             # 生成全拼
             full_pinyin = "".join(lazy_pinyin(base))
             # 生成首字母缩写

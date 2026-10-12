@@ -36,8 +36,12 @@ class ConfigCenter:
     def __init__(self):
         if self._initialized:
             return
-        self._manager = ConfigManager()
-        self._initialized = True
+        # 用类锁保护初始化，防止双线程同时进入导致重复初始化
+        with ConfigCenter._lock:
+            if self._initialized:
+                return
+            self._manager = ConfigManager()
+            self._initialized = True
 
     # ── 类型安全读取 ──────────────────────────────────────────────
 
@@ -77,8 +81,9 @@ class ConfigCenter:
     def get_list(self, key: str, default: list | None = None) -> list:
         value = self._manager.get(key, default or [])
         if isinstance(value, list):
-            return value
-        return default or []
+            # 防御性拷贝，防止调用方意外修改内部配置
+            return list(value)
+        return list(default or [])
 
     def get(self, key: str, default: Any = None) -> Any:
         return self._manager.get(key, default)

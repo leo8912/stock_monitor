@@ -42,11 +42,12 @@ class SafeRequest:
         **kwargs,
     ) -> requests.Response | None:
         """安全 GET；失败抛 NetworkRequestError / HTTPStatusError。"""
-        if not url.startswith("https://"):
+        if url.startswith("http://"):
             from ..utils.logger import app_logger
 
             app_logger.warning(f"非 HTTPS URL，已强制转换：{url}")
-            url = url.replace("http://", "https://")
+            # 仅替换前缀，避免 url.replace 改写查询串里的 http:// 字面量
+            url = "https://" + url[len("http://") :]
 
         try:
             resp = requests.get(
@@ -80,11 +81,12 @@ class SafeRequest:
         **kwargs,
     ) -> requests.Response | None:
         """安全 POST；失败抛 NetworkRequestError / HTTPStatusError。"""
-        if not url.startswith("https://"):
+        if url.startswith("http://"):
             from ..utils.logger import app_logger
 
             app_logger.warning(f"非 HTTPS URL，已强制转换：{url}")
-            url = url.replace("http://", "https://")
+            # 仅替换前缀，避免 url.replace 改写查询串里的 http:// 字面量
+            url = "https://" + url[len("http://") :]
 
         try:
             resp = requests.post(

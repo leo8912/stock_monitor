@@ -66,6 +66,7 @@ class MootdxNameRegistry:
         self._parent = parent  # 持有父对象引用以访问延迟初始化的 client
         self._name_cache = self._load_name_cache()
         self._last_sync_ts = 0.0  # 上次全量同步时间（monotonic，用于节流）
+        self._sync_throttle_lock = threading.Lock()  # 保护节流检查-占位的原子性
 
     def update_client(self, client) -> None:
         """更新 MarketDataAdapter client 引用"""
@@ -105,6 +106,7 @@ class MootdxNameRegistry:
         """将名称缓存写入磁盘，失败时记录错误但不抛出。"""
         cache_file = self._get_name_cache_file()
         try:
+            os.makedirs(os.path.dirname(cache_file), exist_ok=True)
             with open(cache_file, "w", encoding="utf-8") as f:
                 json.dump(self._name_cache, f, ensure_ascii=False)
         except Exception as e:
@@ -218,10 +220,13 @@ class MootdxNameRegistry:
 
     def get_name(self, symbol: str) -> str:
         """从缓存安全获取名称，支持通过 SymbolResolver 归一化键"""
-        # 1. 尝试归一化键 (如 sh000001 -> sh999999)
-        config = SymbolResolver.resolve(symbol)
-        prefix = SymbolResolver.get_market_prefix(config.market)
-        normalized_key = f"{prefix}{config.code}"
+        # 1. 尝试归一化键 (如 sh000001 -> sh999999)；解析失败时回退原始键
+        try:
+            config = SymbolResolver.resolve(symbol)
+            prefix = SymbolResolver.get_market_prefix(config.market)
+            normalized_key = f"{prefix}{config.code}"
+        except (ValueError, IndexError, AttributeError, TypeError):
+            normalized_key = symbol
 
         # 2. 依次尝试：归一化键 -> 原始键 -> 原始键本身
         return self._name_cache.get(
@@ -235,9 +240,11 @@ class MootdxNameRegistry:
         """
         if not missing_codes:
             return
-        now = time.monotonic()
-        if now - self._last_sync_ts < _SYNC_THROTTLE_SECONDS:
-            return
-        # 先占位时间戳，防止并发路径在同步期间重复触发
-        self._last_sync_ts = now
+        # 锁内完成"检查-占位"，防止并发线程同时通过节流检查触发重复全量同步
+        with self._sync_throttle_lock:
+            now = time.monotonic()
+            if now - self._last_sync_ts < _SYNC_THROTTLE_SECONDS:
+                return
+            # 先占位时间戳，防止并发路径在同步期间重复触发
+            self._last_sync_ts = now
         self.sync_mootdx_names()

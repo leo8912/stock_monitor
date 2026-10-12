@@ -104,9 +104,11 @@ class StockFetcher:
         results = []
         app_logger.info(f"开始并行获取 A 股数据，共 {len(batches)} 个批次...")
 
-        # 并行获取 —— 使用类级别长生命周期线程池
+        # 并行获取 —— 使用类级别长生命周期线程池。
+        # quotation 不跨线程共享（easyquotation 内部 Session 非线程安全），
+        # 每个 worker 在自己的线程内创建独立实例
         futures = {
-            self._executor.submit(self._fetch_batch, batch, quotation): i
+            self._executor.submit(self._fetch_batch, batch): i
             for i, batch in enumerate(batches)
         }
 
@@ -124,10 +126,12 @@ class StockFetcher:
         app_logger.info(f"A 股数据获取完成，共 {len(results)} 只股票")
         return results
 
-    def _fetch_batch(self, batch_codes: list[str], quotation) -> list[dict[str, str]]:
-        """获取单个批次股票数据（供线程池调用）"""
+    def _fetch_batch(self, batch_codes: list[str]) -> list[dict[str, str]]:
+        """获取单个批次股票数据（供线程池调用；quotation 在本线程内创建）"""
         results = []
         try:
+            # 每线程独立 quotation，避免共享 Session 的并发竞态
+            quotation = easyquotation.use("sina")
             # 分离特殊代码
             special_codes = [c for c in batch_codes if c in ["sh000001", "sz000001"]]
             normal_map = {
@@ -226,8 +230,10 @@ class StockFetcher:
                             s_name = convert(s_name, "zh-hans")
                             if "-" in s_name:
                                 s_name = s_name.split("-")[0].strip()
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            app_logger.warning(
+                                f"港股名称转换失败 code={code} name={name}: {e}"
+                            )
 
                         hk_stocks.append({"code": f"hk{code}", "name": s_name})
         except Exception as e:

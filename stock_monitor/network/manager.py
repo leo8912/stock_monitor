@@ -39,8 +39,8 @@ class NetworkManager:
         self.max_attempts = max_attempts
         self.enable_retry = enable_retry
         self._headers = {
-            # 版本号应与 stock_monitor 版本保持同步
-            "User-Agent": "StockMonitor/4.9 (Windows; Python)",
+            # 版本号应与 stock_monitor 版本保持同步（pyproject.toml version）
+            "User-Agent": "StockMonitor/4.10.8 (Windows; Python)",
             "Accept": "application/vnd.github.v3+json",
         }
         self._local = threading.local()

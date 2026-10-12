@@ -928,6 +928,7 @@ class QuantEngine:
                 if not dfs:
                     app_logger.debug(f"{code} 首次大单获取从 TDX 无结果，尝试补偿")
                     # 即使 TDX 没结果，也要尝试盘后补全逻辑
+                    self._fetch_ak_fallback_money_flow(pure_code, market, cache)
                     buy, sell = cache.get("buy_vol", 0.0), cache.get("sell_vol", 0.0)
                     return (buy, sell, buy - sell)
 
@@ -987,7 +988,8 @@ class QuantEngine:
                         cache["buy_vol"] - cache["sell_vol"],
                     )
 
-                new_added_df = df.iloc[start_idx + len(last_tail) :]
+                # start_idx 已是匹配指纹之后的“全新数据起始位”，不可再叠加指纹长度
+                new_added_df = df.iloc[start_idx:]
 
                 if not new_added_df.empty:
                     new_added_df = new_added_df.copy()
