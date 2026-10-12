@@ -82,6 +82,13 @@ class TestStockDataFetcher(unittest.TestCase):
         # Verify 'hkquote' was initialized (called on the mock)
         self.mock_init_use.assert_any_call("hkquote")
 
+    def test_get_quotation_engine_a_share_returns_sina(self):
+        """非港股路径返回 sina 客户端（修复前恒 None）。"""
+        mock_sina = MagicMock()
+        self.fetcher._sina_client = mock_sina
+        self.assertIs(self.fetcher.get_quotation_engine("sh600000"), mock_sina)
+        self.assertIs(self.fetcher.get_quotation_engine("sz000001"), mock_sina)
+
 
 if __name__ == "__main__":
     unittest.main()

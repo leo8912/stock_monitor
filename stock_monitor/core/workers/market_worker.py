@@ -81,8 +81,8 @@ class MarketStatsWorker(BaseWorker):
                 continue
 
             name = info.get("name", "")
-            # 跳过指数类聚合行
-            if "指数" in name or "A股" in name:
+            # 跳过指数类聚合行（新浪实际名称为全角「Ａ股指数」等，靠「指数」命中）
+            if "指数" in name:
                 continue
 
             try:

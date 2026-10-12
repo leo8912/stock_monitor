@@ -95,6 +95,8 @@ class QuantWorker(QtCore.QThread):
         self._load_signal_cache()
         # 主循环存盘计数器（run() 每次启动时重置）
         self._save_cache_counter = 0
+        # 扫描代际：超时 abandon 的旧任务在下一轮开始后应直接退出
+        self._scan_generation = 0
 
     def set_symbols(self, symbols: list[str]) -> None:
         """设置监控标的（G-11：存副本，避免与扫描线程共享同一 list 对象）。
@@ -676,6 +678,10 @@ class QuantWorker(QtCore.QThread):
         """并行量化扫描（ThreadPoolExecutor 优化版）"""
         self.scan_started.emit()
         try:
+            with self._lock:
+                self._scan_generation += 1
+                scan_gen = self._scan_generation
+
             # G-11：使用标的快照，避免主线程并发替换导致漏扫/迭代异常
             symbols = self._symbols_snapshot()
             app_logger.info(f"开始并行量化扫描，监控标的：{len(symbols)} 只")
@@ -710,7 +716,7 @@ class QuantWorker(QtCore.QThread):
             try:
                 # 提交所有扫描任务
                 futures = {
-                    executor.submit(self._scan_single_symbol, symbol): symbol
+                    executor.submit(self._scan_single_symbol, symbol, scan_gen): symbol
                     for symbol in symbols
                 }
 
@@ -737,11 +743,16 @@ class QuantWorker(QtCore.QThread):
             # 无论正常完成、超时还是异常都必须发出，否则 UI 扫描中状态卡死
             self.scan_finished.emit()
 
-    def _scan_single_symbol(self, symbol: str) -> dict:
+    def _scan_single_symbol(self, symbol: str, scan_gen: int | None = None) -> dict:
         """扫描单只股票（供线程池调用）
 
         数据获取依赖 engine/backtester，决策规则见 scan_rules 纯函数模块。
+        scan_gen 不匹配表示本轮已被更新的扫描取代（超时 abandon 后的旧任务）。
         """
+        if scan_gen is not None:
+            with self._lock:
+                if scan_gen != self._scan_generation:
+                    return None
         try:
             stock_name = self.fetcher.name_registry.get_name(symbol)
             code, market, _ = self.engine._parse_symbol(symbol)
@@ -984,14 +995,22 @@ class QuantWorker(QtCore.QThread):
             if metric_text:
                 merged["cycle_info"] += f"\n{metric_text}"
             merged["cycle_info"] += f"\n{daily_wave_text}{h60_wave_text}"
-            NotifierService.dispatch_alert(
-                config=self.config,
-                symbol=symbol,
-                stock_name=merged["title"].replace(f" ({symbol})", ""),
-                signals=[merged["signals_text"]],
-                cycle_info=merged["cycle_info"],
-                price_info=merged["p_info"],
-            )
+            try:
+                NotifierService.dispatch_alert(
+                    config=self.config,
+                    symbol=symbol,
+                    stock_name=merged["title"].replace(f" ({symbol})", ""),
+                    signals=[merged["signals_text"]],
+                    cycle_info=merged["cycle_info"],
+                    price_info=merged["p_info"],
+                )
+            except Exception as e:
+                # 发送失败回滚防抖占位，否则冷却期内无法重试
+                app_logger.error(f"合并推送失败 {symbol}，回滚防抖占位: {e}")
+                for ps in pending_signals:
+                    with self._lock:
+                        self._signal_states.pop((symbol, ps["sig_name"]), None)
+                return triggered
             app_logger.info(f"发送合并推送：{symbol} ({len(pending_signals)}个信号)")
 
             # 更新所有信号的状态
@@ -1069,17 +1088,27 @@ class QuantWorker(QtCore.QThread):
             info = self._build_individual_cycle_info(
                 symbol, stock_name, ps, daily_wave_text, h60_wave_text, metric_text
             )
-            NotifierService.dispatch_alert(
-                config=self.config,
-                symbol=symbol,
-                stock_name=info["display_name"],
-                signals=[
-                    f"{ps['sig_name']}{info['display_sig']} [评分：{ps['score']:+}分]",
-                    info["fin_info"],
-                ],
-                cycle_info=info["cycle_info"],
-                price_info=ps["p_info"],
-            )
+            try:
+                NotifierService.dispatch_alert(
+                    config=self.config,
+                    symbol=symbol,
+                    stock_name=info["display_name"],
+                    signals=[
+                        f"{ps['sig_name']}{info['display_sig']} "
+                        f"[评分：{ps['score']:+}分]",
+                        info["fin_info"],
+                    ],
+                    cycle_info=info["cycle_info"],
+                    price_info=ps["p_info"],
+                )
+            except Exception as e:
+                # 发送失败回滚防抖占位，否则冷却期内无法重试
+                app_logger.error(
+                    f"推送失败 {symbol}/{ps['sig_name']}，回滚防抖占位: {e}"
+                )
+                with self._lock:
+                    self._signal_states.pop((symbol, ps["sig_name"]), None)
+                continue
             app_logger.info(
                 f"发送量化异动即时推送：{stock_name} ({ps['sig_name']}) [{ps['reason']}]"
             )

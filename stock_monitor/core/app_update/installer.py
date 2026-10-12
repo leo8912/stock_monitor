@@ -8,8 +8,12 @@ from stock_monitor.utils.logger import app_logger
 
 
 def _bat_escape(value: str) -> str:
-    """转义会破坏 BAT 语法的字符：``%`` 触发变量展开、``!`` 被 delayed expansion 吞掉。"""
-    return value.replace("%", "%%").replace("!", "^!")
+    """转义 BAT 中的 ``%``（变量展开）。
+
+    脚本全程不使用 delayed expansion，因此路径中的 ``!`` 可原样保留；
+    在 enabledelayedexpansion 下对 ``!`` 做 ``^!`` 转义在双引号内并不可靠。
+    """
+    return value.replace("%", "%%")
 
 
 class UpdateInstaller:
@@ -69,31 +73,30 @@ class UpdateInstaller:
             # 确保配置目录存在
             config_dir.mkdir(exist_ok=True)
 
-            # 路径含 %/! 时会破坏 BAT 语法（变量展开 / delayed expansion），先转义
+            # 路径含 % 时会触发 BAT 变量展开；! 在无 delayed expansion 下安全
             cfg_dir_b = _bat_escape(str(config_dir.absolute()))
             src_dir_b = _bat_escape(str(source_dir.absolute()))
             app_dir_b = _bat_escape(str(app_dir.absolute()))
             temp_dir_b = _bat_escape(str(temp_dir.absolute()))
 
-            # BAT 脚本内容 (增强版 - 带有强制终止逻辑)
+            # BAT 脚本内容：不用 delayed expansion（! 路径安全）；
+            # 循环用 goto + if errorlevel，避免 %errorlevel% 在括号块内被延迟解析
             bat_content = f"""@echo off
-setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
 :: 等待主程序退出 (最多等待 10 秒)
 set "wait_count=0"
 :loop
 tasklist /FI "PID eq {current_pid}" 2>nul | find "{current_pid}" >nul 2>&1
-if %errorlevel%==0 (
-    set /a wait_count+=1
-    if !wait_count! GTR 10 (
-        echo %date% %time% Timeout waiting for {current_pid}, attempting taskkill... >> "{cfg_dir_b}\\update_log.txt"
-        taskkill /F /PID {current_pid} >nul 2>&1
-        goto proceed
-    )
-    timeout /t 1 /nobreak >nul 2>&1
-    goto loop
-)
+if errorlevel 1 goto proceed
+set /a wait_count+=1
+if %wait_count% GEQ 10 goto force_kill
+timeout /t 1 /nobreak >nul 2>&1
+goto loop
+
+:force_kill
+echo %date% %time% Timeout waiting for {current_pid}, attempting taskkill... >> "{cfg_dir_b}\\update_log.txt"
+taskkill /F /PID {current_pid} >nul 2>&1
 
 :proceed
 :: 额外保险：确保没有其他重名进程在运行（如果有多个实例）
@@ -102,14 +105,13 @@ timeout /t 1 /nobreak >nul 2>&1
 
 :: 替换文件
 xcopy /Y /E /H /R "{src_dir_b}\\*" "{app_dir_b}" >nul 2>&1
-if %errorlevel% NEQ 0 (
-    :: 尝试下一次重试，可能因为文件被占用需要一点点时间完全释放
-    timeout /t 2 /nobreak >nul 2>&1
-    xcopy /Y /E /H /R "{src_dir_b}\\*" "{app_dir_b}" >nul 2>&1
-)
+if not errorlevel 1 goto copied
+:: 可能因为文件被占用需要一点点时间完全释放
+timeout /t 2 /nobreak >nul 2>&1
+xcopy /Y /E /H /R "{src_dir_b}\\*" "{app_dir_b}" >nul 2>&1
+if errorlevel 1 goto error
 
-if %errorlevel% NEQ 0 goto error
-
+:copied
 :: 清理临时文件
 rmdir /S /Q "{temp_dir_b}" >nul 2>&1
 

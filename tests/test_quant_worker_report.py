@@ -74,6 +74,13 @@ class TestQuantWorkerReport(unittest.TestCase):
 
         self.assertEqual(emitted, [])
 
+    def test_run_report_rejects_when_pending(self):
+        """槽位非空时拒绝覆盖，避免前一次请求被静默丢弃。"""
+        worker = self._make_worker()
+        self.assertTrue(worker.run_report("manual"))
+        self.assertFalse(worker.run_report("auto"))
+        self.assertEqual(worker._pending_report_type, "manual")
+
 
 if __name__ == "__main__":
     unittest.main()

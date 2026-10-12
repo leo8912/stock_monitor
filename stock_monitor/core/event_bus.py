@@ -143,8 +143,8 @@ class EventBus:
             return
 
         if _HAS_PYQT:
-            # QTimer 要求调用线程有事件循环，否则事件会被静默丢弃
-            app_logger.error(f"当前线程无 Qt 事件循环，事件 [{topic}] 降级为同步分发")
+            # 工作线程无事件循环是常态，同步兜底是预期路径，不刷 error
+            app_logger.debug(f"当前线程无 Qt 事件循环，事件 [{topic}] 降级为同步分发")
         for callback in subscribers:
             _invoke(callback)
 

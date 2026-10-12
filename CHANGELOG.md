@@ -1,5 +1,20 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.10.8] - 2026-10-12
+
+> ponytail-review 跟进：防抖占位失败回滚、扫描代际守卫、更新 BAT 去 delayed expansion、事件降级日志降噪。
+
+### 🐛 修复 (Fixes)
+- **推送防抖**：`dispatch_alert` 失败时回滚 `_should_push_signal` 写入的占位，冷却期内可重试（合并/单推两条路径）
+- **扫描并发**：超时 abandon 的旧线程任务按 `_scan_generation` 直接退出，不再与下一轮扫描抢写共享状态
+- **更新安装**：`update.bat` 去掉 `enabledelayedexpansion`，路径含 `!` 不再被吞；等待/重试循环改 goto + `if errorlevel`
+- **事件总线**：无 Qt dispatcher 的同步兜底改 `debug`，工作线程发布不再刷 error
+- **市场统计**：去掉无效半角 `"A股"` 过滤（新浪实为全角 `Ａ股指数`，靠「指数」命中）
+
+### 🧪 测试 (Tests)
+- 新增 `tests/test_ponytail_review_fixes.py`：mootdx 切片方向、LRU `ttl_override`、Content-Range 起点、BAT 转义、推送回滚、扫描代际
+- 补：`run_report` 拒绝覆盖、EventBus 无 dispatcher 同步分发、A 股 `get_quotation_engine` 返回 sina、全角指数过滤
+
 ## [v4.10.7] - 2026-10-12
 
 > open-code-review 全仓审查修复：1 critical + 34 high + 72 medium，覆盖更新链、并发竞态、数据正确性与死代码。

@@ -1,6 +1,7 @@
 """Tests for EventBus"""
 
 import threading
+from unittest.mock import patch
 
 from stock_monitor.core.event_bus import EventBus, Topics
 
@@ -140,3 +141,17 @@ class TestEventBus:
 
         # Duplicate subscribe means the callback is registered twice
         assert call_count == [1, 1]
+
+    def test_publish_sync_fallback_without_qt_dispatcher(self):
+        """无 Qt 事件 dispatcher 时同步分发，事件不丢。"""
+        from stock_monitor.core import event_bus as eb
+
+        received = []
+        self.bus.subscribe("fallback.topic", lambda e: received.append(e.data))
+        with (
+            patch.object(eb, "_HAS_PYQT", True),
+            patch.object(eb.QThread, "currentThread") as mock_thread,
+        ):
+            mock_thread.return_value.eventDispatcher.return_value = None
+            self.bus.publish("fallback.topic", data=42)
+        assert received == [42]

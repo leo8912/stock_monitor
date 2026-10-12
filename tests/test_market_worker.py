@@ -16,6 +16,11 @@ class TestMarketStatsWorker:
                 "now": 3000,
                 "close": 2900,
             },  # 指数应被跳过
+            "sh000002": {
+                "name": "Ａ股指数",  # 新浪全角聚合行，靠「指数」过滤
+                "now": 100,
+                "close": 99,
+            },
             "sz000001": {"name": "平安银行", "now": 10.5, "close": 10.0},  # 上涨
             "sz000002": {"name": "万科A", "now": 9.5, "close": 10.0},  # 下跌
             "sz000003": {"name": "PT金田", "now": 0, "close": 0},  # 平盘 (停牌)
@@ -28,7 +33,8 @@ class TestMarketStatsWorker:
         assert stats["up_count"] == 1
         assert stats["down_count"] == 1
         assert stats["flat_count"] == 1
-        assert stats["total_count"] == 3  # PT 金田 now=0 被跳过，无效数据也被跳过
+        # PT 金田 now=0 被跳过，无效数据与两行指数也被跳过
+        assert stats["total_count"] == 3
 
     @patch("stock_monitor.core.market.stock_manager.stock_manager")
     def test_worker_run_flow(self, mock_stock_manager):

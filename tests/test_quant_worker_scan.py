@@ -216,7 +216,7 @@ class TestPerformScanParallel(unittest.TestCase):
         events = []
         self.worker.scan_finished.connect(lambda: events.append("finish"))
 
-        def side_effect(symbol):
+        def side_effect(symbol, *args, **kwargs):
             if symbol == "sh600519":
                 raise RuntimeError("scan boom")
             return {"symbol": symbol, "signals": ["X"]}
@@ -234,7 +234,7 @@ class TestPerformScanParallel(unittest.TestCase):
         self.worker.set_symbols(["sh600519"])
         scanned = []
 
-        def side_effect(symbol):
+        def side_effect(symbol, *args, **kwargs):
             scanned.append(symbol)
             # 模拟扫描期间主线程修改标的列表
             self.worker.set_symbols(["sz000001", "sz000002"])
