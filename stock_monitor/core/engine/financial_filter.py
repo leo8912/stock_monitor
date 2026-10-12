@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import os
 import time
@@ -5,6 +7,9 @@ from typing import Any
 
 from stock_monitor.config.manager import get_config_dir
 from stock_monitor.utils.logger import app_logger
+
+# 抓取失败后的负缓存时长（秒），避免热路径上每轮扫描重复外网请求
+_FETCH_FAIL_TTL = 30 * 60
 
 
 class FinancialFilter:
@@ -15,6 +20,8 @@ class FinancialFilter:
         self.cache_dir = os.path.join(get_config_dir(), "cache", "financials")
         os.makedirs(self.cache_dir, exist_ok=True)
         self.cache_expiry = 24 * 3600  # 缓存有效期24小时
+        # 负缓存: {symbol: 最近一次抓取失败的时间戳}
+        self._fetch_failures: dict[str, float] = {}
 
     def get_financial_audit(self, symbol: str) -> dict[str, Any]:
         """
@@ -28,15 +35,34 @@ class FinancialFilter:
                 'details': dict       # 详细指标
             }
         """
-        # 转换 symbol 格式，akshare 常用 6 位数字
+        # 剥离市场前缀后必须是 6 位数字 A 股代码，否则不发网络请求直接走默认评级
         raw_symbol = symbol
         s_lower = symbol.lower()
-        if s_lower.startswith(("sh", "sz")):
+        if s_lower.startswith(("sh", "sz", "bj")):
             raw_symbol = symbol[2:]
+        elif s_lower.endswith((".sh", ".sz", ".bj")):
+            raw_symbol = symbol[:-3]
+        if not (raw_symbol.isdigit() and len(raw_symbol) == 6):
+            return {
+                "rating": "🟢",
+                "score_offset": 0,
+                "reasons": ["不支持的市场代码，跳过财务审计"],
+                "details": {},
+            }
 
         data = self._get_cached_data(raw_symbol)
         if not data:
+            fail_ts = self._fetch_failures.get(raw_symbol)
+            if fail_ts is not None and time.time() - fail_ts < _FETCH_FAIL_TTL:
+                return {
+                    "rating": "🟢",
+                    "score_offset": 0,
+                    "reasons": ["无法获取财务数据，默认跳过"],
+                    "details": {},
+                }
             data = self._fetch_and_cache(raw_symbol)
+            if not data:
+                self._fetch_failures[raw_symbol] = time.time()
 
         if not data:
             return {
@@ -165,4 +191,9 @@ class FinancialFilter:
             return None
         except OSError as e:
             app_logger.error(f"财务缓存写入失败 {symbol}: {e}")
+            return None
+        except Exception as e:
+            # 兜底：akshare 解析路径的 AttributeError/TypeError/IndexError 等
+            # 不应穿透降级契约，连带丢弃该股票的技术面扫描结果
+            app_logger.error(f"财务抓取未知异常 {symbol}: {e}")
             return None

@@ -28,7 +28,14 @@ def find_sh_index():
 
     print("\nTesting 'sh000001' in quotes (for comparison):")
     df_q = client.quotes(symbol=["sh000001", "sz000001"])
-    print(df_q[["code", "price", "market"]])
+    if (
+        df_q is not None
+        and not df_q.empty
+        and {"code", "price", "market"} <= set(df_q.columns)
+    ):
+        print(df_q[["code", "price", "market"]])
+    else:
+        print("quotes: Empty or missing columns")
 
 
 if __name__ == "__main__":

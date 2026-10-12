@@ -79,9 +79,9 @@ class TestBacktestDivisionGuard(unittest.TestCase):
 
         result = engine.get_strategy_stats("000001", 1, 9)
 
-        # 不应抛异常；唯一的信号点因入场价为 0 被跳过 → 0 胜率
+        # 不应抛异常；唯一的信号点因入场价为 0 被跳过 → 不计入统计
         self.assertIsNotNone(result)
-        self.assertEqual(result["total_signals"], 1)
+        self.assertEqual(result["total_signals"], 0)
         self.assertEqual(result["win_rate"], 0.0)
 
 

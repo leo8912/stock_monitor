@@ -6,6 +6,10 @@
 import datetime
 from threading import Lock
 
+# 法定节假日休市日集合（格式 "YYYY-MM-DD"）。项目内无第三方交易日历数据源，
+# 当前为空集（行为与仅判周末一致）；填入具体日期后 is_market_open 会一并排除。
+_HOLIDAYS: frozenset[str] = frozenset()
+
 
 class MarketSentiment:
     """市场情绪容器（涨跌家数、全市场成交等）"""
@@ -50,13 +54,15 @@ class MarketManager:
 
     def is_market_open(self) -> bool:
         """
-        检查A股是否开市
+        检查A股是否开市（周末 + ``_HOLIDAYS`` 配置的法定节假日 + 交易时段）
 
         Returns:
             bool: 是否开市
         """
         now = datetime.datetime.now()
         if now.weekday() >= 5:  # 周末
+            return False
+        if now.strftime("%Y-%m-%d") in _HOLIDAYS:  # 配置的法定节假日
             return False
         t = now.time()
         return (datetime.time(9, 15) <= t <= datetime.time(11, 30)) or (

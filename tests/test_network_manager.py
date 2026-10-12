@@ -118,11 +118,25 @@ class TestNetworkManagerRetry(unittest.TestCase):
         nm = NetworkManager(timeout=1, enable_retry=False)
         session = MagicMock()
         resp = MagicMock()
+        resp.status_code = 404
         resp.raise_for_status.side_effect = requests.exceptions.HTTPError("404")
         session.request.return_value = resp
         with patch.object(nm, "_session", return_value=session):
             result = nm.get("https://example.com/missing")
         self.assertIsNone(result)
+
+    def test_4xx_does_not_retry(self):
+        """4xx 是永久性错误：即使启用重试也只请求一次，不做退避。"""
+        nm = NetworkManager(timeout=1, max_attempts=3)
+        session = MagicMock()
+        resp = MagicMock()
+        resp.status_code = 404
+        resp.raise_for_status.side_effect = requests.exceptions.HTTPError("404")
+        session.request.return_value = resp
+        with patch.object(nm, "_session", return_value=session):
+            result = nm.get("https://example.com/missing")
+        self.assertIsNone(result)
+        self.assertEqual(session.request.call_count, 1)
 
 
 class TestNetworkManagerThreadLocalSession(unittest.TestCase):

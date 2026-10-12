@@ -9,6 +9,7 @@
 
 import atexit
 import concurrent.futures
+import threading
 import time
 from typing import Any
 
@@ -20,7 +21,6 @@ from stock_monitor.utils.logger import app_logger
 
 # 常量定义
 MAX_RETRY_ATTEMPTS = 5  # 股票数据获取最大重试次数
-RETRY_DELAY_SECONDS = 2  # 重试间隔(秒)
 
 
 class StockDataFetcher:
@@ -37,6 +37,8 @@ class StockDataFetcher:
         self._market_adapter = None
         # 备用数据源：新浪接口客户端（延迟初始化）
         self._sina_client = None
+        # 惰性初始化锁：单例会被多线程并发访问 market_adapter/sina_client
+        self._lazy_init_lock = threading.Lock()
 
         # 传入 self 引用，让 name_registry 可以访问父对象
         self.name_registry = MootdxNameRegistry(parent=self)
@@ -46,21 +48,23 @@ class StockDataFetcher:
 
     @property
     def market_adapter(self):
-        """延迟初始化 MarketDataAdapter - 只在第一次访问时创建"""
+        """延迟初始化 MarketDataAdapter - 只在第一次访问时创建（双检锁防并发重复构造）"""
         if self._market_adapter is None:
-            try:
-                app_logger.info("初始化 MarketDataAdapter...")
-                self._market_adapter = MarketDataAdapter()
-                app_logger.info("MarketDataAdapter 初始化成功")
-                # 更新 name_registry 的 client
-                self.name_registry.mootdx_client = self._market_adapter
-            except Exception as e:
-                import traceback
+            with self._lazy_init_lock:
+                if self._market_adapter is None:
+                    try:
+                        app_logger.info("初始化 MarketDataAdapter...")
+                        self._market_adapter = MarketDataAdapter()
+                        app_logger.info("MarketDataAdapter 初始化成功")
+                        # 更新 name_registry 的 client
+                        self.name_registry.mootdx_client = self._market_adapter
+                    except Exception as e:
+                        import traceback
 
-                error_detail = traceback.format_exc()
-                app_logger.error(f"初始化 MarketDataAdapter 失败：{e}")
-                app_logger.error(f"详细错误堆栈:\n{error_detail}")
-                self._market_adapter = None
+                        error_detail = traceback.format_exc()
+                        app_logger.error(f"初始化 MarketDataAdapter 失败：{e}")
+                        app_logger.error(f"详细错误堆栈:\n{error_detail}")
+                        self._market_adapter = None
         return self._market_adapter
 
     # 向后兼容属性: 兼容旧代码通过 mootdx_client 访问
@@ -71,14 +75,16 @@ class StockDataFetcher:
 
     @property
     def sina_client(self):
-        """延迟初始化 sina 备用行情客户端"""
+        """延迟初始化 sina 备用行情客户端（双检锁防并发重复构造）"""
         if self._sina_client is None:
-            try:
-                self._sina_client = easyquotation.use("sina")
-                app_logger.info("Sina 备用行情引擎初始化成功")
-            except Exception as e:
-                app_logger.error(f"初始化 Sina 备用行情引擎失败：{e}")
-                self._sina_client = None
+            with self._lazy_init_lock:
+                if self._sina_client is None:
+                    try:
+                        self._sina_client = easyquotation.use("sina")
+                        app_logger.info("Sina 备用行情引擎初始化成功")
+                    except Exception as e:
+                        app_logger.error(f"初始化 Sina 备用行情引擎失败：{e}")
+                        self._sina_client = None
         return self._sina_client
 
     def close(self):
@@ -102,7 +108,10 @@ class StockDataFetcher:
             if quotation_engine:
                 app_logger.debug(f"使用 hkquote 引擎获取港股 {code} 数据")
             return quotation_engine
-        return None
+        # A股/其它代码走新浪备用客户端；easyquotation Sina.stocks(code, prefix=True)
+        # 以 sh/sz 前缀为键返回，与 fetch_single_stock 的 A 股分支匹配。
+        # （修复前对非港股恒返回 None，导致 fetch_single 对 A 股永远拿不到数据）
+        return self.sina_client
 
     def fetch_single_stock(
         self, quotation_engine, code: str, query_code: str
@@ -198,8 +207,6 @@ class StockDataFetcher:
         Returns:
             Dict[str, Optional[Dict[str, Any]]]: 股票数据字典,键为股票代码,值为股票数据或None
         """
-        import threading
-
         result = {}
         result_lock = threading.Lock()
 

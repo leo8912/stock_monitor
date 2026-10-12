@@ -7,6 +7,11 @@ from pathlib import Path
 from stock_monitor.utils.logger import app_logger
 
 
+def _bat_escape(value: str) -> str:
+    """转义会破坏 BAT 语法的字符：``%`` 触发变量展开、``!`` 被 delayed expansion 吞掉。"""
+    return value.replace("%", "%%").replace("!", "^!")
+
+
 class UpdateInstaller:
     """负责将下载好的应用包进行安装"""
 
@@ -49,8 +54,9 @@ class UpdateInstaller:
                     break
 
             app_logger.info(f"更新源目录: {source_dir}")
-            if source_dir == temp_dir:
-                app_logger.info("注意: 未在子目录找到exe，将使用解压根目录作为源")
+            if not (source_dir / "stock_monitor.exe").is_file():
+                app_logger.error("更新包内未找到 stock_monitor.exe，中止更新")
+                return False
 
             app_logger.info("正在生成静默更新脚本...")
 
@@ -62,6 +68,12 @@ class UpdateInstaller:
 
             # 确保配置目录存在
             config_dir.mkdir(exist_ok=True)
+
+            # 路径含 %/! 时会破坏 BAT 语法（变量展开 / delayed expansion），先转义
+            cfg_dir_b = _bat_escape(str(config_dir.absolute()))
+            src_dir_b = _bat_escape(str(source_dir.absolute()))
+            app_dir_b = _bat_escape(str(app_dir.absolute()))
+            temp_dir_b = _bat_escape(str(temp_dir.absolute()))
 
             # BAT 脚本内容 (增强版 - 带有强制终止逻辑)
             bat_content = f"""@echo off
@@ -75,7 +87,7 @@ tasklist /FI "PID eq {current_pid}" 2>nul | find "{current_pid}" >nul 2>&1
 if %errorlevel%==0 (
     set /a wait_count+=1
     if !wait_count! GTR 10 (
-        echo %date% %time% Timeout waiting for {current_pid}, attempting taskkill... >> "{config_dir.absolute()}\\update_log.txt"
+        echo %date% %time% Timeout waiting for {current_pid}, attempting taskkill... >> "{cfg_dir_b}\\update_log.txt"
         taskkill /F /PID {current_pid} >nul 2>&1
         goto proceed
     )
@@ -89,32 +101,32 @@ taskkill /F /IM "{main_exe_name}" /T >nul 2>&1
 timeout /t 1 /nobreak >nul 2>&1
 
 :: 替换文件
-xcopy /Y /E /H /R "{source_dir.absolute()}\\*" "{app_dir.absolute()}" >nul 2>&1
+xcopy /Y /E /H /R "{src_dir_b}\\*" "{app_dir_b}" >nul 2>&1
 if %errorlevel% NEQ 0 (
     :: 尝试下一次重试，可能因为文件被占用需要一点点时间完全释放
     timeout /t 2 /nobreak >nul 2>&1
-    xcopy /Y /E /H /R "{source_dir.absolute()}\\*" "{app_dir.absolute()}" >nul 2>&1
+    xcopy /Y /E /H /R "{src_dir_b}\\*" "{app_dir_b}" >nul 2>&1
 )
 
 if %errorlevel% NEQ 0 goto error
 
 :: 清理临时文件
-rmdir /S /Q "{temp_dir.absolute()}" >nul 2>&1
+rmdir /S /Q "{temp_dir_b}" >nul 2>&1
 
 :: 写入更新成功标记
-echo %date% %time% SUCCESS > "{config_dir.absolute()}\\update_complete.txt"
+echo %date% %time% SUCCESS > "{cfg_dir_b}\\update_complete.txt"
 
 :: 启动程序
-start "" "{app_dir.absolute()}\\{main_exe_name}"
+start "" "{app_dir_b}\\{main_exe_name}"
 del "%~f0" >nul 2>&1
 exit /b 0
 
 :error
 :: 写入更新失败标记
-echo UPDATE_FAILED %date% %time% > "{config_dir.absolute()}\\update_failed.txt"
-echo Error: xcopy failed with errorlevel %errorlevel% >> "{config_dir.absolute()}\\update_failed.txt"
-echo Source: {source_dir.absolute()} >> "{config_dir.absolute()}\\update_failed.txt"
-echo Target: {app_dir.absolute()} >> "{config_dir.absolute()}\\update_failed.txt"
+echo UPDATE_FAILED %date% %time% > "{cfg_dir_b}\\update_failed.txt"
+echo Error: xcopy failed with errorlevel %errorlevel% >> "{cfg_dir_b}\\update_failed.txt"
+echo Source: {src_dir_b} >> "{cfg_dir_b}\\update_failed.txt"
+echo Target: {app_dir_b} >> "{cfg_dir_b}\\update_failed.txt"
 del "%~f0" >nul 2>&1
 exit /b 1
 """
@@ -122,11 +134,14 @@ exit /b 1
             try:
                 with open(bat_path, "w", encoding="gbk") as f:
                     f.write(bat_content)
-            except OSError as e:
-                app_logger.error(f"写入 BAT 文件 IO 错误：{e}")
+            except UnicodeEncodeError as e:
+                app_logger.error(f"路径含 GBK 无法表示的字符，无法生成更新脚本：{e}")
                 return False
             except PermissionError as e:
                 app_logger.error(f"写入 BAT 文件权限不足：{e}")
+                return False
+            except OSError as e:
+                app_logger.error(f"写入 BAT 文件 IO 错误：{e}")
                 return False
             except Exception as e:
                 app_logger.error(f"写入 BAT 文件未知错误：{e}", exc_info=True)
@@ -140,11 +155,14 @@ exit /b 1
             try:
                 with open(vbs_path, "w", encoding="gbk") as f:
                     f.write(vbs_content)
-            except OSError as e:
-                app_logger.error(f"写入 VBS 文件 IO 错误：{e}")
+            except UnicodeEncodeError as e:
+                app_logger.error(f"路径含 GBK 无法表示的字符，无法生成 VBS 脚本：{e}")
                 return False
             except PermissionError as e:
                 app_logger.error(f"写入 VBS 文件权限不足：{e}")
+                return False
+            except OSError as e:
+                app_logger.error(f"写入 VBS 文件 IO 错误：{e}")
                 return False
             except Exception as e:
                 app_logger.error(f"写入 VBS 文件未知错误：{e}", exc_info=True)

@@ -34,10 +34,13 @@ def analyze_major_and_sub_waves(df):
 
 
 def resolve_sub_wave(sub_res) -> tuple[str, str]:
-    """从子浪分析结果解析浪型标识与说明，无结果时返回空串。"""
+    """从子浪分析结果解析浪型标识与说明，无结果或 unknown 时返回空串。"""
     if sub_res and sub_res.current_wave:
+        wave = sub_res.current_wave.get("wave", "")
+        if wave == "unknown":
+            return "", ""
         return (
-            sub_res.current_wave.get("wave", "未知"),
+            wave or "未知",
             sub_res.current_wave.get("desc", ""),
         )
     return "", ""
@@ -90,7 +93,7 @@ def format_remaining_space_lines(rs: dict) -> list[str]:
 
 
 def explain_wave(wave: str, trend: str | None) -> str:
-    """用通俗语言解释当前浪型含义"""
+    """用通俗语言解释当前浪型含义（文案单一来源，供推送与图表弹窗共用）"""
     explanations = {
         ("1", "bullish"): "筑底完成，刚刚启动上涨",
         ("2", "bullish"): "上涨后回踩确认，正常调整",
@@ -132,6 +135,8 @@ def format_wave_text_analysis(symbol: str, name: str, timeframe_name: str, df) -
 
     mw = major_res.current_wave
     wave = mw.get("wave", "未知")
+    if wave == "unknown":  # 数据不足，无法判断浪型
+        return ""
     trend = mw.get("trend")
     conf = mw.get("confidence", 0.5) * 100
     rule_check = mw.get("rule_check", "")

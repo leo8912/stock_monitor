@@ -93,7 +93,7 @@ def describe_macd_divergence(
             }
         return None
     except Exception as e:
-        app_logger.debug(f"MACD背离检测异常: {e}")
+        app_logger.warning(f"MACD背离检测异常: {e}")
         return None
 
 
@@ -103,8 +103,9 @@ def format_divergence_detail(detail: dict | None, top: bool = False) -> str:
         return ""
     kind = "顶背离" if top else "底背离"
     hist_dir = "回落" if top else "抬升"
+    point_lbl = "高点" if top else "低点"
     return (
-        f"{kind}：低点A {detail['price_a']:.2f} → 低点B {detail['price_b']:.2f}"
+        f"{kind}：{point_lbl}A {detail['price_a']:.2f} → {point_lbl}B {detail['price_b']:.2f}"
         f"（{detail['price_change_pct']:+.1f}%），"
         f"MACD 柱 {detail['hist_a']:.3f} → {detail['hist_b']:.3f}"
         f"（{hist_dir} {abs(detail['hist_change_pct']):.0f}%）"
@@ -142,7 +143,7 @@ def check_volume_price_divergence(
                 return "bottom"
         return None
     except Exception as e:
-        app_logger.debug(f"量价背离检测异常: {e}")
+        app_logger.warning(f"量价背离检测异常: {e}")
         return None
 
 
@@ -168,7 +169,7 @@ def check_kdj_cross(df: pd.DataFrame, end_idx: int = None) -> str | None:
             return "dead"
         return None
     except Exception as e:
-        app_logger.debug(f"KDJ 交叉检测异常: {e}")
+        app_logger.warning(f"KDJ 交叉检测异常: {e}")
         return None
 
 
@@ -190,7 +191,7 @@ def check_ema_cross(df: pd.DataFrame, end_idx: int = None) -> str | None:
             return "dead"
         return None
     except Exception as e:
-        app_logger.debug(f"均线交叉检测异常: {e}")
+        app_logger.warning(f"均线交叉检测异常: {e}")
         return None
 
 
@@ -212,7 +213,7 @@ def check_bbands_squeeze(df: pd.DataFrame, end_idx: int = None) -> bool:
         bw = curr[cols[0]].iloc[-1]
         return bw <= curr[cols[0]].iloc[-100:].min() * 1.05
     except Exception as e:
-        app_logger.debug(f"布林带收窄检测异常: {e}")
+        app_logger.warning(f"布林带收窄检测异常: {e}")
         return False
 
 
@@ -233,25 +234,27 @@ def calculate_rsrs(df: pd.DataFrame, n: int = 18, m: int = 600) -> tuple[float, 
                 return 0.0, 0.0
 
             adjusted_m = min(m, data_len - n)
-            app_logger.info(f"RSRS 降级模式：m={m}->{adjusted_m}")
+            app_logger.debug(f"RSRS 降级模式：m={m}->{adjusted_m}")
             return calculate_rsrs(df, n=n, m=adjusted_m)
 
         # 1. 计算斜率序列 (Slope)
-        # 为了性能，只计算最近 M+1 个斜率用于标准化
-        slopes = []
-        highs = df["high"].values
-        lows = df["low"].values
-
-        # 使用 rolling window 计算斜率
-        for i in range(len(df) - m, len(df)):
-            y = highs[i - n + 1 : i + 1]
-            x = lows[i - n + 1 : i + 1]
-            slope = np.polyfit(x, y, 1)[0]
-            slopes.append(slope)
+        # 滑动窗口向量化：slope = cov(high, low) / var(low)，替代逐点 polyfit
+        highs = pd.Series(df["high"].to_numpy(dtype=float))
+        lows = pd.Series(df["low"].to_numpy(dtype=float))
+        mean_x = lows.rolling(n).mean()
+        mean_y = highs.rolling(n).mean()
+        cov_xy = (lows * highs).rolling(n).mean() - mean_x * mean_y
+        var_x = (lows * lows).rolling(n).mean() - mean_x * mean_x
+        with np.errstate(divide="ignore", invalid="ignore"):
+            slopes_arr = (cov_xy / var_x).to_numpy()
+        # var=0（low 窗口内恒定）时斜率无定义，降级为 0
+        slopes_arr = np.nan_to_num(slopes_arr, nan=0.0, posinf=0.0, neginf=0.0)
+        # 只取最近 M 个斜率用于标准化（窗口终点 len-m .. len-1）
+        slopes = slopes_arr[-m:]
 
         # 2. 标准化 (Z-Score)
-        curr_slope = slopes[-1]
-        history_slopes = np.array(slopes)
+        curr_slope = float(slopes[-1])
+        history_slopes = np.asarray(slopes)
         mean_s = np.mean(history_slopes)
         std_s = np.std(history_slopes)
 
@@ -265,6 +268,8 @@ def calculate_rsrs(df: pd.DataFrame, n: int = 18, m: int = 600) -> tuple[float, 
 def check_accumulation(df: pd.DataFrame, end_idx: int = None) -> bool:
     """检测 OBV 低位吸筹：低波动区间内 OBV 均线走强。"""
     try:
+        # 复制 DataFrame 避免修改调用者的原始数据
+        df = df.copy()
         if "OBV" not in df.columns:
             df.ta.obv(append=True)
         curr = df if end_idx is None else df.iloc[: end_idx + 1]
@@ -276,7 +281,7 @@ def check_accumulation(df: pd.DataFrame, end_idx: int = None) -> bool:
             return r20["OBV"].rolling(5).mean().iloc[-1] > r20["OBV"].mean() * 1.05
         return False
     except Exception as e:
-        app_logger.debug(f"OBV累积检测异常: {e}")
+        app_logger.warning(f"OBV累积检测异常: {e}")
         return False
 
 
@@ -307,7 +312,7 @@ def get_bbands_position_desc(df: pd.DataFrame) -> str:
         else:
             return f" 🟡 中位震荡{sq}"
     except Exception as e:
-        app_logger.debug(f"布林带位置描述异常: {e}")
+        app_logger.warning(f"布林带位置描述异常: {e}")
         return ""
 
 
@@ -419,5 +424,5 @@ def build_push_snapshot(df: pd.DataFrame) -> str:
             return ""
         return "📊 指标快照：" + " | ".join(parts)
     except Exception as e:
-        app_logger.debug(f"指标快照构建异常: {e}")
+        app_logger.warning(f"指标快照构建异常: {e}")
         return ""

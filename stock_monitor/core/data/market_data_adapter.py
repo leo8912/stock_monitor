@@ -173,8 +173,13 @@ class MarketDataAdapter:
         if df is None or df.empty:
             return pd.DataFrame()
 
-        # mootdx 语义: start=最近端偏移量，offset=取多少条
-        return df.tail(offset).reset_index(drop=True)
+        # mootdx/TDX 语义: start=从最新一根往回偏移的条数, offset=取多少条。
+        # df 按时间升序, 需丢弃最新的 start 条后取 offset 条（升序下即
+        # 窗口 [len-start-offset, len-start)），start=0 时等价 tail(offset)。
+        end = len(df) - max(start, 0)
+        if end <= 0:
+            return pd.DataFrame()
+        return df.iloc[max(end - offset, 0) : end].reset_index(drop=True)
 
     def index(
         self,
@@ -352,6 +357,7 @@ class MarketDataAdapter:
                 # 腾讯行情字段: 0=市场 1=名称 2=代码 3=现价 4=昨收 5=今开
                 #   6=成交量(手) 7=外盘 8=内盘 9=买一价 ... 30=最高 31=最低
                 #   32=现价 33=最高 34=最低
+                # （前置守卫已保证 len(parts) >= 35，>33/>34 恒真，直接索引）
                 stock_key = key.replace("v_", "")
                 result[stock_key] = {
                     "name": parts[1],
@@ -360,12 +366,8 @@ class MarketDataAdapter:
                     "close": safe_float(parts[4]),
                     "open": safe_float(parts[5]),
                     "volume": safe_float(parts[6]),
-                    "high": safe_float(parts[33])
-                    if len(parts) > 33
-                    else safe_float(parts[30]),
-                    "low": safe_float(parts[34])
-                    if len(parts) > 34
-                    else safe_float(parts[31]),
+                    "high": safe_float(parts[33]),
+                    "low": safe_float(parts[34]),
                     "turnover": safe_float(parts[37]) if len(parts) > 37 else 0.0,
                 }
             return result
@@ -393,8 +395,13 @@ class MarketDataAdapter:
                 # 提取纯数字代码
                 clean = s[2:] if s.startswith(("sh", "sz")) else s
 
-                # 判断是否为指数
-                if self._is_index_symbol(clean):
+                # 判断是否为指数。sz 前缀的 000xxx 是深市个股（如 sz000001
+                # 平安银行），仅 399xxx 才可能是深市指数，不能仅凭裸代码判定
+                is_index = self._is_index_symbol(clean)
+                if is_index and s.startswith("sz") and not clean.startswith("399"):
+                    is_index = False
+
+                if is_index:
                     # 构造带市场前缀的代码给腾讯
                     if s.startswith(("sh", "sz")):
                         tencent_code = s
@@ -519,23 +526,26 @@ class MarketDataAdapter:
         try:
             import akshare as ak
 
-            prefix = _market_prefix(market)
-            full_code = f"{prefix}{symbol}"
-            df = ak.stock_intraday_em(symbol=full_code)
+            # akshare 内部按首位数字推断市场，传 sh/sz 前缀代码会拼出错误 secid
+            df = ak.stock_intraday_em(symbol=symbol)
             if df is None or df.empty:
                 return pd.DataFrame()
 
-            # akshare stock_intraday_em 返回列:
-            # 成交时间, 成交价, 涨跌幅, 成交量, 成交额, 动态市盈率, 买卖类型
+            # akshare 各版本列序不同：旧版 [成交时间,成交价,涨跌幅,成交量,成交额,
+            # 动态市盈率,买卖类型]，新版 [时间,成交价,手数,买卖盘性质]——按列名选取
+            time_col = "时间" if "时间" in df.columns else "成交时间"
+            vol_col = "手数" if "手数" in df.columns else "成交量"
+            side_col = "买卖盘性质" if "买卖盘性质" in df.columns else "买卖类型"
+
             result = pd.DataFrame()
-            result["time"] = df.iloc[:, 0].astype(str)  # 成交时间
-            result["price"] = pd.to_numeric(df.iloc[:, 1], errors="coerce")
-            result["vol"] = pd.to_numeric(df.iloc[:, 3], errors="coerce")
-            # 买卖类型: 买盘/卖盘/中性
-            if df.shape[1] > 5:
-                buy_sell = df.iloc[:, 5].astype(str)
+            result["time"] = df[time_col].astype(str)  # 成交时间
+            result["price"] = pd.to_numeric(df["成交价"], errors="coerce")
+            result["vol"] = pd.to_numeric(df[vol_col], errors="coerce")
+            # 买卖类型: 买盘/卖盘/中性(盘)
+            if side_col in df.columns:
+                buy_sell = df[side_col].astype(str)
                 result["buyorsell"] = buy_sell.map(
-                    {"买盘": 0, "卖盘": 1, "中性": 2}
+                    {"买盘": 0, "卖盘": 1, "中性": 2, "中性盘": 2}
                 ).fillna(2)
             else:
                 result["buyorsell"] = 2

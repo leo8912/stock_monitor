@@ -18,6 +18,17 @@
 ✓ 支持并行开发和扩展
 """
 
+
+def _log_import_failure(layer: str) -> None:
+    """记录条件导入失败的原始异常；logger 不可用时静默，避免阻断 core 包导入。"""
+    try:
+        from stock_monitor.utils.logger import app_logger
+
+        app_logger.warning(f"{layer} import failed", exc_info=True)
+    except Exception:
+        pass
+
+
 # ============================================================================
 # 配置层 (Config Layer)
 # ============================================================================
@@ -27,6 +38,7 @@ try:
     _config_available = True
 except (ImportError, ModuleNotFoundError):
     _config_available = False
+    _log_import_failure("Config layer")
 
 # ============================================================================
 # 引擎层 (Engine Layer)
@@ -41,6 +53,7 @@ try:
     _engine_available = True
 except (ImportError, ModuleNotFoundError):
     _engine_available = False
+    _log_import_failure("Engine layer")
 
 # ============================================================================
 # 数据层 (Data Layer)
@@ -55,6 +68,7 @@ try:
     _data_available = True
 except (ImportError, ModuleNotFoundError):
     _data_available = False
+    _log_import_failure("Data layer")
 
 # ============================================================================
 # 市场层 (Market Layer)
@@ -66,16 +80,9 @@ try:
     )
 
     _market_available = True
-except Exception as e:
+except (ImportError, ModuleNotFoundError):
     _market_available = False
-    # 生产代码不使用 print；用 app_logger 记录。日志模块不可用时静默降级，
-    # 避免阻断 core 包导入。
-    try:
-        from stock_monitor.utils.logger import app_logger
-
-        app_logger.warning(f"Market layer import warning: {e}")
-    except Exception:
-        pass
+    _log_import_failure("Market layer")
 
 # ============================================================================
 # 解析层 (Resolvers Layer)
@@ -88,6 +95,7 @@ try:
     _resolvers_available = True
 except (ImportError, ModuleNotFoundError):
     _resolvers_available = False
+    _log_import_failure("Resolvers layer")
 
 # ============================================================================
 # 缓存层 (Cache Layer)
@@ -100,6 +108,7 @@ try:
     _cache_available = True
 except (ImportError, ModuleNotFoundError):
     _cache_available = False
+    _log_import_failure("Cache layer")
 
 # ============================================================================
 # 向后兼容导出 (Backward Compatibility)
@@ -110,6 +119,7 @@ try:
     _stock_service_available = True
 except (ImportError, ModuleNotFoundError):
     _stock_service_available = False
+    _log_import_failure("Stock service")
 
 # ============================================================================
 # 公开接口 (__all__)

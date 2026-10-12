@@ -5,7 +5,6 @@
 
 import os
 import sys
-from pathlib import Path
 
 from stock_monitor.utils.logger import app_logger
 
@@ -101,47 +100,16 @@ def setup_auto_start():
 
         # 如果启用开机启动
         if auto_start:
-            # 获取应用程序路径
-            if hasattr(sys, "_MEIPASS"):
-                # PyInstaller打包环境：直接指向exe文件
-                app_path = sys.executable
-                app_logger.info(f"[生产环境] 使用打包可执行文件: {app_path}")
-            else:
-                # 开发环境：构建Python解释器 + 主入口脚本的组合命令
-                python_exe = sys.executable
-
-                # 优先尝试定位 main.py 作为应用入口
-                try:
-                    # 从 startup.py 向上推导项目根目录
-                    # startup.py 位于 stock_monitor/core/config/
-                    # 需要向上3层到达 stock_monitor/ 目录
-                    project_root = Path(__file__).resolve().parent.parent.parent
-                    main_script = project_root / "main.py"
-
-                    if main_script.exists():
-                        app_path = f'"{python_exe}" "{main_script}"'
-                        app_logger.info(f"[开发环境] 使用主入口脚本: {main_script}")
-                    else:
-                        # 回退方案：尝试 __main__.py
-                        main_module = project_root / "__main__.py"
-                        if main_module.exists():
-                            app_path = f'"{python_exe}" "{main_module}"'
-                            app_logger.info(f"[开发环境] 使用模块入口: {main_module}")
-                        else:
-                            app_logger.error(
-                                f"[开发环境] 未找到有效的应用入口脚本 "
-                                f"(已搜索: {main_script}, {main_module})"
-                            )
-                            return
-                except Exception as e:
-                    app_logger.error(f"[开发环境] 解析应用路径失败: {e}")
-                    return
+            # 此处 sys._MEIPASS 必然存在（函数开头已提前 return），直接指向exe文件
+            app_path = sys.executable
+            app_logger.info(f"[生产环境] 使用打包可执行文件: {app_path}")
 
             # 创建快捷方式
             _create_shortcut(app_path, shortcut_path)
             app_logger.info(f"已创建开机启动快捷方式: {shortcut_path}")
         else:
-            # 如果禁用开机启动且快捷方式存在，则删除
+            # 禁用开机启动：.lnk 与 BAT 回退项都要清理
+            bat_path = shortcut_path.replace(".lnk", ".bat")
             if os.path.exists(shortcut_path):
                 try:
                     # 【安全校验】验证快捷方式确实指向我们的应用
@@ -170,6 +138,12 @@ def setup_auto_start():
                     app_logger.info(f"已删除开机启动快捷方式: {shortcut_path}")
                 except Exception as e:
                     app_logger.error(f"删除快捷方式时出错: {e}")
+            if os.path.exists(bat_path):
+                try:
+                    os.remove(bat_path)
+                    app_logger.info(f"已删除BAT回退启动项: {bat_path}")
+                except OSError as e:
+                    app_logger.error(f"删除BAT回退启动项失败: {e}")
     except Exception as e:
         app_logger.error(f"设置开机启动失败: {e}")
 
@@ -192,6 +166,10 @@ def _create_shortcut(target_path, shortcut_path):
         shortcut.WorkingDirectory = os.path.dirname(target_path)
         shortcut.IconLocation = target_path
         shortcut.save()
+        # 清理可能残留的 BAT 回退项
+        bat_path = shortcut_path.replace(".lnk", ".bat")
+        if os.path.exists(bat_path):
+            os.remove(bat_path)
     except ImportError:
         # win32com不可用时的备选方案
         try:

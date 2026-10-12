@@ -90,14 +90,22 @@ class WaveAnalyzer:
 
     @staticmethod
     def _zigzag_bootstrap_step(
-        highs, lows, i: int, threshold: float
+        swings: list[SwingPoint],
+        highs,
+        lows,
+        dates,
+        i: int,
+        threshold: float,
     ) -> tuple[str | None, int]:
         """初始阶段：寻找第一个超过阈值的波动方向，返回 (mode, 极值索引)。"""
         h_diff = (highs[i] - lows[0]) / lows[0] if lows[0] != 0 else 0
         l_diff = (highs[0] - lows[i]) / highs[0] if highs[0] != 0 else 0
         if h_diff >= threshold:
+            # 首段起点（索引 0 极值）先入库，否则首段波浪整体缺失
+            swings.append(WaveAnalyzer._make_zigzag_point(0, "trough", lows[0], dates))
             return "peak", i
         if l_diff >= threshold:
+            swings.append(WaveAnalyzer._make_zigzag_point(0, "peak", highs[0], dates))
             return "trough", i
         return None, 0
 
@@ -148,16 +156,15 @@ class WaveAnalyzer:
         dates,
         mode: str | None,
         last_extreme_idx: int,
-        n_bars: int,
     ) -> None:
         """把最后一个尚未入库的极值点补入摆动序列。"""
-        if mode == "peak" and last_extreme_idx < n_bars:
+        if mode == "peak":
             swings.append(
                 WaveAnalyzer._make_zigzag_point(
                     last_extreme_idx, "peak", highs[last_extreme_idx], dates
                 )
             )
-        elif mode == "trough" and last_extreme_idx < n_bars:
+        elif mode == "trough":
             swings.append(
                 WaveAnalyzer._make_zigzag_point(
                     last_extreme_idx, "trough", lows[last_extreme_idx], dates
@@ -201,7 +208,7 @@ class WaveAnalyzer:
         for i in range(1, len(df)):
             if mode is None:
                 mode, last_extreme_idx = WaveAnalyzer._zigzag_bootstrap_step(
-                    highs, lows, i, threshold
+                    swings, highs, lows, dates, i, threshold
                 )
             else:
                 mode, last_extreme_idx = WaveAnalyzer._zigzag_extend_step(
@@ -210,7 +217,7 @@ class WaveAnalyzer:
 
         # 加入最后一个极值点
         WaveAnalyzer._zigzag_append_final(
-            swings, highs, lows, dates, mode, last_extreme_idx, len(df)
+            swings, highs, lows, dates, mode, last_extreme_idx
         )
 
         # 始终把最后一个K线点作为 current 点（连接当前最新价格）
@@ -220,14 +227,25 @@ class WaveAnalyzer:
 
     @staticmethod
     def analyze(
-        df: pd.DataFrame, threshold: float = WAVE_ZIGZAG_THRESHOLD
+        df: pd.DataFrame,
+        threshold: float = WAVE_ZIGZAG_THRESHOLD,
+        fib_coefficients: dict | None = None,
     ) -> WaveAnalysisResult | None:
         """
         进行波浪和斐波那契综合分析
+
+        fib_coefficients: 自定义目标价系数覆盖（仅本次分析生效，不改全局）。
         """
         if df.empty or len(df) < WAVE_MIN_K_COUNT:
             app_logger.warning("数据量不足，无法进行波浪分析")
             return None
+
+        # 局部系数副本：禁止改写全局 FIB_TARGET_COEFFICIENTS（跨线程共享）
+        coefficients = dict(FIB_TARGET_COEFFICIENTS)
+        if fib_coefficients:
+            coefficients.update(
+                {k: v for k, v in fib_coefficients.items() if k in coefficients}
+            )
 
         # 1. 检测极值点
         swings = WaveAnalyzer.detect_zigzag(df, threshold)
@@ -246,7 +264,11 @@ class WaveAnalyzer:
         # 5. 预估当前浪的剩余空间（传入实际当前收盘价）
         actual_price = float(df.iloc[-1]["close"])
         remaining_space = WaveAnalyzer._estimate_remaining_space(
-            swings, current_wave, fib_levels, actual_current_price=actual_price
+            swings,
+            current_wave,
+            fib_levels,
+            actual_current_price=actual_price,
+            fib_coefficients=coefficients,
         )
 
         return WaveAnalysisResult(
@@ -287,20 +309,17 @@ class WaveAnalyzer:
     ) -> dict[str, Any] | None:
         """低→高→低→高（上升结构）的四点浪型判定，非该结构返回 None。"""
         w1 = p2.price - p3.price  # 浪1幅度
-        w3 = p0.price - p1.price  # 浪3幅度
         if w1 <= 0:
             return None  # 无效结构
 
-        # Elliott 铁律验证
+        # Elliott 铁律验证（4 点结构下浪5未形成，无法判定"浪3最短"，仅校验浪2/浪4规则）
         rules_ok = True
         rule_notes = []
         if p1.price < p3.price:
             rules_ok = False
             rule_notes.append("浪2跌破浪1起点")
-        if w3 < w1 and w3 < (p2.price - p0.price if p0.price < p2.price else 0):
-            rules_ok = False
-            rule_notes.append("浪3为最短浪")
         if current_price < p2.price and current_price < p0.price:
+            rules_ok = False
             rule_notes.append("浪4与浪1有重叠")
 
         if p0.price <= p2.price:
@@ -729,46 +748,55 @@ class WaveAnalyzer:
 
     @staticmethod
     def _estimate_bullish_target(
-        extremes: list[SwingPoint], wave: str, curr_price: float
+        extremes: list[SwingPoint],
+        wave: str,
+        curr_price: float,
+        coefficients: dict | None = None,
     ) -> tuple[float | None, str]:
         """估计上涨趋势（浪3/4/5）的目标价与计算依据。"""
-        up_segments = WaveAnalyzer._collect_up_segments(extremes)
+        coeffs = coefficients if coefficients is not None else FIB_TARGET_COEFFICIENTS
+        # 与浪型识别一致，取近期极值子序列的上升段作为"浪1/浪3幅度"
+        recent_up = WaveAnalyzer._collect_up_segments(extremes[-5:])
 
-        if wave == "3" and len(up_segments) >= 1:
+        if wave == "3" and recent_up:
             # 浪3目标 = 浪1幅度 × 1.618 + 浪3起点（最近的 trough）
             w3_start = WaveAnalyzer._last_price_of(extremes, "trough")
             if w3_start is not None:
-                return w3_start + up_segments[0] * 1.618, "浪1幅度×1.618"
-        elif wave == "5" and len(up_segments) >= 2:
+                return w3_start + recent_up[0] * 1.618, "浪1幅度×1.618"
+        elif wave == "5" and len(recent_up) >= 2:
             # 浪5目标 = 浪1幅度 × 系数 + 浪4低点（衰减）
             w5_start = WaveAnalyzer._last_price_of(extremes, "trough")
             if w5_start is not None:
-                coeff = FIB_TARGET_COEFFICIENTS["wave_5_target"]
-                return w5_start + up_segments[0] * coeff, f"浪1幅度×{coeff}（衰减）"
-        elif wave == "4" and len(up_segments) >= 1:
+                coeff = coeffs["wave_5_target"]
+                return w5_start + recent_up[0] * coeff, f"浪1幅度×{coeff}（衰减）"
+        elif wave == "4" and recent_up:
             # 浪4回调目标 = 浪3幅度 × 系数
-            coeff = FIB_TARGET_COEFFICIENTS["wave_4_retrace"]
-            return curr_price - up_segments[-1] * coeff, f"浪3幅度×{coeff}回调"
+            coeff = coeffs["wave_4_retrace"]
+            return curr_price - recent_up[-1] * coeff, f"浪3幅度×{coeff}回调"
         return None, ""
 
     @staticmethod
     def _estimate_bearish_target(
-        extremes: list[SwingPoint], wave: str
+        extremes: list[SwingPoint],
+        wave: str,
+        coefficients: dict | None = None,
     ) -> tuple[float | None, str]:
         """估计下跌趋势（浪A/B/C）的目标价与计算依据。"""
-        down_segments = WaveAnalyzer._collect_down_segments(extremes)
+        coeffs = coefficients if coefficients is not None else FIB_TARGET_COEFFICIENTS
+        # 与浪型识别一致，取近期极值子序列的下跌段作为"浪A幅度"
+        recent_down = WaveAnalyzer._collect_down_segments(extremes[-5:])
 
-        if wave == "C" and len(down_segments) >= 1:
+        if wave == "C" and recent_down:
             # C浪目标 = 浪B高点 - 浪A幅度（等长）
             w_b_end = WaveAnalyzer._last_price_of(extremes, "peak")
             if w_b_end is not None:
-                return w_b_end - down_segments[0], "浪A幅度等长"
-        elif wave == "B" and down_segments:
+                return w_b_end - recent_down[0], "浪A幅度等长"
+        elif wave == "B" and recent_down:
             # B浪反弹通常回撤浪A的一定系数
             w_b_start = WaveAnalyzer._last_price_of(extremes, "peak")
             if w_b_start is not None:
-                coeff = FIB_TARGET_COEFFICIENTS["wave_b_retrace"]
-                return w_b_start + down_segments[0] * coeff, f"浪A幅度×{coeff}反弹"
+                coeff = coeffs["wave_b_retrace"]
+                return w_b_start + recent_down[0] * coeff, f"浪A幅度×{coeff}反弹"
         return None, ""
 
     @staticmethod
@@ -788,6 +816,7 @@ class WaveAnalyzer:
         current_wave: dict[str, Any],
         fib_levels: dict[str, float],
         actual_current_price: float | None = None,
+        fib_coefficients: dict | None = None,
     ) -> dict[str, Any] | None:
         """
         预估当前浪的剩余空间。
@@ -812,11 +841,13 @@ class WaveAnalyzer:
         # 上涨趋势中的浪
         if trend == "bullish" and wave in ("3", "4", "5"):
             target_price, basis = WaveAnalyzer._estimate_bullish_target(
-                extremes, wave, curr_price
+                extremes, wave, curr_price, fib_coefficients
             )
         # 下跌趋势中的浪
         elif trend == "bearish" and wave in ("A", "B", "C"):
-            target_price, basis = WaveAnalyzer._estimate_bearish_target(extremes, wave)
+            target_price, basis = WaveAnalyzer._estimate_bearish_target(
+                extremes, wave, fib_coefficients
+            )
 
         if target_price is None or target_price <= 0:
             return None
@@ -835,50 +866,24 @@ class WaveAnalyzer:
 
 def explain_wave(wave: str, trend: str) -> str:
     """
-    解释当前波浪阶段的含义
+    解释当前波浪阶段的含义。
 
-    Args:
-        wave: 波浪标识 (1-5, A, B, C)
-        trend: 趋势方向 (bullish, bearish)
-
-    Returns:
-        波浪阶段的中文解释
+    文案单一来源在 wave_report，此处转发生供图表弹窗等既有调用方。
     """
-    explanations = {
-        ("1", "bullish"): "筑底完成，刚刚启动上涨",
-        ("2", "bullish"): "上涨后回踩确认，正常调整",
-        ("3", "bullish"): "主升浪，涨幅最大、速度最快",
-        ("4", "bullish"): "上涨途中休整，蓄力再冲高",
-        ("5", "bullish"): "上涨末期，动能衰减，追高风险大",
-        ("A", "bearish"): "上涨结束，开始下跌调整",
-        ("B", "bearish"): "下跌途中的反弹，空间有限",
-        ("C", "bearish"): "加速下跌阶段，杀伤力最大",
-    }
-    return explanations.get((wave, trend), "震荡筑底阶段，方向待确认")
+    from .wave_report import explain_wave as _explain_wave
+
+    return _explain_wave(wave, trend)
 
 
 def wave_hint(wave: str, trend: str) -> str:
     """
-    根据波浪阶段给出操作建议
+    根据波浪阶段给出操作建议。
 
-    Args:
-        wave: 波浪标识 (1-5, A, B, C)
-        trend: 趋势方向 (bullish, bearish)
-
-    Returns:
-        操作建议文本
+    文案单一来源在 wave_report，此处转发生供图表弹窗等既有调用方。
     """
-    hints = {
-        ("1", "bullish"): "建议: 底部确认后可小仓试探",
-        ("2", "bullish"): "建议: 回调企稳是加仓机会",
-        ("3", "bullish"): "建议: 持股待涨，不轻易下车",
-        ("4", "bullish"): "建议: 耐心持有，等调整结束再加仓",
-        ("5", "bullish"): "建议: 逢高减仓，锁定利润",
-        ("A", "bearish"): "建议: 止损离场，不要死扛",
-        ("B", "bearish"): "建议: 反弹是逃命机会，别追",
-        ("C", "bearish"): "建议: 等企稳再考虑入场",
-    }
-    return hints.get((wave, trend), "建议: 观望为主，等方向明确")
+    from .wave_report import wave_action_hint
+
+    return wave_action_hint(wave, trend)
 
 
 def analyze_and_record(
@@ -903,13 +908,7 @@ def analyze_and_record(
     Returns:
         WaveAnalysisResult or None
     """
-    # 如果提供了自定义系数，更新全局系数
-    if fib_coefficients:
-        for key, value in fib_coefficients.items():
-            if key in FIB_TARGET_COEFFICIENTS:
-                FIB_TARGET_COEFFICIENTS[key] = value
-
-    result = WaveAnalyzer.analyze(df, threshold)
+    result = WaveAnalyzer.analyze(df, threshold, fib_coefficients=fib_coefficients)
 
     if result and record_prediction and result.current_wave:
         wave = result.current_wave.get("wave", "unknown")

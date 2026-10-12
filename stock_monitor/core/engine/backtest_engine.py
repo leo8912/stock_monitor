@@ -52,6 +52,8 @@ class BacktestEngine:
         """对信号点列表执行统一的持仓期盈亏评估。
 
         所有策略回测方法共享此框架，避免重复的评估循环。
+        stop_loss <= 0 表示无止损（仅止盈模式）。
+        win_rate/avg_profit 的分母为实际参与评估的有效样本数。
         """
         n = len(signal_points)
         if n == 0:
@@ -59,6 +61,7 @@ class BacktestEngine:
 
         success_count = 0
         total_profit = 0.0
+        evaluated = 0
         for idx in signal_points:
             entry_price = df.loc[idx, "close"]
             if entry_price <= 0:  # 除零防护（T12）
@@ -66,6 +69,7 @@ class BacktestEngine:
             future_df = df.iloc[idx + 1 : idx + 1 + hold_len]
             if future_df.empty:
                 continue
+            evaluated += 1
             max_high = future_df["high"].max()
             min_low = future_df["low"].min()
             exit_price = future_df["close"].iloc[-1]
@@ -73,15 +77,17 @@ class BacktestEngine:
             if (max_high - entry_price) / entry_price >= target_profit:
                 success_count += 1
                 total_profit += target_profit
-            elif (min_low - entry_price) / entry_price <= -stop_loss:
+            elif stop_loss > 0 and (min_low - entry_price) / entry_price <= -stop_loss:
                 total_profit -= stop_loss
             else:
                 total_profit += (exit_price - entry_price) / entry_price
 
+        if evaluated == 0:
+            return {"total_signals": 0, "win_rate": 0.0, "avg_profit": 0.0}
         return {
-            "total_signals": n,
-            "win_rate": round(success_count / n, 4),
-            "avg_profit": round(total_profit / n, 4),
+            "total_signals": evaluated,
+            "win_rate": round(success_count / evaluated, 4),
+            "avg_profit": round(total_profit / evaluated, 4),
         }
 
     def _precompute_rsrs_zscores(self, df, start_idx: int = 620) -> dict[int, float]:
@@ -101,12 +107,16 @@ class BacktestEngine:
     def _evaluate_and_cache(
         self, cache_key: str, df, signal_points, hold_len, target_profit, stop_loss
     ) -> dict:
-        """评估信号并缓存结果（三策略公共尾声）。"""
+        """评估信号并缓存结果（三策略公共尾声）。
+
+        并发下同一 cache_key 可能被重复计算（结果一致），可接受。
+        """
         res = self._run_backtest(df, signal_points, hold_len, target_profit, stop_loss)
         if res["total_signals"] > 0:
             with self._lock:
                 self._cache[cache_key] = res
-            self._save_cache()
+                payload = json.dumps(self._cache)
+            self._write_cache_file(payload)
         return res
 
     # ------------------------------------------------------------------
@@ -174,8 +184,8 @@ class BacktestEngine:
                 self.stop_loss,
             )
 
-        except Exception as e:
-            app_logger.error(f"回测失败 [{symbol} cat={category}]: {e}")
+        except Exception:
+            app_logger.exception(f"回测失败 [{symbol} cat={category}]")
             return None
 
     def get_rsrs_strategy_stats(
@@ -221,8 +231,8 @@ class BacktestEngine:
                 target_profit=0.05,
                 stop_loss=0.05,
             )
-        except Exception as e:
-            app_logger.error(f"RSRS 回测失败 [{symbol}]: {e}")
+        except Exception:
+            app_logger.exception(f"RSRS 回测失败 [{symbol}]")
             return None
 
     def get_confluence_strategy_stats(
@@ -276,8 +286,8 @@ class BacktestEngine:
                 target_profit=0.08,
                 stop_loss=0.05,
             )
-        except Exception as e:
-            app_logger.error(f"共振回测失败 [{symbol}]: {e}")
+        except Exception:
+            app_logger.exception(f"共振回测失败 [{symbol}]")
             return None
 
     def get_score_stats(
@@ -286,6 +296,7 @@ class BacktestEngine:
         """
         基于评分的高频表现回测。
         默认回测日线周期下，评分 >= 3 时的表现。
+        口径：仅止盈（5%）无止损，复用 _run_backtest（stop_loss=0 表示无止损）。
         """
         today_str = datetime.date.today().isoformat()
         cache_key = f"score_{symbol}_{category}_{min_score}_{today_str}"
@@ -325,38 +336,19 @@ class BacktestEngine:
                     if not signal_points or (i - signal_points[-1] > cooldown):
                         signal_points.append(i)
 
-            n = len(signal_points)
-            if n == 0:
+            res = self._evaluate_and_cache(
+                cache_key,
+                df,
+                signal_points,
+                hold_len,
+                target_profit=0.05,
+                stop_loss=0.0,  # 仅止盈模式
+            )
+            if res["total_signals"] == 0:
                 return None
-
-            success_count = 0
-            total_profit = 0.0
-            for idx in signal_points:
-                entry_price = df.loc[idx, "close"]
-                if entry_price <= 0:  # 除零防护（T12）
-                    continue
-                future_df = df.iloc[idx + 1 : idx + 1 + hold_len]
-                max_high = future_df["high"].max()
-                exit_price = future_df["close"].iloc[-1]
-
-                # 只要持仓期间触及 5% 就算成功
-                if (max_high - entry_price) / entry_price >= 0.05:
-                    success_count += 1
-                    total_profit += 0.05
-                else:
-                    total_profit += (exit_price - entry_price) / entry_price
-
-            res = {
-                "total_signals": n,
-                "win_rate": round(success_count / n, 4),
-                "avg_profit": round(total_profit / n, 4),
-            }
-            with self._lock:
-                self._cache[cache_key] = res
-            self._save_cache()
             return res
-        except Exception as e:
-            app_logger.error(f"评分回测失败 [{symbol}]: {e}")
+        except Exception:
+            app_logger.exception(f"评分回测失败 [{symbol}]")
             return None
 
     def _load_cache(self) -> dict:
@@ -386,11 +378,16 @@ class BacktestEngine:
             app_logger.error(f"加载回测缓存失败: {e}")
             return {}
 
-    def _save_cache(self) -> None:
-        """保存缓存到文件"""
+    def _write_cache_file(self, payload: str) -> None:
+        """将序列化后的缓存快照写入磁盘（调用方保证不在持锁状态）。"""
         try:
-            with self._lock:
-                with open(self._cache_file, "w", encoding="utf-8") as f:
-                    json.dump(self._cache, f)
+            with open(self._cache_file, "w", encoding="utf-8") as f:
+                f.write(payload)
         except Exception as e:
             app_logger.error(f"保存回测缓存失败: {e}")
+
+    def _save_cache(self) -> None:
+        """保存缓存到文件（锁内快照序列化，磁盘 IO 在锁外）。"""
+        with self._lock:
+            payload = json.dumps(self._cache)
+        self._write_cache_file(payload)

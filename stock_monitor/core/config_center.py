@@ -3,6 +3,8 @@
 整合 ConfigManager + ConfigKeys，提供单一入口
 """
 
+from __future__ import annotations
+
 import threading
 from typing import Any
 
@@ -58,12 +60,18 @@ class ConfigCenter:
             return value
         if isinstance(value, str):
             return value.lower() == "true"
+        if isinstance(value, (int, float)):
+            # int/float（如手工编辑的 0/1）视为真实存储值，仅 None/非法才回默认
+            return bool(value)
         return bool(default)
 
     def get_str(self, key: str, default: str = "") -> str:
         value = self._manager.get(key, default)
         if isinstance(value, str):
             return value
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            # 数值标量转字符串，避免丢弃实际存储值
+            return str(value)
         return str(default)
 
     def get_list(self, key: str, default: list | None = None) -> list:

@@ -82,6 +82,11 @@ class TestSymbolResolver(unittest.TestCase):
         config = SymbolResolver.resolve("sz399001")
         self.assertEqual(config.type, SymbolType.INDEX)
 
+        # 深市 0009xx 为个股段，不得误判为指数（回归：旧实现 startswith("0009")）
+        config = SymbolResolver.resolve("sz000938")  # 紫光股份
+        self.assertEqual(config.type, SymbolType.STOCK)
+        self.assertEqual(config.market, 0)
+
     def test_resolve_with_explicit_market(self):
         """测试显式指定市场参数"""
         # 纯数字 + 显式市场=1（上海）
@@ -93,6 +98,17 @@ class TestSymbolResolver(unittest.TestCase):
         config = SymbolResolver.resolve("000001", market=0)
         self.assertEqual(config.code, "000001")
         self.assertEqual(config.market, 0)
+
+        # 显式 market 与带前缀路径的类型识别必须一致
+        self.assertEqual(
+            SymbolResolver.resolve("399001", market=0).type, SymbolType.INDEX
+        )
+        self.assertEqual(
+            SymbolResolver.resolve("000016", market=1).type, SymbolType.INDEX
+        )
+        self.assertEqual(
+            SymbolResolver.resolve("000938", market=0).type, SymbolType.STOCK
+        )
 
     def test_resolve_pure_code_fallback(self):
         """测试纯代码的防御性转换"""
@@ -205,12 +221,10 @@ class TestSymbolResolverEdgeCases(unittest.TestCase):
 
     def test_etf_symbol(self):
         """测试 ETF 符号解析（需要实际数据支持）"""
-        # ETF 通常以 15 或 51 开头
+        # 沪市 ETF 通常以 51 开头
         config = SymbolResolver.resolve("510300")  # 沪深 300ETF
         self.assertEqual(config.code, "510300")
-        # 注意：当前实现根据首位数字推断市场，5 开头会被推断为深圳 (market=0)
-        # 实际使用中可能需要更精确的 ETF 识别逻辑
-        self.assertIn(config.market, [0, 1])
+        self.assertEqual(config.market, 1)  # 5 开头判定为沪市 ETF/基金
 
     def test_bond_symbol(self):
         """测试债券符号解析"""
@@ -244,6 +258,18 @@ class TestSymbolResolverSpecialCodes(unittest.TestCase):
         alt_code, alt_market = config.alternates[0]
         self.assertEqual(alt_code, "000001")
         self.assertEqual(alt_market, 1)
+
+    def test_alternates_independent_copy(self):
+        """返回实例的 alternates 必须是独立拷贝，改动不得污染全局映射表"""
+        config = SymbolResolver.resolve("sh000001")
+        config.alternates.append(("999998", 1))
+
+        fresh = SymbolResolver.resolve("sh000001")
+        self.assertNotIn(("999998", 1), fresh.alternates)
+        self.assertNotIn(
+            ("999998", 1),
+            SymbolResolver._SPECIAL_CODES["sh000001"].alternates,
+        )
 
 
 if __name__ == "__main__":

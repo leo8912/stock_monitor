@@ -5,6 +5,7 @@
 
 from typing import Any
 
+from stock_monitor.models.stock_data import StockRowData
 from stock_monitor.utils.logger import app_logger
 
 from .data.stock_data_fetcher import StockDataFetcher
@@ -75,7 +76,7 @@ class StockDataService:
 
     def process_stock_data(
         self, data: dict[str, Any], stocks_list: list[str]
-    ) -> list[tuple]:
+    ) -> list[StockRowData]:
         """
         处理股票数据,返回格式化的股票列表
 
@@ -84,11 +85,11 @@ class StockDataService:
             stocks_list: 股票代码列表
 
         Returns:
-            List[Tuple]: 格式化后的股票数据列表
+            List[StockRowData]: 格式化后的股票数据列表
         """
         from stock_monitor.data.market.quotation import get_name_by_code
 
-        stocks = []
+        stocks: list[StockRowData] = []
 
         for code in stocks_list:
             info = self.validator.get_stock_info(data, code)
@@ -99,7 +100,7 @@ class StockDataService:
                 stocks.append(result)
                 app_logger.debug(f"股票 {code} 数据处理完成")
             else:
-                # 如果没有获取到数据,显示默认值
+                # 如果没有获取到数据,显示默认值（与正常分支保持同构，避免 tuple 混排）
                 name = code
                 # 尝试从本地数据获取股票名称
                 local_name = get_name_by_code(code)
@@ -108,7 +109,17 @@ class StockDataService:
                     # 对于港股,只保留中文部分
                     if code.startswith("hk") and "-" in name:
                         name = name.split("-")[0].strip()
-                stocks.append((name, "--", "--", "#e6eaf3", "", ""))
+                stocks.append(
+                    StockRowData(
+                        code=code,
+                        name=name,
+                        price="--",
+                        change_str="--",
+                        color_hex="#e6eaf3",
+                        seal_vol="",
+                        seal_type="",
+                    )
+                )
                 app_logger.warning(f"未获取到股票 {code} 的数据")
 
         app_logger.debug(f"共处理 {len(stocks)} 只股票数据")

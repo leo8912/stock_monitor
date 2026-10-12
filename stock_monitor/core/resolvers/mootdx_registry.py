@@ -3,6 +3,8 @@ import io
 import json
 import os
 import sys
+import threading
+import time
 
 import pandas as pd
 
@@ -10,6 +12,13 @@ from stock_monitor.config.manager import get_config_dir
 from stock_monitor.utils.logger import app_logger
 
 from .symbol_resolver import SymbolResolver, SymbolType
+
+# stdout/stderr 无窗口模式补丁的进程级互斥：还原时仅当流仍等于本线程写入的
+# 占位对象才置回，避免覆盖其他线程的补丁
+_stdout_patch_lock = threading.Lock()
+
+# resolve_missing 触发全量同步的节流间隔（秒）
+_SYNC_THROTTLE_SECONDS = 1800
 
 
 def safe_log_info(msg: str) -> None:
@@ -56,6 +65,7 @@ class MootdxNameRegistry:
         self.mootdx_client = mootdx_client
         self._parent = parent  # 持有父对象引用以访问延迟初始化的 client
         self._name_cache = self._load_name_cache()
+        self._last_sync_ts = 0.0  # 上次全量同步时间（monotonic，用于节流）
 
     def update_client(self, client) -> None:
         """更新 MarketDataAdapter client 引用"""
@@ -87,8 +97,8 @@ class MootdxNameRegistry:
                     return {
                         k: str(v).replace("\x00", "").strip() for k, v in data.items()
                     }
-            except Exception:
-                pass
+            except Exception as e:
+                safe_log_warning(f"加载名称缓存失败（{cache_file}）：{e}，将使用空缓存")
         return {}
 
     def _save_name_cache(self) -> None:
@@ -117,91 +127,94 @@ class MootdxNameRegistry:
                     safe_log_error(f"访问 parent 属性失败：{e}")
             return
 
-        # 防御 PyInstaller 窗口模式下 sys.stdout/stderr 为 None 的问题
-        # 使用 contextlib.redirect_stdout/redirect_stderr 替代全局替换，
-        # 避免影响其他线程的输出。
-        _sentinel = io.StringIO()
-        # 如果 stdout/stderr 为 None（PyInstaller 无窗口模式），
-        # 临时设置一个 StringIO 防止 write 崩溃，用完即还原。
-        _patched_stdout = False
-        _patched_stderr = False
-        if sys.stdout is None:
-            sys.stdout = _sentinel
-            _patched_stdout = True
-        if sys.stderr is None:
-            sys.stderr = _sentinel
-            _patched_stderr = True
-
-        _stderr_capture = io.StringIO()
-
-        safe_log_info("本地缓存中存在未知名称，触发全量名称字典同步...")
-        try:
-            safe_log_info(f"调用 client.stocks(market=0)，client 类型：{type(client)}")
-
-            with (
-                contextlib.redirect_stdout(io.StringIO()),
-                contextlib.redirect_stderr(_stderr_capture),
-            ):
-                sz_df = client.stocks(market=0)
-                sh_df = client.stocks(market=1)
-
-            safe_log_info(
-                f"sz_df 获取成功，行数：{len(sz_df) if sz_df is not None else 'None'}"
-            )
-            safe_log_info(
-                f"sh_df 获取成功，行数：{len(sh_df) if sh_df is not None else 'None'}"
-            )
-
-            full_df = pd.concat([sz_df, sh_df])
-            safe_log_info(f"数据合并成功，总行数：{len(full_df)}")
-
-            temp_names = {}
-            for df, market in [(sz_df, 0), (sh_df, 1)]:
-                if df is not None:
-                    for _, row in df.iterrows():
-                        code = str(row["code"])
-                        name = str(row["name"])
-
-                        # [ELEGANT] 使用 SymbolResolver 统一识别逻辑
-                        config = SymbolResolver.resolve(code, market)
-                        full_symbol = f"{SymbolResolver.get_market_prefix(config.market)}{config.code}"
-
-                        # 特殊修正：如果是上证指数，确保名称正确
-                        if (
-                            config.type == SymbolType.INDEX
-                            and config.code in ("000001", "999999")
-                            and config.market == 1
-                        ):
-                            name = "上证指数"
-
-                        # 存储带前缀的完整键
-                        temp_names[full_symbol] = name
-
-            self._name_cache.update(temp_names)
-
-            # 最终兜底：确保上证指数 sh000001 不会被任何逻辑篡改
-            self._name_cache["sh000001"] = "上证指数"
-
-            # 保存缓存前检查是否有数据
-            if (sz_df is not None and not sz_df.empty) or (
-                sh_df is not None and not sh_df.empty
-            ):
-                self._save_name_cache()
-                safe_log_info(f"全量字典同步完毕，共计 {len(full_df)} 只标的写入缓存。")
-            else:
-                safe_log_warning("获取到的数据为空")
-        except Exception as e:
-            import traceback
-
-            error_detail = traceback.format_exc()
-            error_msg = f"全量同步名称字典失败：{e}\n详细堆栈:\n{error_detail}"
-            safe_log_error(error_msg)
-        finally:
-            # 还原为 None 占位的标准流（仅还原我们修补的部分）
+        # 防御 PyInstaller 窗口模式下 sys.stdout/stderr 为 None 的问题：
+        # 无窗口模式下直接赋值补丁占位流，用模块级锁保证补丁/还原成对出现，
+        # 且还原前校验流仍等于本线程写入的占位，避免覆盖其他线程的补丁
+        with _stdout_patch_lock:
+            _sentinel = io.StringIO()
+            _patched_stdout = sys.stdout is None
+            _patched_stderr = sys.stderr is None
             if _patched_stdout:
-                sys.stdout = None
+                sys.stdout = _sentinel
             if _patched_stderr:
-                sys.stderr = None
+                sys.stderr = _sentinel
+
+            _stderr_capture = io.StringIO()
+
+            safe_log_info("本地缓存中存在未知名称，触发全量名称字典同步...")
+            try:
+                safe_log_info(
+                    f"调用 client.stocks(market=0)，client 类型：{type(client)}"
+                )
+
+                with (
+                    contextlib.redirect_stdout(io.StringIO()),
+                    contextlib.redirect_stderr(_stderr_capture),
+                ):
+                    sz_df = client.stocks(market=0)
+                    sh_df = client.stocks(market=1)
+
+                safe_log_info(
+                    f"sz_df 获取成功，行数：{len(sz_df) if sz_df is not None else 'None'}"
+                )
+                safe_log_info(
+                    f"sh_df 获取成功，行数：{len(sh_df) if sh_df is not None else 'None'}"
+                )
+
+                # client.stocks() 可能合法返回 None，先过滤再拼接
+                frames = [df for df in (sz_df, sh_df) if df is not None]
+                full_df = pd.concat(frames) if frames else pd.DataFrame()
+                safe_log_info(f"数据合并成功，总行数：{len(full_df)}")
+
+                temp_names = {}
+                for df, market in [(sz_df, 0), (sh_df, 1)]:
+                    if df is not None:
+                        for _, row in df.iterrows():
+                            code = str(row["code"])
+                            name = str(row["name"])
+
+                            # [ELEGANT] 使用 SymbolResolver 统一识别逻辑
+                            config = SymbolResolver.resolve(code, market)
+                            full_symbol = f"{SymbolResolver.get_market_prefix(config.market)}{config.code}"
+
+                            # 特殊修正：如果是上证指数，确保名称正确
+                            if (
+                                config.type == SymbolType.INDEX
+                                and config.code in ("000001", "999999")
+                                and config.market == 1
+                            ):
+                                name = "上证指数"
+
+                            # 存储带前缀的完整键
+                            temp_names[full_symbol] = name
+
+                self._name_cache.update(temp_names)
+
+                # 最终兜底：确保上证指数 sh000001 不会被任何逻辑篡改
+                self._name_cache["sh000001"] = "上证指数"
+
+                # 保存缓存前检查是否有数据
+                if (sz_df is not None and not sz_df.empty) or (
+                    sh_df is not None and not sh_df.empty
+                ):
+                    self._save_name_cache()
+                    safe_log_info(
+                        f"全量字典同步完毕，共计 {len(full_df)} 只标的写入缓存。"
+                    )
+                else:
+                    safe_log_warning("获取到的数据为空")
+            except Exception as e:
+                import traceback
+
+                error_detail = traceback.format_exc()
+                error_msg = f"全量同步名称字典失败：{e}\n详细堆栈:\n{error_detail}"
+                safe_log_error(error_msg)
+            finally:
+                # 仅当流仍是本线程写入的占位时才还原，避免覆盖他人补丁
+                if _patched_stdout and sys.stdout is _sentinel:
+                    sys.stdout = None
+                if _patched_stderr and sys.stderr is _sentinel:
+                    sys.stderr = None
 
     def get_name(self, symbol: str) -> str:
         """从缓存安全获取名称，支持通过 SymbolResolver 归一化键"""
@@ -216,13 +229,15 @@ class MootdxNameRegistry:
         )
 
     def resolve_missing(self, missing_codes: list[str]) -> None:
-        """若存在缺失则批量挂起同步，并设置兜底"""
+        """若存在缺失代码则触发全量名称同步（30 分钟节流，避免频繁全量拉取）。
+
+        get_name 未命中时本就返回代码本身作兜底，无需写自映射污染缓存。
+        """
         if not missing_codes:
             return
-        # 尝试同步名称（如果 client 可用）
-        # 注意：sync_mootdx_names 内部会检查 client 是否为 None
+        now = time.monotonic()
+        if now - self._last_sync_ts < _SYNC_THROTTLE_SECONDS:
+            return
+        # 先占位时间戳，防止并发路径在同步期间重复触发
+        self._last_sync_ts = now
         self.sync_mootdx_names()
-        # 为所有缺失的代码设置兜底值
-        for c in missing_codes:
-            if c not in self._name_cache:
-                self._name_cache[c] = c

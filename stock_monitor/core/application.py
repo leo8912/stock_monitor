@@ -240,9 +240,11 @@ class StockMonitorApp:
             # 运行事件循环
             return self._app.exec()
 
-        except Exception as e:
-            app_logger.critical(f"应用程序启动失败: {e}")
-            import traceback
-
-            app_logger.critical(f"详细错误信息: {traceback.format_exc()}")
+        except Exception:
+            app_logger.critical("应用程序启动失败", exc_info=True)
+            # exec() 未运行时 aboutToQuit 不会触发，这里补偿执行同一套幂等清理
+            try:
+                self._on_about_to_quit()
+            except Exception:
+                app_logger.critical("启动失败后的补偿清理未完全成功", exc_info=True)
             return 1

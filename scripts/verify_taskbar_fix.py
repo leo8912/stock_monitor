@@ -46,15 +46,16 @@ user32.SetWindowPos.argtypes = [
 ]
 user32.GetWindow.restype = wintypes.HWND
 user32.GetWindow.argtypes = [wintypes.HWND, ctypes.c_uint]
-user32.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
 
 HWND_TOPMOST = -1
-SWP_NOMOVE, SWP_NOSIZE, SWP_NOACTIVATE = 0x2, 0x1, 0x10
 
 
 def rect_of(hwnd):
     r = wintypes.RECT()
-    user32.GetWindowRect(hwnd, ctypes.byref(r))
+    if not user32.GetWindowRect(hwnd, ctypes.byref(r)):
+        raise RuntimeError(
+            f"GetWindowRect({hex(hwnd)}) failed, err={ctypes.get_last_error()}"
+        )
     return r.left, r.top, r.right, r.bottom
 
 
@@ -68,8 +69,8 @@ def hits_bar(bar_hwnd, pt):
     return hit == bar_hwnd
 
 
-def z_distance(bar_hwnd, other_hwnd):
-    """从 topmost 带顶走到 bar 需要的步数（越小越靠上）。"""
+def z_distance(bar_hwnd):
+    """从 topmost 带顶走到 bar 需要的步数（越小越靠上；-1 表示探测失败）。"""
     cur = user32.GetWindow(bar_hwnd, 0)
     steps = 0
     while cur and steps < 300:
@@ -96,9 +97,7 @@ def main():
     bar_rect = rect_of(bar_hwnd)
     center = center_of(bar_rect)
     print(f"bar hwnd={hex(bar_hwnd)} rect={bar_rect} center={center}")
-    print(
-        f"初始命中自己: {hits_bar(bar_hwnd, center)}  z: {z_distance(bar_hwnd, bar_hwnd)}"
-    )
+    print(f"初始命中自己: {hits_bar(bar_hwnd, center)}  z: {z_distance(bar_hwnd)}")
 
     # ── 造遮挡窗口：精确盖住行情条，TOPMOST ──
     cover = QtWidgets.QWidget(None, QtCore.Qt.WindowType.WindowStaysOnTopHint)
@@ -133,10 +132,10 @@ def main():
 
     print(f"\n恢复耗时: {f'{recovered_at:.2f}s' if recovered_at else '4s 内未恢复'}")
     if hits_bar(bar_hwnd, center):
-        d = z_distance(bar_hwnd, cover_hwnd)
+        d = z_distance(bar_hwnd)
         print(
             f"恢复后 z-order: 距带顶 {d[0]} 步 (cover 距带顶 "
-            f"{z_distance(cover_hwnd, cover_hwnd)[0]} 步)"
+            f"{z_distance(cover_hwnd)[0]} 步)"
         )
 
     # ── 静默性检查：无遮挡时 2 秒内不应发生 z-order 抢占 ──
@@ -147,13 +146,17 @@ def main():
     print(
         f"遮挡移除后 _is_covered() = {bar._is_covered()} (期望 False, 正确复位={cleared})"
     )
-    d1 = z_distance(bar_hwnd, bar_hwnd)[0]
+    d1 = z_distance(bar_hwnd)[0]
     t0 = time.monotonic()
     while time.monotonic() - t0 < 2.0:
         app.processEvents()
         time.sleep(0.1)
-    d2 = z_distance(bar_hwnd, bar_hwnd)[0]
-    silent = d1 == d2
+    d2 = z_distance(bar_hwnd)[0]
+    if d1 < 0 or d2 < 0:
+        print("FAIL: z-order 探测失败(-1)，静默检查无效")
+        silent = False
+    else:
+        silent = d1 == d2
     print(
         f"无遮挡 2s 静默检查: 距带顶 {d1} → {d2} ({'静默(未盲抢)' if silent else 'z-order 有变动(可能被外部窗口穿插)'})"
     )
@@ -162,14 +165,17 @@ def main():
     del bar
     app.processEvents()
 
-    if recovered_at is not None:
-        print(
-            f"\nPASS: 行情条被盖住后 {recovered_at:.2f}s 恢复显示"
-            + ("；遮挡判定复位正常" if cleared else "；但遮挡判定未复位(警告)")
-        )
-        return 0
-    print("\nFAIL: 行情条被盖住后未恢复")
-    return 2
+    if recovered_at is None:
+        print("\nFAIL: 行情条被盖住后未恢复")
+        return 2
+    if not silent:
+        print("\nFAIL: 行情条被盖住后恢复，但静默检查未通过(探测失败或 z-order 有变动)")
+        return 5
+    print(
+        f"\nPASS: 行情条被盖住后 {recovered_at:.2f}s 恢复显示"
+        + ("；遮挡判定复位正常" if cleared else "；但遮挡判定未复位(警告)")
+    )
+    return 0
 
 
 if __name__ == "__main__":

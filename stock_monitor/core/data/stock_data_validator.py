@@ -3,6 +3,7 @@
 负责验证股票数据的完整性和正确性
 """
 
+import math
 from typing import Any
 
 
@@ -29,11 +30,11 @@ class StockDataValidator:
             if field not in stock_data or stock_data[field] is None:
                 return False
 
-        # 检查关键字段是否为有效数值
+        # 检查关键字段是否为有限数值（拒绝 NaN/Inf，避免静默污染下游计算）
         try:
-            float(stock_data["now"])
-            float(stock_data["close"])
-            return True
+            now = float(stock_data["now"])
+            close = float(stock_data["close"])
+            return math.isfinite(now) and math.isfinite(close)
         except (ValueError, TypeError):
             return False
 
@@ -74,7 +75,7 @@ class StockDataValidator:
             info = data.get(code)  # 精确匹配完整代码
 
         # 如果没有精确匹配,尝试使用纯数字代码匹配
-        if not info and isinstance(data, dict):
+        if info is None and isinstance(data, dict):
             pure_code = code[2:] if code.startswith(("sh", "sz")) else code
             info = data.get(pure_code)
 
@@ -99,4 +100,7 @@ class StockDataValidator:
             bool: 是否包含所有必需字段
         """
         required_fields = ["name", "now", "close", "open", "high", "low", "volume"]
-        return all(field in stock_data for field in required_fields)
+        return all(
+            field in stock_data and stock_data[field] is not None
+            for field in required_fields
+        )

@@ -3,6 +3,8 @@
 提供线程安全的 LRU 内存缓存（量化引擎等共享）
 """
 
+from __future__ import annotations
+
 import threading
 import time
 from collections import OrderedDict
@@ -19,7 +21,8 @@ class LRUCache:
             max_size: 最大条目数，超出时淘汰最久未使用项。
             default_ttl: 默认过期时间（秒）。
         """
-        self._cache: OrderedDict[str, tuple[Any, float]] = OrderedDict()
+        # 条目格式: (value, expiry, written_at)，written_at 供 ttl_override 重算过期时间
+        self._cache: OrderedDict[str, tuple[Any, float, float]] = OrderedDict()
         self._max_size = max_size
         self._default_ttl = default_ttl
         self._lock = threading.Lock()
@@ -30,9 +33,9 @@ class LRUCache:
         """读取键值；命中且未过期返回值并刷新 LRU 次序，否则返回 None。"""
         with self._lock:
             if key in self._cache:
-                value, expiry = self._cache[key]
+                value, expiry, written_at = self._cache[key]
                 if ttl_override is not None:
-                    expiry = expiry - self._default_ttl + ttl_override
+                    expiry = written_at + ttl_override
                 if expiry > time.time():
                     self._cache.move_to_end(key)
                     self._hits += 1
@@ -53,7 +56,8 @@ class LRUCache:
                 del self._cache[key]
             elif len(self._cache) >= self._max_size:
                 self._cache.popitem(last=False)
-            self._cache[key] = (value, time.time() + ttl)
+            now = time.time()
+            self._cache[key] = (value, now + ttl, now)
 
     def delete(self, key: str) -> bool:
         """删除键；存在并成功删除返回 True，否则 False。"""
@@ -94,8 +98,9 @@ class LRUCache:
 
     @property
     def cache(self):
-        """兼容量化诊断代码的缓存视图。"""
-        return self._cache
+        """兼容量化诊断代码的缓存视图（锁内浅拷贝快照，保证线程安全）。"""
+        with self._lock:
+            return dict(self._cache)
 
     @property
     def max_size(self) -> int:

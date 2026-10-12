@@ -7,12 +7,14 @@
 
 from __future__ import annotations
 
-import os
 import sys
 
-# 以脚本方式直接运行时，确保仓库根目录在 sys.path 上
+# 以脚本方式直接运行时，基于 __file__ 定位仓库根目录并置于 sys.path 最前，
+# 避免依赖 CWD 或误用 site-packages 中的旧版本
 if __package__ in (None, ""):
-    sys.path.append(os.getcwd())
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from stock_monitor.services.reporting.export_stocks_to_excel import (  # noqa: E402,F401
     compute_indicators,

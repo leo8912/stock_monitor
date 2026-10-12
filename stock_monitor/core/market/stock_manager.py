@@ -6,6 +6,7 @@ import atexit
 import concurrent.futures
 import json
 import threading
+import time
 from typing import Any
 
 from stock_monitor.core.engine.quant_engine import QuantEngine
@@ -35,6 +36,7 @@ class StockManager:
 
         self._stock_data_service = stock_data_service or global_stock_data_service
         self._quant_engine = None  # 延迟初始化
+        self._quant_engine_lock = threading.Lock()  # 保护懒初始化的 check-then-act
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         self._closed = False
         self._large_orders_cache = {}
@@ -68,7 +70,7 @@ class StockManager:
             if self._last_stock_data[stock.name] != stock.hash_key:
                 return True
 
-        current_names = [s.name for s in stocks]
+        current_names = {s.name for s in stocks}
         for name in self._last_stock_data.keys():
             if name not in current_names:
                 return True
@@ -84,15 +86,18 @@ class StockManager:
     def _async_fetch_quant_data(self, codes: list[str]):
         """异步拉取量化数据（含大单流向与集合竞价），不阻塞主刷新线程"""
         if self._quant_engine is None:
-            adapter = None
-            if hasattr(self._stock_data_service, "fetcher"):
-                fetcher = self._stock_data_service.fetcher
-                adapter = getattr(fetcher, "market_adapter", None) or getattr(
-                    fetcher, "mootdx_client", None
-                )
-            if adapter is None:
-                return
-            self._quant_engine = QuantEngine(adapter)
+            # executor 工作线程与调用线程可能并发进入，构造必须在锁内完成
+            with self._quant_engine_lock:
+                if self._quant_engine is None:
+                    adapter = None
+                    if hasattr(self._stock_data_service, "fetcher"):
+                        fetcher = self._stock_data_service.fetcher
+                        adapter = getattr(fetcher, "market_adapter", None) or getattr(
+                            fetcher, "mootdx_client", None
+                        )
+                    if adapter is None:
+                        return
+                    self._quant_engine = QuantEngine(adapter)
 
         for code in codes:
             try:
@@ -100,8 +105,6 @@ class StockManager:
                 res = self._quant_engine.fetch_large_orders_flow(code)
 
                 # 2. 集合竞价分析 [NEW]
-                import time
-
                 now_hm = time.strftime("%H:%M")
                 auc_res = None
                 # 仅在盘前或开盘初期关注竞价
@@ -132,6 +135,9 @@ class StockManager:
         if wait_for_quant_data:
             # 同步等待量化数据完成
             self._async_fetch_quant_data(stock_codes)
+        elif self._closed:
+            # close() 后线程池已关停，不能再 submit（会抛 RuntimeError）
+            app_logger.debug("StockManager 已关闭，跳过异步量化数据派发")
         else:
             # 异步派发，不阻塞当前线程
             self._executor.submit(self._async_fetch_quant_data, stock_codes)

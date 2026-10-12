@@ -3,6 +3,7 @@ from typing import Any
 from PyQt6 import QtCore
 
 from stock_monitor.core.market.market_manager import market_manager
+from stock_monitor.core.market.stock_manager import stock_manager
 from stock_monitor.core.workers.base import BaseWorker
 from stock_monitor.utils.logger import app_logger
 
@@ -13,11 +14,6 @@ class MarketStatsWorker(BaseWorker):
     # 信号：上涨数，下跌数，平盘数，总数
     stats_updated = QtCore.pyqtSignal(int, int, int, int)
 
-    def __init__(self):
-        super().__init__("市场统计 Worker")
-        self._last_data_time = None  # 记录上次数据时间戳
-        self._market_closed_fetched = False  # 闭市数据已获取标志
-
     def run(self):
         """线程执行入口"""
         # 初始延迟
@@ -25,15 +21,13 @@ class MarketStatsWorker(BaseWorker):
 
         while self._is_running:
             try:
-                # 检查市场是否开市，闭市期间延长刷新间隔
+                # 检查市场是否开市（仅用于状态日志，刷新间隔不随开闭市变化）
                 market_open = market_manager.is_market_open()
                 app_logger.info(
                     f"[市场统计] 市场状态检查：{'开市' if market_open else '闭市'}"
                 )
 
                 app_logger.info("[市场统计] 开始获取全市场数据...")
-                from stock_monitor.core.market.stock_manager import stock_manager
-
                 market_data = stock_manager.get_all_market_data()
 
                 if market_data:
@@ -68,7 +62,7 @@ class MarketStatsWorker(BaseWorker):
                     self.sleep(1)
 
             except Exception as e:
-                app_logger.error(f"市场统计线程异常：{e}")
+                app_logger.error(f"市场统计线程异常：{e}", exc_info=True)
                 # 分片睡眠：异常退避期间仍能及时响应停止请求
                 for _ in range(10):
                     if not self._is_running:
@@ -87,21 +81,20 @@ class MarketStatsWorker(BaseWorker):
                 continue
 
             name = info.get("name", "")
-            # 跳过指数
-            if "指数" in name or "A 股" in name:
+            # 跳过指数类聚合行
+            if "指数" in name or "A股" in name:
                 continue
 
             try:
                 close = float(info.get("close", 0))
                 now = float(info.get("now", 0))
 
-                # [STABLE] 如果当前价为 0（如集合竞价尚未产生成交），跳过统计，避免误判为下跌
-                if now <= 0:
+                # 当前价为 0（如集合竞价尚未产生成交）无法判定涨跌，跳过统计，
+                # 避免误判为下跌；昨收缺失（新股/数据异常）口径一致，不计平盘
+                if now <= 0 or close <= 0:
                     continue
 
-                if close == 0:
-                    flat += 1
-                elif now > close:
+                if now > close:
                     up += 1
                 elif now < close:
                     down += 1

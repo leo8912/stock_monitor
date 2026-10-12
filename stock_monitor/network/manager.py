@@ -58,7 +58,12 @@ class NetworkManager:
         return session
 
     def close(self):
-        """关闭本实例创建的所有会话，释放连接资源"""
+        """关闭本实例创建的所有会话，释放连接资源。
+
+        限制：``threading.local`` 无法从外部遍历其他线程的引用，本方法只把
+        **当前线程**的 Session 置空；其他线程仍持有已关闭的 Session 并可能
+        继续复用（连接池已被清空）。调用方需先停止所有工作线程再调用。
+        """
         with self._sessions_lock:
             sessions, self._all_sessions = self._all_sessions, []
         for session in sessions:
@@ -113,7 +118,9 @@ class NetworkManager:
 
         def _once() -> requests.Response:
             response = session.request(method_u, url, **kwargs)
-            response.raise_for_status()
+            # 仅 5xx 触发重试；4xx 等客户端错误在重试外判定，不做无谓退避
+            if response.status_code >= 500:
+                response.raise_for_status()
             return response
 
         try:
@@ -125,6 +132,8 @@ class NetworkManager:
                 )(_once)()
             else:
                 response = _once()
+            # 4xx 等不可恢复错误直接失败（HTTPError 属于下方可捕获类型）
+            response.raise_for_status()
             app_logger.debug(f"{method_u}请求成功: {url}")
             return response
         except (
@@ -133,10 +142,6 @@ class NetworkManager:
             TimeoutError,
             OSError,
         ) as e:
-            app_logger.error(f"{method_u}请求失败: {url}, 错误: {e}")
-            return None
-        except Exception as e:
-            # 重试耗尽后 reraise 的底层异常也可能不是 RequestException
             app_logger.error(f"{method_u}请求失败: {url}, 错误: {e}")
             return None
 

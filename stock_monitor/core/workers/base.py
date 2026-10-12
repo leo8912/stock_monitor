@@ -77,9 +77,11 @@ class BaseWorker(QtCore.QThread):
         with self._lock:
             self._is_running = False
         if not wait_for_thread_stop(self):
+            # 超时说明线程可能仍在收尾，不能打出「已停止」误导调用方
             app_logger.warning(
                 f"{self._name} 停止超时（>{DEFAULT_STOP_TIMEOUT_MS}ms），线程可能仍在收尾"
             )
+            return
         app_logger.info(f"{self._name}已停止")
 
     def run(self) -> None:

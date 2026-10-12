@@ -47,8 +47,13 @@ def parse_cache_payload(
             # 旧格式：直接是时间戳
             last_signal_time[key_tuple] = value
 
-    # 清理过期缓存项
-    expired_keys = [k for k, v in last_signal_time.items() if now - v > expiry_seconds]
+    # 清理过期缓存项；非数值时间戳（损坏/外部编辑的缓存）直接剔除，
+    # 否则 now - v 抛 TypeError 会让上层丢弃整个缓存，重启后重发全部信号
+    expired_keys = [
+        k
+        for k, v in last_signal_time.items()
+        if not isinstance(v, (int, float)) or now - v > expiry_seconds
+    ]
     for key in expired_keys:
         del last_signal_time[key]
         signal_states.pop(key, None)

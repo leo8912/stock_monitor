@@ -4,6 +4,9 @@
 从 :class:`~stock_monitor.core.workers.quant_worker.QuantWorker` 的
 ``_scan_single_symbol`` 抽离的无状态决策规则：OBV 信号格式化、
 策略共振判定、优先级判定与多因子兜底信号。
+
+约定：所有 append_* / apply_* 类函数对传入的 ``signals`` 列表**原地追加**
+并返回同一对象（调用方依赖引用保持做去重与透传）。
 """
 
 from __future__ import annotations
@@ -73,9 +76,12 @@ def is_priority_symbol(daily_stats: dict | None) -> tuple[bool, str]:
     Returns:
         (is_priority, 胜率展示标签)
     """
-    if daily_stats and daily_stats.get("total_signals", 0) >= 3:
-        if daily_stats["win_rate"] >= 0.8:
-            return True, f" [💎 历史胜率 {daily_stats['win_rate'] * 100:.0f}%]"
+    if (
+        daily_stats
+        and daily_stats.get("total_signals", 0) >= PRIORITY_MIN_SAMPLES
+        and daily_stats["win_rate"] >= PRIORITY_MIN_WIN_RATE
+    ):
+        return True, f" [💎 历史胜率 {daily_stats['win_rate'] * 100:.0f}%]"
     return False, ""
 
 

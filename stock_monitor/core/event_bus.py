@@ -13,32 +13,14 @@ from typing import Any
 from stock_monitor.utils.logger import app_logger
 
 # 尝试导入 PyQt6 以支持异步分发
-_QApp = None
 _HAS_PYQT = False
-_HAS_EVENT_LOOP = False
 try:
-    from PyQt6.QtCore import QTimer
-
-    def _get_qapp():
-        """延迟获取 QApplication 实例。"""
-        global _QApp
-        if _QApp is None:
-            from PyQt6.QtWidgets import QApplication
-
-            _QApp = QApplication.instance()
-        return _QApp
+    from PyQt6.QtCore import QThread, QTimer
 
     _HAS_PYQT = True
-    # 检测是否有正在运行的 Qt 事件循环（pytest 等无事件循环场景走同步路径）
-    try:
-        from PyQt6.QtWidgets import QApplication
-
-        _app = QApplication.instance()
-        _HAS_EVENT_LOOP = _app is not None and _app.thread() is not None
-    except Exception:
-        _HAS_EVENT_LOOP = False
 except ImportError:
-    _HAS_PYQT = False
+    QThread = None
+    QTimer = None
 
 
 @dataclass
@@ -77,20 +59,16 @@ class EventBus:
     _lock = threading.Lock()
 
     def __new__(cls):
+        # 初始化并入创建锁，避免双检间隙被并发重复初始化
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
-                    cls._instance = super().__new__(cls)
-                    cls._instance._initialized = False
+                    instance = super().__new__(cls)
+                    instance._subscribers = defaultdict(list)
+                    instance._wildcard_subscribers = []
+                    instance._event_lock = threading.Lock()
+                    cls._instance = instance
         return cls._instance
-
-    def __init__(self):
-        if self._initialized:
-            return
-        self._subscribers: dict[str, list[Callable]] = defaultdict(list)
-        self._wildcard_subscribers: list[Callable] = []
-        self._event_lock = threading.Lock()
-        self._initialized = True
 
     def subscribe(self, topic: str, callback: Callable) -> None:
         """
@@ -122,9 +100,9 @@ class EventBus:
         """
         发布事件。
 
-        优先通过 QTimer.singleShot(0, ...) 异步分发回调，避免阻塞调用线程
-        （尤其适用于从工作线程发布到 UI 线程订阅者的场景）。
-        若 PyQt6 不可用（如纯 CLI 模式），则退化为同步执行。
+        当前线程存在 Qt 事件 dispatcher 时，通过 ``QTimer.singleShot(0, ...)``
+        异步分发回调（订阅者异常单独捕获记日志）。否则（纯 CLI / 工作线程无
+        事件循环，QTimer 投递会被 Qt 静默丢弃）降级为同步执行，保证事件不丢。
         """
         event = Event(topic=topic, data=data, source=source)
 
@@ -137,31 +115,38 @@ class EventBus:
         if not subscribers:
             return
 
-        # --- 异步分发（PyQt6 可用且有事件循环时） ---
-        if _HAS_PYQT and _HAS_EVENT_LOOP:
-            for callback in subscribers:
-                try:
-                    QTimer.singleShot(0, lambda cb=callback, ev=event: cb(ev))
-                except Exception:
-                    # QTimer 只能在有事件循环的线程中使用，退化为同步
-                    try:
-                        callback(event)
-                    except Exception as e:
-                        app_logger.error(
-                            f"事件回调异常 [{topic}]: {e}",
-                            extra={"event_topic": topic, "event_source": source},
-                        )
-            return
-
-        # --- 同步分发（无 PyQt6 时的 fallback） ---
-        for callback in subscribers:
+        def _invoke(cb: Callable, ev: Event = event) -> None:
             try:
-                callback(event)
+                cb(ev)
             except Exception as e:
                 app_logger.error(
                     f"事件回调异常 [{topic}]: {e}",
                     extra={"event_topic": topic, "event_source": source},
                 )
+
+        dispatcher = None
+        if _HAS_PYQT:
+            # 惰性检测：导入期快照不可靠（模块导入时 QApplication 往往尚未创建）
+            dispatcher = QThread.currentThread().eventDispatcher()
+
+        if dispatcher is not None:
+            for callback in subscribers:
+                try:
+                    QTimer.singleShot(0, lambda cb=callback: _invoke(cb))
+                except Exception as e:
+                    # 仅投递失败记日志并同步兜底，不与回调自身异常混淆
+                    app_logger.error(
+                        f"事件异步投递失败 [{topic}]，降级同步执行: {e}",
+                        extra={"event_topic": topic, "event_source": source},
+                    )
+                    _invoke(callback)
+            return
+
+        if _HAS_PYQT:
+            # QTimer 要求调用线程有事件循环，否则事件会被静默丢弃
+            app_logger.error(f"当前线程无 Qt 事件循环，事件 [{topic}] 降级为同步分发")
+        for callback in subscribers:
+            _invoke(callback)
 
     def clear(self) -> None:
         """清除所有订阅"""

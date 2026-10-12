@@ -71,9 +71,17 @@ class StockDataProcessor:
         recent_net_out = 0.0  # 传递给 UI 的实时净流入量（手），用于动态着色
 
         if isinstance(large_order_vol, (tuple, list)) and len(large_order_vol) >= 2:
-            buy_vol = float(large_order_vol[0])
-            sell_vol = float(large_order_vol[1])
-            recent_net = float(large_order_vol[2]) if len(large_order_vol) > 2 else 0.0
+            try:
+                buy_vol = float(large_order_vol[0])
+                sell_vol = float(large_order_vol[1])
+                recent_net = (
+                    float(large_order_vol[2]) if len(large_order_vol) > 2 else 0.0
+                )
+            except (TypeError, ValueError):
+                # 大单缓存可能被上游写入非数值内容，单只异常不能中断整批行情处理
+                buy_vol = 0.0
+                sell_vol = 0.0
+                recent_net = 0.0
         else:
             buy_vol = float(large_order_vol) if large_order_vol else 0.0
             sell_vol = 0.0
@@ -165,8 +173,16 @@ class StockDataProcessor:
             if now is None or close is None:
                 return None
 
-            f_now = float(now)
-            f_close = float(close)
+            try:
+                f_now = float(now)
+            except (TypeError, ValueError):
+                return None
+            try:
+                f_close = float(close)
+            except (TypeError, ValueError):
+                # close 回退链未经 is_valid 校验，字段级失败时退回现价保平盘展示，
+                # 不让整行降级为 "--"
+                f_close = f_now
 
             # 计算涨跌幅
             percent = ((f_now - f_close) / f_close * 100) if f_close != 0 else 0
@@ -176,10 +192,10 @@ class StockDataProcessor:
                 color = _STOCK_COLORS["UP_LIMIT"]  # 涨停-最亮红
             elif percent >= 5:
                 color = _STOCK_COLORS["UP_BRIGHT"]  # 大涨-亮红
+            elif math.isclose(percent, 0, abs_tol=1e-9):
+                color = _STOCK_COLORS["NEUTRAL"]  # 平盘-灰白
             elif percent > 0:
                 color = _STOCK_COLORS["UP"]  # 上涨-标准红
-            elif percent == 0:
-                color = _STOCK_COLORS["NEUTRAL"]  # 平盘-灰白
             elif percent > -5:
                 color = _STOCK_COLORS["DOWN"]  # 下跌-标准绿
             elif percent > -10:

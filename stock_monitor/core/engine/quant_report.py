@@ -27,7 +27,11 @@ def get_report_title(report_type: str, now: datetime | None = None) -> str:
 def format_report_content(
     title: str, all_signals: list, strong_signals: list, report_type: str
 ) -> str:
-    """格式化报告内容（使用 Markdown 格式）"""
+    """格式化报告内容（使用 Markdown 格式）。
+
+    注意：会就地排序入参 all_signals/strong_signals（按 score 降序），
+    调用方（quant_worker 推送前 5 强信号）依赖此副作用契约，勿改为 sorted。
+    """
     if not all_signals:
         return "今日无显著信号"
 

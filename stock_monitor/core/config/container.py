@@ -3,6 +3,8 @@
 用于管理核心组件的依赖关系
 """
 
+from __future__ import annotations
+
 import inspect
 import threading
 import warnings
@@ -114,18 +116,22 @@ class DIContainer:
                 if key in self._singletons:
                     return self._singletons[key]
 
-        # 使用工厂创建
-        if key in self._factories:
+        # 使用工厂创建：锁内只取工厂，工厂在锁外执行（工厂内部可能再调 get()，持锁会自死锁）
+        factory = None
+        with self._access_lock:
+            if key in self._singletons:
+                return self._singletons[key]
+            factory = self._factories.get(key)
+        if factory is not None:
+            instance = factory()
             with self._access_lock:
-                # 锁内复查 _singletons，避免并发时单例被覆盖
-                if key in self._singletons:
-                    return self._singletons[key]
-                if key in self._factories:
-                    instance = self._factories[key]()
-                    # 工厂创建的也缓存为单例
-                    self._singletons[key] = instance
-                    app_logger.debug(f"通过工厂创建服务: {key}")
-                    return instance
+                # 复查，避免并发时单例被覆盖
+                existing = self._singletons.get(key)
+                if existing is not None:
+                    return existing
+                self._singletons[key] = instance
+            app_logger.debug(f"通过工厂创建服务: {key}")
+            return instance
 
         # 向后兼容:自动创建已知服务类型
         if isinstance(key, type):
@@ -214,34 +220,36 @@ class DIContainer:
             for param_name, param in sig.parameters.items():
                 if param_name == "self":
                     continue
+                # *args/**kwargs 不是必需依赖
+                if param.kind in (param.VAR_POSITIONAL, param.VAR_KEYWORD):
+                    continue
 
-                # 尝试从容器获取依赖
-                try:
-                    # 先尝试用参数名作为字符串键
-                    params[param_name] = self.get(param_name)
-                except KeyError:
-                    # 如果有类型注解,尝试用类型获取
-                    if param.annotation != inspect.Parameter.empty:
-                        try:
-                            params[param_name] = self.get(param.annotation)
-                        except KeyError:
-                            # 区分有默认值和无默认值的参数
-                            if param.default == inspect.Parameter.empty:
-                                app_logger.error(
-                                    f"无法解析必需依赖: {cls.__name__}.{param_name} "
-                                    f"(类型: {param.annotation})"
-                                )
-                                raise KeyError(
-                                    f"无法解析必需依赖: {cls.__name__}.{param_name}"
-                                ) from None
-                            else:
-                                app_logger.debug(
-                                    f"可选依赖未找到，使用默认值: {cls.__name__}.{param_name}"
-                                )
-                    elif param.default == inspect.Parameter.empty:
-                        app_logger.warning(
-                            f"无法解析依赖且无类型注解: {cls.__name__}.{param_name}"
+                has_annotation = param.annotation != inspect.Parameter.empty
+                resolved = False
+                # 有注解时优先按注解解析，失败再回退参数名（避免同名字符串键注入错误类型）
+                lookup_keys = (
+                    (param.annotation, param_name) if has_annotation else (param_name,)
+                )
+                for key in lookup_keys:
+                    try:
+                        params[param_name] = self.get(key)
+                        resolved = True
+                        break
+                    except KeyError:
+                        continue
+
+                if not resolved:
+                    if param.default == inspect.Parameter.empty:
+                        app_logger.error(
+                            f"无法解析必需依赖: {cls.__name__}.{param_name} "
+                            f"(类型: {param.annotation if has_annotation else '无注解'})"
                         )
+                        raise KeyError(
+                            f"无法解析必需依赖: {cls.__name__}.{param_name}"
+                        ) from None
+                    app_logger.debug(
+                        f"可选依赖未找到，使用默认值: {cls.__name__}.{param_name}"
+                    )
 
             instance = cls(**params)
             app_logger.debug(f"自动解析并创建: {cls.__name__}")

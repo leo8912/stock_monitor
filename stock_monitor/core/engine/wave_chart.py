@@ -3,6 +3,7 @@
 """
 
 import os
+import tempfile
 
 import matplotlib
 
@@ -36,6 +37,7 @@ class WaveChart:
         绘制K线图，标注波浪走势与斐波那契线，并保存到本地临时目录。
         返回图片保存路径。
         """
+        fig = None
         try:
             df = result.df.copy()
             swings = result.swings
@@ -47,9 +49,7 @@ class WaveChart:
 
             # 创建临时输出目录
             if output_dir is None:
-                output_dir = os.path.join(
-                    os.environ.get("TEMP", "C:/Windows/Temp"), "stock_monitor_charts"
-                )
+                output_dir = os.path.join(tempfile.gettempdir(), "stock_monitor_charts")
             os.makedirs(output_dir, exist_ok=True)
             output_path = os.path.join(output_dir, f"{symbol}_wave_{timeframe}.png")
 
@@ -61,21 +61,12 @@ class WaveChart:
             # 必须设置 DatetimeIndex！
             plot_df.index = pd.to_datetime(plot_df["datetime"])
 
-            # 构造 ZigZag 线的数据
-            # 在图表时间范围内的端点，连接起来
-            zigzag_data = pd.Series(index=plot_df.index, dtype=float)
-
-            # 筛选在绘图范围内的端点
+            # 筛选在绘图范围内的端点（波浪折线由 valid_swings 直接绘制）
             valid_swings = []
             for s in swings:
                 sub_idx = s.index - start_idx
                 if 0 <= sub_idx < plot_len:
-                    dt_label = plot_df.index[sub_idx]
-                    zigzag_data.loc[dt_label] = s.price
                     valid_swings.append((sub_idx, s))
-
-            # 线性插值生成 ZigZag 折线
-            _zigzag_line = zigzag_data.interpolate(method="linear")  # noqa: F841
 
             # 准备绘图样式
             # 采用暗黑色调
@@ -234,8 +225,8 @@ class WaveChart:
                 },
             )
 
-            # 保存图片并清理绘图资源
-            plt.savefig(output_path, dpi=120, bbox_inches="tight", facecolor="#121212")
+            # 保存图片并清理绘图资源（作用于本图，避免依赖 pyplot 全局状态）
+            fig.savefig(output_path, dpi=120, bbox_inches="tight", facecolor="#121212")
             plt.close(fig)
 
             app_logger.info(f"波浪分析图表已成功生成并保存：{output_path}")
@@ -243,8 +234,10 @@ class WaveChart:
 
         except Exception as e:
             app_logger.error(f"生成波浪图表失败：{e}", exc_info=True)
-            try:
-                plt.close("all")
-            except Exception:  # noqa: E722
-                pass
+            # 只关闭本图，避免连带关闭其他线程正在使用的图形
+            if fig is not None:
+                try:
+                    plt.close(fig)
+                except Exception:
+                    pass
             return None

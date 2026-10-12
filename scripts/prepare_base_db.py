@@ -5,6 +5,7 @@
 
 import os
 import shutil
+import sqlite3
 import sys
 import tempfile
 
@@ -86,43 +87,51 @@ def create_base_database():
     print("\n4. 创建数据库...")
     temp_dir = tempfile.mkdtemp()
 
-    # 临时修改配置目录
+    # 临时修改配置目录，使 StockDatabase 在 temp_dir 中建库
     import stock_monitor.config.manager as config_module
+    import stock_monitor.data.stock.stock_db as db_module
 
     original_get_config_dir = config_module.get_config_dir
 
     def temp_get_config_dir():
         return temp_dir
 
-    # 替换函数
     config_module.get_config_dir = temp_get_config_dir
-    import stock_monitor.data.stock.stock_db as db_module
-
     db_module.get_config_dir = temp_get_config_dir
 
-    # 创建数据库实例
-    db = StockDatabase()
-    count = db.insert_stocks(major_stocks)
-    print(f"   成功插入 {count} 条记录")
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    target_path = os.path.join(
+        project_root, "stock_monitor", "resources", "stocks_base.db"
+    )
 
-    # 复制到resources
-    print("\n5. 保存基础数据库...")
-    target_path = "stock_monitor/resources/stocks_base.db"
-    os.makedirs(os.path.dirname(target_path), exist_ok=True)
-    shutil.copy2(db.db_path, target_path)
+    try:
+        # 创建数据库实例
+        db = StockDatabase()
+        # StockDatabase 初始化时会把旧 stocks_base.db 全量导入临时库，先清空以只保留筛选结果
+        with sqlite3.connect(db.db_path) as conn:
+            conn.execute("DELETE FROM stocks")
+            conn.commit()
+        count = db.insert_stocks(major_stocks)
+        print(f"   成功插入 {count} 条记录")
 
-    file_size = os.path.getsize(target_path)
-    print(f"   基础数据库已创建: {target_path}")
-    print(f"   文件大小: {file_size / 1024:.2f} KB ({file_size / 1024 / 1024:.2f} MB)")
+        # 复制到resources
+        print("\n5. 保存基础数据库...")
+        os.makedirs(os.path.dirname(target_path), exist_ok=True)
+        db.close()  # 关闭连接池触发 WAL checkpoint，数据落盘主库文件后才能完整复制
+        shutil.copy2(db.db_path, target_path)
 
-    # 恢复原始函数
-    config_module.get_config_dir = original_get_config_dir
-    db_module.get_config_dir = original_get_config_dir
-
-    # 清理临时目录
-    print("\n6. 清理临时文件...")
-    shutil.rmtree(temp_dir)
-    print("   清理完成")
+        file_size = os.path.getsize(target_path)
+        print(f"   基础数据库已创建: {target_path}")
+        print(
+            f"   文件大小: {file_size / 1024:.2f} KB ({file_size / 1024 / 1024:.2f} MB)"
+        )
+    finally:
+        # 恢复原始函数并清理临时目录
+        config_module.get_config_dir = original_get_config_dir
+        db_module.get_config_dir = original_get_config_dir
+        print("\n6. 清理临时文件...")
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        print("   清理完成")
 
     print("\n" + "=" * 80)
     print("基础数据库创建成功！")
@@ -130,12 +139,6 @@ def create_base_database():
 
     # 验证数据库
     print("\n验证数据库...")
-    verify_db = StockDatabase()
-    # 临时修改路径
-    verify_db.db_path = target_path
-
-    import sqlite3
-
     with sqlite3.connect(target_path) as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM stocks")

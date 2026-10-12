@@ -9,7 +9,7 @@ import threading
 from datetime import datetime
 from datetime import time as dtime
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Protocol
 
 from PyQt6 import QtCore
 
@@ -25,7 +25,7 @@ class ExportTask(Protocol):
     @property
     def enabled(self) -> bool: ...
 
-    def execute(self) -> Any: ...
+    def execute(self) -> str | list[str] | None: ...
 
     def set_enabled(self, enabled: bool) -> None: ...
 
@@ -47,7 +47,7 @@ class DarkTradeExcelTask:
     def set_enabled(self, enabled: bool) -> None:
         self._enabled = enabled
 
-    def execute(self) -> str | None:
+    def execute(self) -> list[str] | None:
         from stock_monitor.services.dark_trade.exporter import (
             export_dark_trade_stats_excel,
         )
@@ -74,7 +74,8 @@ class DarkTradeExcelTask:
         except Exception as e:
             app_logger.error(f"[CloseExportScheduler] 暗盘统计导出失败: {e}")
 
-        return results[0] if results else None
+        # 返回全部成功路径，避免第二个导出结果被丢弃
+        return results or None
 
 
 class StockIndicatorsTask:
@@ -266,16 +267,21 @@ class CloseExportScheduler(QtCore.QThread):
 
                 try:
                     result = task.execute()
-                    if result:
-                        exported_files.append(str(result))
+                    # 只收集真正的文件路径；bool 等状态返回值（如推送任务）不入列
+                    if isinstance(result, str) and result:
+                        exported_files.append(result)
+                    elif isinstance(result, list):
+                        exported_files.extend(
+                            r for r in result if isinstance(r, str) and r
+                        )
                 except Exception as e:
                     app_logger.error(
                         f"[CloseExportScheduler] 任务 {task.name} 异常: {e}"
                     )
 
-            # 仅计划任务完成后才阻止当天后续的自动执行。手动单任务测试
-            # 不应让 15:05 的完整收盘导出被跳过。
-            if mark_exported:
+            # 仅计划任务且至少一个成功后才阻止当天后续自动执行（全部失败时
+            # 窗口内可重试）；手动单任务测试不应让 15:05 的完整收盘导出被跳过
+            if mark_exported and exported_files:
                 self._mark_exported()
 
             # 发送完成信号

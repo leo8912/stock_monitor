@@ -1,5 +1,25 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.10.7] - 2026-10-12
+
+> open-code-review 全仓审查修复：1 critical + 34 high + 72 medium，覆盖更新链、并发竞态、数据正确性与死代码。
+
+### 🐛 修复 (Fixes)
+- **更新链**：下载假成功路径（非 200/206、总长未知不判成功）、Content-Range 解析/续传起点校验、包内缺 `stock_monitor.exe` 中止安装、哈希源强制 https、4xx 不再进重试退避
+- **并发**：`quant_cache`/`stock_data_fetcher`/`stock_manager` 懒初始化加锁；量化防抖检查-占位原子化防重复推送；DI 容器锁外执行工厂防自死锁；`scan_finished` 必发防 UI 卡死；`quant_worker` 超时不再 join 阻塞主循环
+- **数据正确性**：mootdx `start/offset` 切片方向修正（证据链：tdxpy 协议语义）；逐笔买卖类型列索引 5→6；A 股单票 `fetch_single` 接通新浪路径；`sz000001` 不再误判指数；`resolve` 显式 market 分支复用类型识别；backtest 胜率分母只计有效信号；顶背离文案高/低点随 `top` 切换；OBV 计算补 `df.copy()`
+- **可靠性**：`refresh_error` 全部失败时正常触发；停止刷新不再误标收盘数据已取；禁用自启动同删 BAT 回退项；缓存坏条目不再丢弃整个防重缓存；收盘导出失败可重试、bool 结果不冒充文件路径；DB 半初始化单例、`close_all` 先取写锁、UPSERT 降级收窄
+- **安全**：`get_bool`/`get_str` 不再丢弃类型不匹配的已存值（0/1 开关可正常关闭）；NaN/Inf 行情校验拒绝
+- **事件总线**：惰性检测 Qt dispatcher（修复导入期快照恒 False），无事件循环时同步兜底不丢事件
+
+### 🧹 清理 (Cleanup)
+- 删除死参数/死字段/死分支：`other_hwnd`、`_last_report_type`、`_alert_cache`（保留外部引用）、`zigzag_data`、恒真 `len(parts)` 条件、`PermissionError` 不可达分支、downloader 不可达网络异常分支等
+- `hook-akshare` 去重显式清单与 `include_py_files=True`（包体瘦身）；`prepare_base_db` 猴子补丁 try/finally + WAL checkpoint + 路径锚定
+- 测试脚本退出码传播（`run_tests.py`/`run_tests.ps1`），失败不再被 CI 误判成功
+
+### 🧪 测试 (Tests)
+- 736 passed / 3 skipped；`ruff check` / `ruff format --check` 全绿；同步 `test_division_guards`、`test_network_manager`、`test_symbol_resolver` 断言至修复后行为
+
 ## [v4.10.6] - 2026-10-08
 
 > ponytail 精简：删除未使用的缓存层/健康检查/死工具，配置与重试入口收敛。

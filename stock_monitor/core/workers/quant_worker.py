@@ -72,14 +72,13 @@ class QuantWorker(QtCore.QThread):
 
         # 线程安全：使用锁保护共享资源
         self._lock = threading.Lock()
-        self._alert_cache: set[str] = set()
+        self._alert_cache: set[str] = set()  # settings_view_model 测试推送流程在用
         self._signal_manager: dict[str, float] = {}
         self._active_signals: dict[str, dict[str, dict]] = {}
         self._last_signal_time = {}  # 从磁盘加载持久化数据
         self._signals_history = {}
         # 复盘时刻兜底值：运行时优先读 config["daily_report_times"]（见 check_and_trigger_reports）
         self._daily_report_times = list(DEFAULT_DAILY_REPORT_TIMES)
-        self._last_report_type = ""
         self._last_report_date = ""
 
         # 【新增】信号状态追踪：{(symbol, sig_name): {"last_score": int, "last_push_ts": float}}
@@ -208,6 +207,12 @@ class QuantWorker(QtCore.QThread):
             是否成功登记请求。
         """
         with self._lock:
+            if self._pending_report_type is not None:
+                # 槽位非空时拒绝覆盖，避免前一次请求被静默丢弃
+                app_logger.warning(
+                    f"已有待处理复盘请求（{self._pending_report_type}），跳过本次登记"
+                )
+                return False
             self._pending_report_type = report_type
         app_logger.info_ctx("已登记后台复盘报告请求", report_type=report_type)
         return True
@@ -262,7 +267,6 @@ class QuantWorker(QtCore.QThread):
                 self.generate_daily_summary_report(report_type)
                 self.daily_report_ready.emit(report_type)
                 self._last_report_date = report_key
-                self._last_report_type = report_type
                 break
         except Exception as e:
             app_logger.error(f"检查报告生成失败：{e}")
@@ -671,64 +675,67 @@ class QuantWorker(QtCore.QThread):
     def perform_scan_parallel(self) -> None:
         """并行量化扫描（ThreadPoolExecutor 优化版）"""
         self.scan_started.emit()
+        try:
+            # G-11：使用标的快照，避免主线程并发替换导致漏扫/迭代异常
+            symbols = self._symbols_snapshot()
+            app_logger.info(f"开始并行量化扫描，监控标的：{len(symbols)} 只")
 
-        # G-11：使用标的快照，避免主线程并发替换导致漏扫/迭代异常
-        symbols = self._symbols_snapshot()
-        app_logger.info(f"开始并行量化扫描，监控标的：{len(symbols)} 只")
+            if not symbols:
+                return
 
-        if not symbols:
-            self.scan_finished.emit()
-            return
+            # 从配置读取线程池大小限制，带安全边界
+            # 默认：min(CPU核心数, 符号数, 16)
+            # 范围：[2, 32]
+            max_workers = self.config.get("quant_max_workers", None)
+            if max_workers is None:
+                # 自动推荐：CPU核心数默认为4-8，但不超过16
+                cpu_count = os.cpu_count() or 4
+                max_workers = min(cpu_count, 16)
+            else:
+                max_workers = int(max_workers)
 
-        # 从配置读取线程池大小限制，带安全边界
-        # 默认：min(CPU核心数, 符号数, 16)
-        # 范围：[2, 32]
-        max_workers = self.config.get("quant_max_workers", None)
-        if max_workers is None:
-            # 自动推荐：CPU核心数默认为4-8，但不超过16
-            import os
+            # 应用安全边界
+            max_workers = min(max(max_workers, 2), 32)  # 至少2线程，最多32线程
+            max_workers = min(max_workers, len(symbols))  # 不超过符号数
 
-            cpu_count = os.cpu_count() or 4
-            max_workers = min(cpu_count, 16)
-        else:
-            max_workers = int(max_workers)
+            results = []
 
-        # 应用安全边界
-        max_workers = min(max(max_workers, 2), 32)  # 至少2线程，最多32线程
-        max_workers = min(max_workers, len(symbols))  # 不超过符号数
+            app_logger.info(
+                f"使用 {max_workers} 个线程扫描（配置: {self.config.get('quant_max_workers', '自动')}, 建议: CPU核心优化）"
+            )
 
-        results = []
-
-        app_logger.info(
-            f"使用 {max_workers} 个线程扫描（配置: {self.config.get('quant_max_workers', '自动')}, 建议: CPU核心优化）"
-        )
-
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # 提交所有扫描任务
-            futures = {
-                executor.submit(self._scan_single_symbol, symbol): symbol
-                for symbol in symbols
-            }
-
-            # 收集结果，带超时保护（避免长期阻塞）
+            # 手动管理 executor：超时后 shutdown(wait=False) 不阻塞主循环，
+            # 在跑任务后台自行收尾（with 语句退出会 wait=True 阻塞 join）
+            executor = ThreadPoolExecutor(max_workers=max_workers)
             try:
-                for future in as_completed(futures, timeout=120):
-                    symbol = futures[future]
-                    try:
-                        result = future.result(timeout=30)
-                        if result:
-                            results.append(result)
-                    except Exception as e:
-                        app_logger.error(f"标的 {symbol} 扫描失败：{e}")
-            except TimeoutError:
-                # 整体超时：取消剩余任务，避免 with 退出时继续阻塞等待
-                app_logger.error("量化扫描整体超时（120s），取消剩余任务")
-                for future in futures:
-                    future.cancel()
+                # 提交所有扫描任务
+                futures = {
+                    executor.submit(self._scan_single_symbol, symbol): symbol
+                    for symbol in symbols
+                }
 
-        # 无论正常完成还是超时都必须发出，否则 UI 的扫描中状态永不复位
-        self.scan_finished.emit()
-        app_logger.info(f"本轮量化扫描完毕，触发信号：{len(results)} 次")
+                # 收集结果，带超时保护（避免长期阻塞）
+                try:
+                    for future in as_completed(futures, timeout=120):
+                        symbol = futures[future]
+                        try:
+                            result = future.result(timeout=30)
+                            if result:
+                                results.append(result)
+                        except Exception as e:
+                            app_logger.error(f"标的 {symbol} 扫描失败：{e}")
+                except TimeoutError:
+                    # 整体超时：取消剩余任务
+                    app_logger.error("量化扫描整体超时（120s），取消剩余任务")
+                    for future in futures:
+                        future.cancel()
+            finally:
+                executor.shutdown(wait=False, cancel_futures=True)
+
+            app_logger.info(f"本轮量化扫描完毕，触发信号：{len(results)} 次")
+        finally:
+            # 无论正常完成、超时还是异常都必须发出，否则 UI 扫描中状态卡死
+            self.scan_finished.emit()
 
     def _scan_single_symbol(self, symbol: str) -> dict:
         """扫描单只股票（供线程池调用）
@@ -791,6 +798,10 @@ class QuantWorker(QtCore.QThread):
         """
         判断是否应该推送信号（防抖动核心逻辑）
 
+        放行时在同一次加锁内写入 ``last_push_ts`` 占位，关闭「检查→推送」
+        窗口内并发扫描（如测试扫描线程与主循环重叠）重复推送的竞态；
+        推送完成后 :meth:`_update_signal_state` 覆盖为实际推送时刻。
+
         Returns:
             (should_push, reason): 是否推送及原因
         """
@@ -802,26 +813,34 @@ class QuantWorker(QtCore.QThread):
         score_threshold = self.config.get("quant_alert_score_threshold", 2)
 
         with self._lock:
+            state = self._signal_states.get(state_key)
+
             # 2. 首次出现或缓存缺失 → 允许推送
-            if state_key not in self._signal_states:
-                return True, "新信号"
+            if state is None:
+                reason = "新信号"
+            else:
+                last_push_ts = state.get("last_push_ts", 0)
+                last_score = state.get("last_score", -999)
 
-            state = self._signal_states[state_key]
-            last_push_ts = state.get("last_push_ts", 0)
-            last_score = state.get("last_score", -999)
-
-            # 3. 冷却时间检查
-            elapsed = now - last_push_ts
-            if elapsed < cooldown:
-                # 4. 冷却期内：只有评分显著变化才重新推送
-                score_diff = abs(current_score - last_score)
-                if score_diff >= score_threshold:
-                    return True, f"评分显著变化 ({last_score:+}→{current_score:+})"
+                # 3. 冷却时间检查
+                elapsed = now - last_push_ts
+                if elapsed < cooldown:
+                    # 4. 冷却期内：只有评分显著变化才重新推送
+                    score_diff = abs(current_score - last_score)
+                    if score_diff >= score_threshold:
+                        reason = f"评分显著变化 ({last_score:+}→{current_score:+})"
+                    else:
+                        return False, f"冷却中 (剩余{int(cooldown - elapsed)}s)"
                 else:
-                    return False, f"冷却中 (剩余{int(cooldown - elapsed)}s)"
+                    # 5. 超过冷却时间 → 允许推送
+                    reason = "冷却结束"
 
-        # 5. 超过冷却时间 → 允许推送
-        return True, "冷却结束"
+            # 占位与放行判定同锁完成
+            self._signal_states[state_key] = {
+                "last_score": current_score,
+                "last_push_ts": now,
+            }
+            return True, reason
 
     def _update_signal_state(self, symbol: str, sig_name: str, score: int) -> None:
         """更新信号状态记录"""

@@ -8,7 +8,6 @@ from typing import Any
 from requests.exceptions import (
     ChunkedEncodingError,
     ConnectionError,
-    HTTPError,
     RequestException,
     Timeout,
 )
@@ -51,6 +50,18 @@ MAX_RETRIES = 3  # 最大重试次数
 _SHA256_RE = re.compile(r"[a-fA-F0-9]{64}")
 
 
+def _parse_content_range_start(content_range: str) -> int | None:
+    """解析 Content-Range 头中的起始字节位置（形如 ``bytes 100-999/1234``）。
+
+    Returns:
+        起始偏移；无法解析时返回 None。
+    """
+    match = re.match(r"bytes\s+(\d+)-", content_range)
+    if match is None:
+        return None
+    return int(match.group(1))
+
+
 def _is_official_url(url: str) -> bool:
     """判断 URL 是否属于官方发布域名（hostname 精确匹配 + 标准端口）。
 
@@ -66,7 +77,8 @@ def _is_official_url(url: str) -> bool:
         parsed = urllib.parse.urlsplit(url)
     except ValueError:
         return False
-    if parsed.scheme not in ("http", "https"):
+    # 仅允许 https：哈希文件是整条更新链唯一的信任锚，禁止明文获取
+    if parsed.scheme != "https":
         return False
     hostname = parsed.hostname or ""
     if hostname.lower() not in OFFICIAL_HOSTS:
@@ -211,21 +223,9 @@ class UpdateDownloader:
             app_logger.info(f"更新包下载完成: {download_path}")
             return download_path
 
-        except HTTPError as e:
-            app_logger.error(f"下载 HTTP 错误 [{e.response.status_code}]: {e}")
-            if error_callback:
-                error_callback(f"下载失败：HTTP {e.response.status_code}")
-            return None
-        except (Timeout, ConnectionError):
-            app_logger.error("下载网络连接错误或超时")
-            if error_callback:
-                error_callback("下载失败：网络连接错误或超时，请检查网络后重试")
-            return None
-        except RequestException as e:
-            app_logger.error(f"下载网络异常：{e}")
-            if error_callback:
-                error_callback(f"下载失败：网络异常 - {e}")
-            return None
+        # 注：NetworkManager._request 对网络/HTTP 错误一律返回 None（内部已
+        # raise_for_status 后捕获），_download_with_resume 自行捕获 RequestException
+        # 子类，故无需在调用方再按 HTTPError/Timeout/RequestException 细分提示。
         except Exception as e:
             app_logger.error(f"下载更新时发生未知错误：{e}", exc_info=True)
             if error_callback:
@@ -297,54 +297,92 @@ class UpdateDownloader:
                         )
                         continue
 
-                    # 解析文件总大小
-                    if response.status_code == 206:
-                        # 服务器支持续传，返回 206 Partial Content
-                        content_range = response.headers.get("Content-Range", "")
-                        if "/" in content_range:
-                            total_size = int(content_range.split("/")[-1])
-                        app_logger.info(
-                            f"服务器支持断点续传，总大小: {total_size} 字节"
-                        )
-                    elif response.status_code == 200:
-                        # 服务器不支持续传或首次请求，返回完整文件
-                        total_size = int(response.headers.get("content-length", 0))
-                        # 如果服务器忽略了 Range 请求，需要从头开始
-                        if downloaded_size > 0:
-                            app_logger.warning("服务器不支持断点续传，重新从头下载")
-                            downloaded_size = 0
+                    # with 保证异常/取消/continue 路径都归还连接，避免连接池泄漏
+                    with response:
+                        # 显式拒绝非 200/206（镜像常以 2xx 携带错误页）
+                        if response.status_code not in (200, 206):
+                            app_logger.warning(
+                                f"{source_name}返回异常状态码 "
+                                f"{response.status_code}，换源重试"
+                            )
+                            continue
 
-                    # 写入文件
-                    # 续传时追加写入，否则覆盖写入
-                    mode = (
-                        "ab"
-                        if downloaded_size > 0 and response.status_code == 206
-                        else "wb"
-                    )
-                    with open(download_path, mode) as f:
-                        for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
-                            if chunk:
-                                f.write(chunk)
-                                downloaded_size += len(chunk)
+                        # 解析文件总大小
+                        if response.status_code == 206:
+                            # 服务器支持续传，返回 206 Partial Content
+                            content_range = response.headers.get("Content-Range", "")
+                            if "/" in content_range:
+                                total_str = content_range.split("/")[-1]
+                                if not total_str.isdigit():
+                                    # 尾部为 `*` 或畸形值：无法确定总大小，换源重试
+                                    app_logger.warning(
+                                        f"{source_name} Content-Range 畸形:"
+                                        f" {content_range}"
+                                    )
+                                    continue
+                                total_size = int(total_str)
+                            app_logger.info(
+                                f"服务器支持断点续传，总大小: {total_size} 字节"
+                            )
+                        else:
+                            # 服务器不支持续传或首次请求，返回完整文件
+                            total_size = int(response.headers.get("content-length", 0))
+                            # 如果服务器忽略了 Range 请求，需要从头开始
+                            if downloaded_size > 0:
+                                app_logger.warning("服务器不支持断点续传，重新从头下载")
+                                downloaded_size = 0
 
-                                # 更新进度
-                                if total_size > 0 and progress_callback:
-                                    progress = int((downloaded_size / total_size) * 100)
-                                    progress_callback(progress)
+                        # 写入文件：续传时追加，否则覆盖
+                        if downloaded_size > 0 and response.status_code == 206:
+                            # 校验续传起点与本地大小一致，防止错位拼接损坏文件
+                            start = _parse_content_range_start(
+                                response.headers.get("Content-Range", "")
+                            )
+                            if start != downloaded_size:
+                                app_logger.warning(
+                                    f"续传起点不一致: 服务器 {start} != 本地 "
+                                    f"{downloaded_size}，丢弃本地部分重下"
+                                )
+                                self._cleanup_download(download_path)
+                                downloaded_size = 0
+                                total_size = 0
+                                continue
+                        mode = "ab" if downloaded_size > 0 else "wb"
+                        with open(download_path, mode) as f:
+                            for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
+                                if chunk:
+                                    f.write(chunk)
+                                    downloaded_size += len(chunk)
 
-                                # 处理取消操作
-                                if is_cancelled_callback and is_cancelled_callback():
-                                    app_logger.info("用户取消了下载")
-                                    self._cleanup_download(download_path)
-                                    return False
+                                    # 更新进度
+                                    if total_size > 0 and progress_callback:
+                                        progress = int(
+                                            (downloaded_size / total_size) * 100
+                                        )
+                                        progress_callback(progress)
 
-                    # 下载完成校验
-                    if total_size > 0 and downloaded_size < total_size:
-                        app_logger.warning(
-                            f"下载不完整: {downloaded_size}/{total_size} 字节，"
-                            "将尝试续传"
-                        )
-                        continue  # 继续重试（会从断点续传）
+                                    # 处理取消操作
+                                    if (
+                                        is_cancelled_callback
+                                        and is_cancelled_callback()
+                                    ):
+                                        app_logger.info("用户取消了下载")
+                                        self._cleanup_download(download_path)
+                                        return False
+
+                        # 下载完成校验：总大小未知或无实际数据均不判成功
+                        if total_size <= 0 or downloaded_size <= 0:
+                            app_logger.warning(
+                                f"{source_name}无法确定文件总大小"
+                                "或未下载任何数据，换源重试"
+                            )
+                            continue
+                        if downloaded_size < total_size:
+                            app_logger.warning(
+                                f"下载不完整: {downloaded_size}/{total_size} 字节，"
+                                "将尝试续传"
+                            )
+                            continue  # 继续重试（会从断点续传）
 
                     app_logger.info(
                         f"使用{source_name}下载成功，共 {downloaded_size} 字节"
@@ -460,19 +498,14 @@ class UpdateDownloader:
                         f"哈希校验文件来源非官方域名，已拒绝更新: {hash_url}",
                     )
                 app_logger.info("正在下载哈希校验文件...")
-                try:
-                    hash_resp = self._network.get(
-                        hash_url,
-                        timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
-                        enable_retry=True,
-                    )
-                    if hash_resp is not None and hash_resp.status_code == 200:
-                        expected_hash = hash_resp.text.strip()
-                except (Timeout, ConnectionError):
-                    # 网络问题不立即判失败，允许回退到 release body 解析
-                    app_logger.warning("下载哈希校验文件超时或连接失败")
-                except RequestException as e:
-                    app_logger.warning(f"下载哈希校验文件网络异常：{e}")
+                # NetworkManager 失败返回 None（不抛网络异常），无需再捕获
+                hash_resp = self._network.get(
+                    hash_url,
+                    timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
+                    enable_retry=True,
+                )
+                if hash_resp is not None and hash_resp.status_code == 200:
+                    expected_hash = hash_resp.text.strip()
 
             # 2. 回退：从 release body 中解析哈希
             #    兼容 markdown 加粗写法（**SHA256**: `hash`）与纯文本（SHA256: hash）
@@ -519,4 +552,5 @@ class UpdateDownloader:
             app_logger.error(f"哈希校验过程异常，已拒绝更新: {e}", exc_info=True)
             if error_callback:
                 error_callback(f"哈希校验过程异常，已拒绝安装该更新包：{e}")
+            self._cleanup_download(download_path)
             return False

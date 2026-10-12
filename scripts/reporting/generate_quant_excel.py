@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 
 from openpyxl import Workbook
@@ -25,14 +26,18 @@ def generate_report():
 
     # 正则提取评分等信息
     for s in stocks:
-        pattern = rf"\| \*\*{s['name']}\*\* \| {s['code']} \| ([\-\d]+) \| .* \| .* \| ([\d\-\.\+ ]+) \(.*\) \| ([🟢🟡🔴].*?) \|"
+        pattern = rf"\| \*\*{s['name']}\*\* \| {s['code']} \| (-?\d+) \| .* \| .* \| ([\d\-\.\+ ]+) \(.*\) \| ([🟢🟡🔴].*?) \|"
         match = re.search(pattern, md_content)
         if match:
             s["score"] = int(match.group(1))
             s["rsrs_z"] = match.group(2).strip()
             s["audit"] = match.group(3).strip()
         else:
-            s["score"], s["rsrs_z"], s["audit"] = 0, "0.0", "未知"
+            # 解析失败若静默填 0 会产出看似正常的错误报表，直接中止
+            logging.warning(
+                "Markdown 评分解析失败: %s (%s)，中止报表生成", s["name"], s["code"]
+            )
+            raise ValueError(f"无法从 stock_analysis_report.md 解析 {s['code']} 的评分")
 
     wb = Workbook()
 
@@ -77,7 +82,7 @@ def generate_report():
                 s["score"],
                 s["rsrs_z"],
                 s["audit"],
-                f"{conf_wr*100:.1f}%",
+                f"{conf_wr * 100:.1f}%",
                 advice,
             ]
         )
@@ -96,8 +101,8 @@ def generate_report():
                     s["code"],
                     tf,
                     data.get("total_signals", 0),
-                    f"{data.get('win_rate', 0)*100:.1f}%",
-                    f"{data.get('avg_profit', 0)*100:.2f}%",
+                    f"{data.get('win_rate', 0) * 100:.1f}%",
+                    f"{data.get('avg_profit', 0) * 100:.2f}%",
                 ]
             )
 
@@ -114,8 +119,8 @@ def generate_report():
                     s["code"],
                     tf,
                     data.get("total_signals", 0),
-                    f"{data.get('win_rate', 0)*100:.1f}%",
-                    f"{data.get('avg_profit', 0)*100:.2f}%",
+                    f"{data.get('win_rate', 0) * 100:.1f}%",
+                    f"{data.get('avg_profit', 0) * 100:.2f}%",
                 ]
             )
 

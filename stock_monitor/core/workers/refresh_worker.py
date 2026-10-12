@@ -1,11 +1,9 @@
 import datetime
-import time
 
 from PyQt6 import QtCore
 
 from stock_monitor.core.market.market_manager import MarketManager
 from stock_monitor.utils.logger import app_logger
-from stock_monitor.utils.stock_utils import StockCodeProcessor
 
 from .base import DEFAULT_STOP_TIMEOUT_MS, wait_for_thread_stop
 
@@ -40,9 +38,6 @@ class RefreshWorker(QtCore.QThread):
         self._consecutive_failures = 0
         self._max_consecutive_failures = 3
         self._max_startup_retries = 10  # 开机启动时首次获取数据的最大重试次数
-        self._processor = StockCodeProcessor()
-        # self._data_change_detector = DataChangeDetector() # 使用StockManager的检测器
-        self._last_successful_update = 0
         self._closing_data_fetched = False  # 当日收盘数据是否已获取
         self._closing_data_date = None  # 记录获取收盘数据的日期，用于次日重置
         self._last_market_open = None  # 追踪上次市场开闭状态，用于检测状态转换
@@ -61,15 +56,15 @@ class RefreshWorker(QtCore.QThread):
             refresh_interval: 刷新间隔（秒）
         """
         self._lock.lock()
-        self.current_user_stocks = user_stocks
-        self.refresh_interval = refresh_interval
-        # 启动判定与 start() 必须在同一把锁内完成，避免快速连续调用时
-        # isRunning() 尚未变真而重复启动线程（QThread::start 重复调用告警）
-        if not self.isRunning():
-            self._is_running = True
-            self._lock.unlock()
-            self.start()
-        else:
+        try:
+            self.current_user_stocks = user_stocks
+            self.refresh_interval = refresh_interval
+            # 启动判定与 start() 必须在同一把锁内完成，避免快速连续调用时
+            # isRunning() 尚未变真而重复启动线程（QThread::start 重复调用告警）
+            if not self.isRunning():
+                self._is_running = True
+                self.start()
+        finally:
             self._lock.unlock()
 
         app_logger.info_ctx("后台刷新线程已启动", interval=self.refresh_interval)
@@ -203,14 +198,30 @@ class RefreshWorker(QtCore.QThread):
                         failed_count == len(local_user_stocks)
                         and len(local_user_stocks) > 0,
                     )
-                    self._last_successful_update = time.time()
 
-                # 重置连续失败计数
+                # 连续失败计数：全部失败递增并在达阈值时告警，未全部失败才清零
+                all_failed = (
+                    failed_count == len(local_user_stocks)
+                    and len(local_user_stocks) > 0
+                )
                 self._lock.lock()
                 try:
-                    self._consecutive_failures = 0
+                    if all_failed:
+                        self._consecutive_failures += 1
+                        current_failures = self._consecutive_failures
+                    else:
+                        self._consecutive_failures = 0
+                        current_failures = 0
                 finally:
                     self._lock.unlock()
+
+                if all_failed and current_failures >= self._max_consecutive_failures:
+                    self.refresh_error.emit()
+                    self._lock.lock()
+                    try:
+                        self._consecutive_failures = 0
+                    finally:
+                        self._lock.unlock()
 
                 # 标记首次获取已完成（仅当成功获取到数据时）
                 # 如果全部失败，不标记完成，继续重试获取数据
@@ -232,7 +243,9 @@ class RefreshWorker(QtCore.QThread):
                 self._smart_sleep(sleep_time, check_interval=True)
 
             except Exception as e:
-                app_logger.error(f"行情刷新异常: {e}")
+                # 缩小异常捕获范围风险高（循环体依赖外部行情服务，边界模糊），
+                # 先保留统一兜底但补全堆栈，便于区分网络故障与编程错误
+                app_logger.error(f"行情刷新异常: {e}", exc_info=True)
                 self._lock.lock()
                 try:
                     self._consecutive_failures += 1
@@ -354,7 +367,8 @@ class RefreshWorker(QtCore.QThread):
         # 多次获取，逐步逼近最终收盘价
         for attempt in range(total_attempts):
             if not self._is_running:
-                self._closing_data_fetched = True
+                # 停止时不能置 _closing_data_fetched=True：数据并未真正取到，
+                # 同日重启刷新还需再走收盘获取路径
                 return
 
             try:

@@ -148,19 +148,24 @@ class ConnectionPool:
             return False
 
     def close_all(self) -> None:
-        """关闭所有已登记连接，并重置线程本地存储。"""
-        with self._lock:
-            conns = list(self._all_conns.values())
-            self._all_conns.clear()
-            for conn in conns:
-                try:
-                    conn.close()
-                    self._stats["closed"] += 1
-                except Exception:
-                    # 退出清理路径：单个连接关闭失败不阻塞其它连接关闭
-                    app_logger.debug("关闭数据库连接失败", exc_info=True)
-            # 重置线程本地存储，避免残留已关闭连接
-            self._local = threading.local()
+        """关闭所有已登记连接，并重置线程本地存储。
+
+        需先取全局写锁，确保没有进行中的写事务再关闭连接，避免写入被中途截断。
+        锁序与 _write_connection 一致（先 _write_lock 后 _lock），避免死锁。
+        """
+        with self._write_lock:
+            with self._lock:
+                conns = list(self._all_conns.values())
+                self._all_conns.clear()
+                for conn in conns:
+                    try:
+                        conn.close()
+                        self._stats["closed"] += 1
+                    except Exception:
+                        # 退出清理路径：单个连接关闭失败不阻塞其它连接关闭
+                        app_logger.debug("关闭数据库连接失败", exc_info=True)
+                # 重置线程本地存储，避免残留已关闭连接
+                self._local = threading.local()
 
     def get_stats(self) -> dict:
         """获取连接池统计（active_pools/total_cached 基于全局登记连接数）。"""
@@ -206,9 +211,10 @@ class StockDatabase:
                 config_dir = get_config_dir()
                 self.db_path = os.path.join(config_dir, DB_FILE)
 
-                self._initialized = True
-                # 确保数据库文件和表结构存在
+                # 确保数据库文件和表结构存在（_initialize_database 失败时抛出，
+                # _initialized 保持 False，下次构造可重试，避免半初始化单例）
                 self._initialize_database()
+                self._initialized = True
 
                 # 智能检查：如果数据库为空，导入基础数据
                 if self.is_empty():
@@ -498,10 +504,19 @@ class StockDatabase:
                 )
                 return len(data_to_insert)
 
+        except sqlite3.OperationalError as e:
+            # 仅旧版 SQLite 不支持 UPSERT 语法（含 ON CONFLICT/syntax error）时
+            # 降级慢速插入；磁盘满、锁超时等其它 OperationalError 直接抛出，
+            # 避免对同一批数据逐条重试放大日志、掩盖真实根因。
+            msg = str(e).lower()
+            if "on conflict" in msg or "syntax error" in msg:
+                app_logger.warning(f"UPSERT 语法不受支持，降级慢速插入: {e}")
+                return self._insert_stocks_slow(stocks)
+            app_logger.error(f"批量插入股票数据失败: {e}")
+            raise
         except Exception as e:
             app_logger.error(f"批量插入股票数据失败: {e}")
-            # Fallback to older slow method if UPSERT fails
-            return self._insert_stocks_slow(stocks)
+            raise
 
     def _insert_stocks_slow(self, stocks: list[dict[str, Any]]) -> int:
         """慢速插入模式（兼容旧版SQLite或作为降级方案）"""
