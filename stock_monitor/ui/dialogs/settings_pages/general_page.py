@@ -79,8 +79,15 @@ class GeneralSettingsPage(SettingsPage):
         self.version_label = QLabel(f"v{__version__}")
         self.check_update_button = QPushButton("检查更新")
         self.check_update_button.setObjectName("checkUpdateButton")
+        # 下载镜像前缀（不内置，用户自填）
+        self.mirror_button = QPushButton("更新镜像")
+        self.mirror_button.setToolTip(
+            "配置更新包下载加速镜像前缀（每行一个，形如 https://example.com/ ）；"
+            "留空则仅用 GitHub 官方地址"
+        )
         update_layout.addWidget(self.version_label)
         update_layout.addWidget(self.check_update_button)
+        update_layout.addWidget(self.mirror_button)
 
         # 添加开机启动标签和复选框
         self.auto_start_label = QLabel("开机启动:")
@@ -103,6 +110,7 @@ class GeneralSettingsPage(SettingsPage):
 
         # 页内信号：检查更新按钮（跨切面之外，收敛进本页）
         self.check_update_button.clicked.connect(self.check_for_updates)
+        self.mirror_button.clicked.connect(self.edit_update_mirrors)
 
     def build(self, parent_widget) -> None:
         """基类契约适配：把系统设置行构建进 ``parent_widget``（P0 非标签页）。"""
@@ -133,6 +141,35 @@ class GeneralSettingsPage(SettingsPage):
     def get_refresh_interval(self) -> int:
         """返回当前刷新频率数值（供 shell 发信号时使用）。"""
         return self.refresh_spin.value()
+
+    def edit_update_mirrors(self) -> None:
+        """编辑更新下载镜像前缀；每行一个，立即写入配置。"""
+        from PyQt6.QtWidgets import QInputDialog
+
+        from stock_monitor.core.config_center import config_center
+        from stock_monitor.utils.config_helper import ConfigKeys
+        from stock_monitor.utils.logger import app_logger
+
+        current = config_center.get(ConfigKeys.UPDATE_MIRRORS, [])
+        if isinstance(current, list):
+            text = "\n".join(str(x) for x in current)
+        else:
+            text = str(current or "")
+        text, ok = QInputDialog.getMultiLineText(
+            self,
+            "更新下载镜像",
+            "每行一个镜像前缀（以 / 结尾，形如 https://example.com/ ）：\n"
+            "拼在完整 GitHub 下载链接前；留空则仅用官方地址。",
+            text,
+        )
+        if not ok:
+            return
+        lines = [ln.strip() for ln in text.replace("\r", "\n").split("\n")]
+        mirrors = [ln for ln in lines if ln and not ln.startswith("#")]
+        if config_center.set(ConfigKeys.UPDATE_MIRRORS, mirrors):
+            app_logger.info(f"更新镜像已保存: {mirrors or '(仅官方)'}")
+        else:
+            app_logger.error("更新镜像保存失败")
 
     def check_for_updates(self) -> None:
         """检查更新"""

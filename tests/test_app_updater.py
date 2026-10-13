@@ -16,38 +16,71 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
-from stock_monitor.core.app_update.downloader import (
-    GITHUB_MIRROR_PREFIXES,
-    UpdateDownloader,
-)
+from stock_monitor.core.app_update.downloader import UpdateDownloader
 from stock_monitor.core.updater import AppUpdater
 
 
 class TestBuildDownloadUrls(unittest.TestCase):
-    """多镜像加速 URL 构造（GitHub 被墙时的回退顺序）。"""
+    """下载 URL 构造：镜像来自配置，不内置；官方始终垫底。"""
 
-    def test_mirrors_before_official(self):
+    def test_configured_mirrors_before_official(self):
         official = "https://github.com/o/r/releases/download/v1/app.zip"
-        urls = UpdateDownloader.build_download_urls(official)
+        with patch(
+            "stock_monitor.core.app_update.downloader.get_update_mirrors",
+            return_value=["https://m1.example/", "https://m2.example/"],
+        ):
+            urls = UpdateDownloader.build_download_urls(official)
 
         self.assertEqual(urls[-1], ("GitHub原始地址", official))
-        self.assertEqual(len(urls), len(GITHUB_MIRROR_PREFIXES) + 1)
-        for i, prefix in enumerate(GITHUB_MIRROR_PREFIXES):
-            name, url = urls[i]
-            self.assertTrue(name.startswith("镜像"))
-            self.assertEqual(url, f"{prefix}{official}")
+        self.assertEqual(len(urls), 3)
+        self.assertEqual(urls[0], ("镜像1", f"https://m1.example/{official}"))
+        self.assertEqual(urls[1], ("镜像2", f"https://m2.example/{official}"))
 
-    def test_dead_legacy_mirror_not_first(self):
-        """旧失效镜像不得再作为唯一/首选源。"""
-        urls = UpdateDownloader.build_download_urls(
-            "https://github.com/o/r/releases/download/v1/app.zip"
-        )
-        first = urls[0][1]
-        self.assertNotIn("mirror.ghproxy.com", first)
-        # 至少一个可用加速前缀（实测存活集合）
+    def test_empty_mirrors_only_official(self):
+        """未配置镜像时仅官方地址，不注入内置前缀。"""
+        official = "https://github.com/o/r/releases/download/v1/app.zip"
+        with patch(
+            "stock_monitor.core.app_update.downloader.get_update_mirrors",
+            return_value=[],
+        ):
+            urls = UpdateDownloader.build_download_urls(official)
+        self.assertEqual(urls, [("GitHub原始地址", official)])
+
+    def test_dead_legacy_mirror_not_injected(self):
+        """旧失效镜像不得被代码内置。"""
+        official = "https://github.com/o/r/releases/download/v1/app.zip"
+        with patch(
+            "stock_monitor.core.app_update.downloader.get_update_mirrors",
+            return_value=[],
+        ):
+            urls = UpdateDownloader.build_download_urls(official)
         joined = " ".join(u for _, u in urls)
-        self.assertIn("gh.ddlc.top", joined)
-        self.assertIn("gh-proxy.cn", joined)
+        self.assertNotIn("mirror.ghproxy.com", joined)
+        self.assertNotIn("gh.ddlc.top", joined)
+
+
+class TestGetUpdateMirrors(unittest.TestCase):
+    """镜像配置读取与规范化。"""
+
+    def test_parses_list_and_normalizes_slash(self):
+        from stock_monitor.core.app_update.downloader import get_update_mirrors
+
+        with patch(
+            "stock_monitor.core.config_center.config_center.get",
+            return_value=["https://a.example", "https://b.example/", "not-a-url"],
+        ):
+            out = get_update_mirrors()
+        self.assertEqual(out, ["https://a.example/", "https://b.example/"])
+
+    def test_parses_multiline_string(self):
+        from stock_monitor.core.app_update.downloader import get_update_mirrors
+
+        with patch(
+            "stock_monitor.core.config_center.config_center.get",
+            return_value="https://a.example/\n# comment\nhttps://b.example",
+        ):
+            out = get_update_mirrors()
+        self.assertEqual(out, ["https://a.example/", "https://b.example/"])
 
 
 class TestAppUpdaterInitialization(unittest.TestCase):

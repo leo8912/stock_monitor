@@ -171,6 +171,13 @@ class NetworkManager:
             pass
 
         response = self.get(url, timeout=30, headers=headers)
+        if response is None and "api.github.com" in url:
+            # 直连失败时回退用户配置的更新镜像前缀（不内置）
+            for prefix in _configured_update_mirrors():
+                response = self.get(f"{prefix}{url}", timeout=30, headers=headers)
+                if response is not None:
+                    app_logger.info(f"GitHub API 经镜像回退成功: {prefix}")
+                    break
         if response is None:
             return None
 
@@ -179,3 +186,13 @@ class NetworkManager:
         except ValueError as e:
             app_logger.error(f"解析GitHub API响应失败: {e}")
             return None
+
+
+def _configured_update_mirrors() -> list[str]:
+    """读取配置的更新镜像前缀；失败返回空列表。"""
+    try:
+        from stock_monitor.core.app_update.downloader import get_update_mirrors
+
+        return get_update_mirrors()
+    except Exception:
+        return []

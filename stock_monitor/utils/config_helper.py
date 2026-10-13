@@ -29,6 +29,9 @@ class ConfigKeys:
     WECOM_CORPSECRET = "wecom_corpsecret"
     WECOM_AGENTID = "wecom_agentid"
 
+    # 更新下载镜像前缀列表（每项形如 https://example.com/ ，拼在完整 GitHub URL 前）
+    UPDATE_MIRRORS = "update_mirrors"
+
     # 窗口位置
     WINDOW_POS = "window_pos"
 

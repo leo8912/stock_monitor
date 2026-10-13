@@ -1,5 +1,20 @@
 # 更新日志 (CHANGELOG)
 
+## [v4.10.10] - 2026-10-13
+
+> 更新镜像改为用户可配置（不内置）；GitHub API 直连失败时可回退镜像。
+
+### ✨ 新增 (Features)
+- **更新镜像设置**：设置页「更新镜像」按钮，每行一个前缀（`https://example.com/`），写入配置 `update_mirrors`；留空则仅用 GitHub 官方地址
+- **下载 URL**：`build_download_urls` 只拼用户配置的镜像 + 官方，不再内置 `GITHUB_MIRROR_PREFIXES`
+- **检查更新**：`github_api_request` 直连失败时按配置镜像回退
+
+### 🐛 修复 (Fixes)
+- 说明：内置镜像源部分已 429/503 失效导致「无法下载」；改为配置后可自行换源
+
+### 🧪 测试 (Tests)
+- 752 passed / 3 skipped；镜像读取/规范化/空配置仅官方源
+
 ## [v4.10.9] - 2026-10-12
 
 > 整仓 `ocr scan` 跟进：约 311 条 C/H/M 逐条核实后实修约 84 处；大量 OCR 项为过时/误报，按证据跳过。

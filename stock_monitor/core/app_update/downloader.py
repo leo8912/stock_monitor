@@ -15,20 +15,6 @@ from requests.exceptions import (
 from stock_monitor.network.manager import NetworkManager
 from stock_monitor.utils.logger import app_logger
 
-# 镜像源配置：国内环境优先使用镜像加速下载（前缀 + 完整 GitHub URL）
-# 2026-09-24 实测：内容与官方一致、支持 Range；按实测速度粗排。
-# 旧 mirror.ghproxy.com 已失效，勿再单独依赖。
-GITHUB_MIRROR_PREFIXES: tuple[str, ...] = (
-    "https://gh.ddlc.top/",
-    "https://gh-proxy.cn/",
-    "https://ghproxy.net/",
-    "https://ghfast.top/",
-    "https://gh-proxy.com/",
-)
-
-# 兼容旧引用（单镜像常量）：仍指向当前首选镜像
-GITHUB_MIRROR_PREFIX = GITHUB_MIRROR_PREFIXES[0]
-
 # 官方发布域名白名单（精确匹配 hostname，禁止子串匹配）
 OFFICIAL_HOSTS = {
     "github.com",
@@ -48,6 +34,41 @@ MAX_RETRIES = 3  # 最大重试次数
 
 # 合法 SHA256 十六进制格式
 _SHA256_RE = re.compile(r"[a-fA-F0-9]{64}")
+
+
+def get_update_mirrors() -> list[str]:
+    """读取用户配置的更新镜像前缀；不内置默认列表。
+
+    配置值可为 list[str]，或含逗号/换行分隔的字符串。
+    每项规范化为以 ``/`` 结尾的 http(s) 前缀；非法项丢弃。
+    """
+    try:
+        from stock_monitor.core.config_center import config_center
+        from stock_monitor.utils.config_helper import ConfigKeys
+
+        raw = config_center.get(ConfigKeys.UPDATE_MIRRORS, [])
+    except Exception:
+        return []
+    if isinstance(raw, str):
+        parts = [
+            p for chunk in raw.replace("\r", "\n").split("\n") for p in chunk.split(",")
+        ]
+    elif isinstance(raw, (list, tuple)):
+        parts = [str(p) for p in raw]
+    else:
+        return []
+    mirrors: list[str] = []
+    for p in parts:
+        p = p.strip()
+        if not p or p.startswith("#"):
+            continue
+        if not p.endswith("/"):
+            p += "/"
+        if not p.startswith(("https://", "http://")):
+            continue
+        if p not in mirrors:
+            mirrors.append(p)
+    return mirrors
 
 
 def _parse_content_range_start(content_range: str) -> int | None:
@@ -120,7 +141,9 @@ class UpdateDownloader:
 
     @staticmethod
     def build_download_urls(download_url: str) -> list[tuple[str, str]]:
-        """按优先级构造下载 URL 列表：多镜像加速 → 官方地址。
+        """按优先级构造下载 URL 列表：用户配置的镜像 → 官方地址。
+
+        镜像来自配置 ``update_mirrors``（不内置默认前缀）；为空时仅官方地址。
 
         Args:
             download_url: 官方 ``browser_download_url``。
@@ -128,9 +151,10 @@ class UpdateDownloader:
         Returns:
             ``[(源名称, URL), ...]``，至少包含官方地址。
         """
+        mirrors = get_update_mirrors()
         urls: list[tuple[str, str]] = [
             (f"镜像{i + 1}", f"{prefix}{download_url}")
-            for i, prefix in enumerate(GITHUB_MIRROR_PREFIXES)
+            for i, prefix in enumerate(mirrors)
         ]
         urls.append(("GitHub原始地址", download_url))
         return urls
